@@ -20,7 +20,6 @@ interface AssetRowProps {
   isExpanded: boolean;
   onSelect: () => void;
   onTrade: (direction: "long" | "short") => void;
-  onConnectRequest: () => void;
   walletConnected: boolean;
   fundingHistory?: { time: number; rate: number }[];
   detailNode: ReactNode;
@@ -32,7 +31,6 @@ export default function AssetRow({
   isExpanded,
   onSelect,
   onTrade,
-  onConnectRequest,
   walletConnected,
   fundingHistory,
   detailNode,
@@ -164,8 +162,8 @@ export default function AssetRow({
           )}
         </td>
 
-        <td className="px-3 py-1 whitespace-nowrap">
-          {walletConnected ? (
+        {walletConnected && (
+          <td className="px-3 py-1 whitespace-nowrap">
             <div className="flex gap-1">
               <button
                 onClick={(e) => {
@@ -186,18 +184,8 @@ export default function AssetRow({
                 Short ↓
               </button>
             </div>
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onConnectRequest();
-              }}
-              className="px-2 py-0.5 text-[11px] rounded font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"
-            >
-              Connect to trade
-            </button>
-          )}
-        </td>
+          </td>
+        )}
       </tr>
       {detailNode}
     </>

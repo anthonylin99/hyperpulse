@@ -6,7 +6,6 @@ import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import AssetRow from "./AssetRow";
 import AssetDetail from "./AssetDetail";
-import WalletModal from "./WalletModal";
 import type { MarketAsset, SpotAsset, SpotCategory } from "@/types";
 import {
   ALL_CATEGORIES,
@@ -92,7 +91,6 @@ export default function MarketTable({
   const { isConnected } = useWallet();
 
   const [mode, setMode] = useState<Mode>("perps");
-  const [showWalletModal, setShowWalletModal] = useState(false);
   const [search, setSearch] = useState("");
 
   const [perpSortKey, setPerpSortKey] = useState<PerpSortKey>("openInterest");
@@ -205,7 +203,7 @@ export default function MarketTable({
     );
   }
 
-  const perpsTotalColumns = PERP_COLUMNS.length + 2;
+  const perpsTotalColumns = PERP_COLUMNS.length + 1 + (isConnected ? 1 : 0);
 
   return (
     <>
@@ -333,7 +331,9 @@ export default function MarketTable({
                     </th>
                   ))}
                   <th className="px-3 py-2 text-left whitespace-nowrap">7d Chart</th>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">Trade</th>
+                  {isConnected && (
+                    <th className="px-3 py-2 text-left whitespace-nowrap">Trade</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -345,7 +345,6 @@ export default function MarketTable({
                     isExpanded={selectedAsset === asset.coin}
                     onSelect={() => onSelectAsset(selectedAsset === asset.coin ? null : asset.coin)}
                     onTrade={(direction) => onTrade(asset.coin, direction)}
-                    onConnectRequest={() => setShowWalletModal(true)}
                     walletConnected={isConnected}
                     fundingHistory={fundingHistories[asset.coin]}
                     detailNode={
@@ -459,8 +458,6 @@ export default function MarketTable({
           )}
         </div>
       </div>
-
-      {showWalletModal && <WalletModal onClose={() => setShowWalletModal(false)} />}
     </>
   );
 }
