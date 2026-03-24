@@ -9,7 +9,8 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { privateKeyToAccount } from "viem/accounts";
+import { custom, createWalletClient, type Address } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HttpTransport, InfoClient, ExchangeClient } from "@nktkas/hyperliquid";
 import { POLL_INTERVAL_PORTFOLIO } from "@/lib/constants";
 import { IS_TESTNET } from "@/lib/hyperliquid";
@@ -29,6 +30,7 @@ interface WalletContextValue {
   exchangeClient: ExchangeClient | null;
   loading: boolean;
   connect: (apiPrivateKey: string, mainWalletAddress: string) => Promise<void>;
+  connectWithBrowserWallet: () => Promise<void>;
   disconnect: () => void;
   refreshPortfolio: () => Promise<void>;
 }
@@ -187,6 +189,79 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [fetchPortfolio, getInfo]
   );
 
+  const connectWithBrowserWallet = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (typeof window === "undefined") {
+        throw new Error("Browser wallet is unavailable in this environment.");
+      }
+      const ethereum = (window as Window & { ethereum?: unknown }).ethereum;
+      if (!ethereum) {
+        throw new Error("No browser wallet found. Install MetaMask or Rabby.");
+      }
+      const injectedProvider = ethereum as {
+        request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      };
+
+      const transport = new HttpTransport({ isTestnet: IS_TESTNET });
+      const walletClient = createWalletClient({
+        transport: custom(injectedProvider),
+      });
+      const [mainAddr] = await walletClient.requestAddresses();
+      if (!mainAddr) {
+        throw new Error("Wallet connection failed: no address returned.");
+      }
+
+      const browserWallet = {
+        getAddresses: async () => [mainAddr as Address],
+        getChainId: async () => walletClient.getChainId(),
+        signTypedData: async (params: {
+          domain: Record<string, unknown>;
+          types: Record<string, Array<{ name: string; type: string }>>;
+          primaryType: string;
+          message: Record<string, unknown>;
+        }) =>
+          walletClient.signTypedData({
+            ...params,
+            account: mainAddr as Address,
+          } as Parameters<typeof walletClient.signTypedData>[0]),
+      };
+
+      // Generate a local agent key in-browser, approve it once using the connected wallet.
+      const agentPrivateKey = generatePrivateKey();
+      const agentWallet = privateKeyToAccount(agentPrivateKey);
+      const approver = new ExchangeClient({ transport, wallet: browserWallet as never });
+      const agentName = `hyperpulse-${Date.now()}`;
+      await approver.approveAgent({
+        agentAddress: agentWallet.address,
+        agentName,
+      });
+
+      // Trading client uses the approved local agent wallet.
+      const exchange = new ExchangeClient({ transport, wallet: agentWallet });
+
+      const info = getInfo();
+      await info.openOrders({ user: mainAddr });
+      await fetchPortfolio(mainAddr, true);
+
+      setAddress(mainAddr);
+      setApiAddress(agentWallet.address);
+      setExchangeClient(exchange);
+
+      sessionStorage.setItem(SESSION_API_KEY, agentPrivateKey);
+      sessionStorage.setItem(SESSION_MAIN_ADDR, mainAddr);
+
+      toast.success(`Connected: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to connect with browser wallet";
+      toast.error(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchPortfolio, getInfo]);
+
   const disconnect = useCallback(() => {
     setAddress(null);
     setApiAddress(null);
@@ -244,6 +319,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         exchangeClient,
         loading,
         connect,
+        connectWithBrowserWallet,
         disconnect,
         refreshPortfolio,
       }}

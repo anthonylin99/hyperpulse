@@ -10,10 +10,11 @@ interface WalletModalProps {
 }
 
 export default function WalletModal({ onClose }: WalletModalProps) {
-  const { connect, loading } = useWallet();
+  const { connect, connectWithBrowserWallet, loading } = useWallet();
   const [apiKey, setApiKey] = useState("");
   const [mainAddress, setMainAddress] = useState("");
   const [error, setError] = useState("");
+  const [showManual, setShowManual] = useState(false);
 
   const trimmedApiKey = apiKey.trim();
   const trimmedMainAddress = mainAddress.trim();
@@ -56,6 +57,20 @@ export default function WalletModal({ onClose }: WalletModalProps) {
     }
   };
 
+  const handleBrowserWalletConnect = async () => {
+    setError("");
+    try {
+      await connectWithBrowserWallet();
+      onClose();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Wallet connect failed. Please try again.";
+      setError(message);
+    }
+  };
+
   return (
     <>
       {/* Backdrop */}
@@ -84,65 +99,71 @@ export default function WalletModal({ onClose }: WalletModalProps) {
         <div className="px-5 py-4 space-y-4">
           <div className="text-xs text-zinc-400 font-sans leading-relaxed space-y-2">
             <p>
-              HyperPulse uses a Hyperliquid <strong>API wallet</strong> (agent
-              wallet) for trading. It can place orders on your behalf but{" "}
+              HyperPulse uses a Hyperliquid <strong>agent wallet</strong> for trading.
+              It can place orders on your behalf but{" "}
               <strong>cannot withdraw funds</strong>.
             </p>
             <p className="text-zinc-500">
-              Go to{" "}
-              <span className="text-blue-400 font-mono">
-                app.hyperliquid.xyz → API
-              </span>{" "}
-              → Generate API Wallet.
+              Recommended: connect your browser wallet and sign one approval.
+              HyperPulse will generate an agent key locally and keep it in this tab session.
             </p>
           </div>
 
-          {/* Main wallet address */}
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block">
-              Main Wallet Address
-            </label>
-            <input
-              type="text"
-              placeholder="0x509292a... (your public address)"
-              value={mainAddress}
-              onChange={(e) => setMainAddress(e.target.value)}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-            <p className="text-[10px] text-zinc-600 mt-1">
-              Used for reading your account data (positions, balances)
-            </p>
-          </div>
+          <button
+            onClick={handleBrowserWalletConnect}
+            disabled={loading}
+            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
+          >
+            {loading ? "Connecting..." : "Connect Browser Wallet"}
+          </button>
 
-          {/* API private key */}
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block">
-              API Wallet Private Key
-            </label>
-            <input
-              type="password"
-              placeholder="0x... (API wallet private key)"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-            <p className="text-[10px] text-zinc-600 mt-1">
-              Used for signing trades only. Stored in session memory — never
-              sent to any server. Cleared when you close the tab.
-            </p>
-          </div>
+          <button
+            onClick={() => setShowManual((v) => !v)}
+            className="w-full py-2 text-xs text-zinc-400 border border-zinc-700 rounded hover:bg-zinc-800 transition-colors"
+          >
+            {showManual ? "Hide Manual API Key Mode" : "Use Manual API Key Mode"}
+          </button>
+
+          {showManual && (
+            <div className="space-y-3 border border-zinc-800 rounded p-3 bg-zinc-950/50">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block">
+                  Main Wallet Address
+                </label>
+                <input
+                  type="text"
+                  placeholder="0x509292a... (your public address)"
+                  value={mainAddress}
+                  onChange={(e) => setMainAddress(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block">
+                  API Wallet Private Key
+                </label>
+                <input
+                  type="password"
+                  placeholder="0x... (API wallet private key)"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              <button
+                onClick={handleConnect}
+                disabled={loading || !trimmedApiKey || !trimmedMainAddress}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
+              >
+                {loading ? "Connecting..." : "Connect with API Key"}
+              </button>
+            </div>
+          )}
 
           {error && <p className="text-xs text-red-500">{error}</p>}
-
-          {/* Connect button */}
-          <button
-            onClick={handleConnect}
-            disabled={loading || !trimmedApiKey || !trimmedMainAddress}
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
-          >
-            {loading ? "Connecting..." : "Connect"}
-          </button>
         </div>
 
         {/* Footer */}
