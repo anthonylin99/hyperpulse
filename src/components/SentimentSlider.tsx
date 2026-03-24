@@ -20,11 +20,17 @@ export default function SentimentSlider() {
       : result.score > 60
         ? "text-green-400"
         : "text-zinc-300";
+  const scoreBadgeClass =
+    result.score < 40
+      ? "bg-red-500/15 text-red-300 border-red-500/30"
+      : result.score > 60
+        ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/30"
+        : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
 
   return (
     <>
-      <div className="flex-shrink-0 min-w-[248px] h-[46px] rounded-md border border-zinc-800 bg-zinc-900/70 px-2.5 py-1.5">
-        <div className="flex items-baseline justify-between">
+      <div className="flex-shrink-0 min-w-[272px] h-[46px] rounded-md border border-zinc-800 bg-zinc-900/70 px-2.5 py-1.5">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <span className="text-[9px] uppercase tracking-wider text-zinc-500">
               HyperPulse VIX Sentiment
@@ -38,9 +44,14 @@ export default function SentimentSlider() {
               <Info className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className={`text-[13px] font-mono font-bold ${colorClass}`}>
-              {result.score} · {result.label}
+          <div className="flex items-center gap-1">
+            <span
+              className={`inline-flex h-5 min-w-[30px] items-center justify-center rounded border px-1.5 text-[11px] font-mono font-semibold ${scoreBadgeClass}`}
+            >
+              {result.score}
+            </span>
+            <span className={`text-[11px] font-semibold ${colorClass}`}>
+              {result.label}
             </span>
             <span
               className="rounded border border-zinc-700 bg-zinc-950 px-1 py-0.5 text-[8px] font-mono uppercase tracking-wider text-zinc-400"
