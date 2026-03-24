@@ -84,11 +84,22 @@ export default function PortfolioPanel() {
       {/* Account summary */}
       <div className="px-4 py-3 border-b border-zinc-800 space-y-2">
         <div className="flex justify-between items-baseline">
-          <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-            Perp Account Value (Cross)
+          <span
+            className="text-[10px] uppercase tracking-wider text-zinc-500"
+            title="Cross-margin account value from Hyperliquid clearinghouse"
+          >
+            Perp Cross Value
           </span>
-          <span className="text-lg font-mono font-bold">
-            {formatUSD(accountValue)}
+          <span className="flex items-baseline gap-2">
+            <span className="text-lg font-mono font-bold">
+              {formatUSD(accountValue)}
+            </span>
+            <span
+              className="text-[9px] uppercase tracking-wider text-zinc-600"
+              title="Cross-margin account value"
+            >
+              cross
+            </span>
           </span>
         </div>
         <div className="flex justify-between text-[11px] font-mono text-zinc-500">
@@ -96,19 +107,44 @@ export default function PortfolioPanel() {
           <span>{formatUSD(isolatedAccountValue)}</span>
         </div>
         <div className="flex justify-between text-xs font-mono">
-          <span className="text-zinc-500">Buying Power</span>
-          <span className="text-zinc-300">{formatUSD(withdrawable)}</span>
+          <span
+            className="text-zinc-500"
+            title="Hyperliquid perp withdrawable balance from the clearinghouse"
+          >
+            Perp Withdrawable
+          </span>
+          <span className="flex items-baseline gap-2">
+            <span className="text-zinc-300">{formatUSD(withdrawable)}</span>
+            <span
+              className="text-[9px] uppercase tracking-wider text-zinc-600"
+              title="Perp balance available for withdrawal or trading"
+            >
+              perp
+            </span>
+          </span>
         </div>
         <div className="flex justify-between text-[11px] font-mono text-zinc-500">
-          <span>Spot USDC</span>
-          <span>
-            {formatUSD(spotUsdcTotal)}{" "}
-            {spotUsdcHold > 0 ? `(hold ${formatUSD(spotUsdcHold)})` : ""}
+          <span
+            title="Hyperliquid spot wallet USDC balance and held amount"
+          >
+            Spot USDC
+          </span>
+          <span className="flex items-baseline gap-2">
+            <span>
+              {formatUSD(spotUsdcTotal)}{" "}
+              {spotUsdcHold > 0 ? `(hold ${formatUSD(spotUsdcHold)})` : ""}
+            </span>
+            <span
+              className="text-[9px] uppercase tracking-wider text-zinc-600"
+              title="Spot balance from the spot clearinghouse"
+            >
+              spot
+            </span>
           </span>
         </div>
         <p className="text-[10px] text-zinc-600 font-sans">
-          Buying power is current perp withdrawable USDC. Spot USDC may require
-          transfer to perp before it is usable for perp orders.
+          Perp withdrawable is the current USDC available on the perp side.
+          Spot USDC may need a transfer before it can be used for perp orders.
         </p>
         <div className="flex justify-between text-xs font-mono">
           <span className="text-zinc-500">Unrealized PnL</span>

@@ -38,9 +38,17 @@ export default function SentimentSlider() {
               <Info className="w-3.5 h-3.5" />
             </button>
           </div>
-          <span className={`text-sm font-mono font-bold ${colorClass}`}>
-            {result.score} · {result.label}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className={`text-sm font-mono font-bold ${colorClass}`}>
+              {result.score} · {result.label}
+            </span>
+            <span
+              className="rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400"
+              title="Hyperliquid-native scope"
+            >
+              HL-native
+            </span>
+          </div>
         </div>
         <div className="mt-1.5 relative h-2 rounded-full bg-zinc-800 overflow-hidden">
           <div
@@ -109,6 +117,10 @@ export default function SentimentSlider() {
                 {(result.fundingSubWeights.directionApr * 100).toFixed(0)}%, signal bias{" "}
                 {(result.fundingSubWeights.signalBias * 100).toFixed(0)}%, MA regime{" "}
                 {(result.fundingSubWeights.maRegime * 100).toFixed(0)}%.
+              </div>
+
+              <div className="text-zinc-500">
+                Scope: score reflects Hyperliquid microstructure only.
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-zinc-400">

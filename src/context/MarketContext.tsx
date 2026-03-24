@@ -49,30 +49,38 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     Record<string, FundingHistoryPoint[]>
   >({});
   const prevOIRef = useRef<Record<string, number>>({});
-  const recentActivityRef = useRef<Map<string, number>>(new Map());
   const wsInitRef = useRef(false);
 
   const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
-    const dedupeWindowMs = entry.type === "whale" ? 20_000 : 45_000;
     const signature = `${entry.type}|${entry.coin}|${entry.message}`;
     const now = Date.now();
-    const lastSeen = recentActivityRef.current.get(signature);
-    if (lastSeen && now - lastSeen < dedupeWindowMs) {
-      return;
-    }
-    recentActivityRef.current.set(signature, now);
-
-    // Keep dedupe map bounded so it doesn't grow forever.
-    if (recentActivityRef.current.size > 300) {
-      for (const [key, ts] of Array.from(recentActivityRef.current.entries())) {
-        if (now - ts > 5 * 60_000) {
-          recentActivityRef.current.delete(key);
-        }
-      }
-    }
-
     const id = `act-${++activityIdCounter}`;
-    setActivityFeed((prev) => [{ ...entry, id }, ...prev].slice(0, 50));
+    const nextEntry: ActivityEntry = {
+      ...entry,
+      id,
+      timestamp: now,
+      count: 1,
+    };
+
+    setActivityFeed((prev) => {
+      const matchIndex = prev.findIndex(
+        (item) => `${item.type}|${item.coin}|${item.message}` === signature
+      );
+
+      if (matchIndex === -1) {
+        return [nextEntry, ...prev].slice(0, 50);
+      }
+
+      const match = prev[matchIndex];
+      const mergedEntry: ActivityEntry = {
+        ...match,
+        timestamp: now,
+        count: (match.count ?? 1) + 1,
+      };
+
+      const rest = prev.filter((_, index) => index !== matchIndex);
+      return [mergedEntry, ...rest].slice(0, 50);
+    });
   }, []);
 
   const fetchFundingHistories = useCallback(async (coins: string[]) => {

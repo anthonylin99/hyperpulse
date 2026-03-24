@@ -26,6 +26,7 @@ const TYPE_STYLES: Record<
 
 export default function ActivityFeedItem({ entry }: ActivityFeedItemProps) {
   const style = TYPE_STYLES[entry.type];
+  const count = entry.count ?? 1;
 
   return (
     <div
@@ -33,12 +34,19 @@ export default function ActivityFeedItem({ entry }: ActivityFeedItemProps) {
       style={{ backgroundColor: style.bgColor }}
     >
       <div className="flex justify-between items-start gap-2">
-        <p
-          className="text-xs font-mono leading-relaxed flex-1"
-          style={{ color: style.color }}
-        >
-          {entry.message}
-        </p>
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-xs font-mono leading-relaxed"
+            style={{ color: style.color }}
+          >
+            {entry.message}
+          </p>
+          {count > 1 && (
+            <span className="mt-1 inline-flex items-center rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
+              x{count}
+            </span>
+          )}
+        </div>
         <span className="text-[10px] font-mono text-zinc-600 whitespace-nowrap flex-shrink-0">
           {relativeTime(entry.timestamp)}
         </span>

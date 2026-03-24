@@ -84,4 +84,5 @@ export interface ActivityEntry {
   coin: string;
   timestamp: number;
   notional?: number;
+  count?: number;
 }
