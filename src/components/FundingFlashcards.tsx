@@ -1,34 +1,35 @@
 "use client";
 
 import { useMarket } from "@/context/MarketContext";
-import { MAJOR_ASSETS } from "@/lib/constants";
 import { formatFundingRate, formatFundingAPR } from "@/lib/format";
+
+const DASHBOARD_MAJORS = ["BTC", "HYPE", "ETH", "SOL"] as const;
 
 export default function FundingFlashcards() {
   const { assets, loading, selectedAsset, setSelectedAsset } = useMarket();
 
   if (loading) {
     return (
-      <div className="flex items-center gap-3 px-4 h-full overflow-x-auto scrollbar-hide">
-        {Array.from({ length: 10 }).map((_, i) => (
+      <div className="flex items-center gap-2 px-3 h-full overflow-x-auto scrollbar-hide">
+        {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="flex-shrink-0 w-[140px] h-[70px] skeleton rounded-lg"
+            className="flex-shrink-0 w-[132px] h-[52px] skeleton rounded-md"
           />
         ))}
       </div>
     );
   }
 
-  // Filter to major assets, preserve order from MAJOR_ASSETS
-  const majorAssets = MAJOR_ASSETS.map((coin) =>
+  const majorAssets = DASHBOARD_MAJORS.map((coin) =>
     assets.find((a) => a.coin === coin)
-  ).filter(Boolean);
+  )
+    .filter((asset): asset is NonNullable<(typeof assets)[number]> => !!asset)
+    .sort((a, b) => b.openInterest - a.openInterest);
 
   return (
-    <div className="flex items-center gap-2 px-4 h-full overflow-x-auto scrollbar-hide">
+    <div className="flex items-center gap-1.5 px-3 h-full overflow-x-auto scrollbar-hide">
       {majorAssets.map((asset) => {
-        if (!asset) return null;
         const isSelected = selectedAsset === asset.coin;
         const fundingColor =
           asset.fundingAPR > 20
@@ -41,22 +42,22 @@ export default function FundingFlashcards() {
           <button
             key={asset.coin}
             onClick={() => setSelectedAsset(asset.coin)}
-            className={`flex-shrink-0 flex flex-col justify-center px-4 py-2 rounded-lg border transition-all cursor-pointer min-w-[130px] h-[70px] ${
+            className={`flex-shrink-0 flex flex-col justify-center px-2.5 py-1.5 rounded-md border transition-all cursor-pointer min-w-[132px] h-[52px] ${
               isSelected
                 ? "border-blue-500/50 bg-zinc-900"
                 : "border-zinc-800 bg-zinc-900/50 hover:bg-zinc-900 hover:border-zinc-700"
             }`}
           >
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-sans">
+            <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-sans">
               {asset.coin}
             </span>
             <span
-              className="text-xl font-mono font-bold leading-tight"
+              className="text-[17px] font-mono font-bold leading-tight"
               style={{ color: fundingColor }}
             >
               {formatFundingRate(asset.fundingRate)}
             </span>
-            <span className="text-[10px] font-mono text-zinc-500">
+            <span className="text-[9px] font-mono text-zinc-500">
               {formatFundingAPR(asset.fundingAPR)} APR
             </span>
           </button>
