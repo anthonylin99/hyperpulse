@@ -407,7 +407,7 @@ export default function MarketTable({
 
                   return (
                     <tr
-                      key={asset.symbol}
+                      key={asset.marketIndex}
                       className={`h-9 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors text-sm font-mono ${rowBg}`}
                     >
                       <td className="px-3 py-1 text-zinc-50 font-medium whitespace-nowrap">{asset.symbol}</td>

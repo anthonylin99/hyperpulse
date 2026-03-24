@@ -24,20 +24,19 @@ function classifySpot(symbol: string): SpotCategory {
 export async function GET() {
   try {
     const [meta, assetCtxs] = await info.spotMetaAndAssetCtxs();
-
-    const ctxByCoin = new Map(
-      assetCtxs.map((ctx) => [String((ctx as { coin?: string }).coin ?? ""), ctx])
-    );
+    const tokenByIndex = new Map(meta.tokens.map((token) => [token.index, token]));
 
     const assets = meta.universe
-      .map((u, i) => {
-        if (!u.isCanonical) return null;
+      .map((u) => {
+        if (!Array.isArray(u.tokens) || u.tokens.length < 2) return null;
 
-        const baseTokenIndex = u.tokens[0];
-        const token = meta.tokens.find((t) => t.index === baseTokenIndex);
-        const symbol = token?.name ?? u.name.split("/")[0] ?? `SPOT-${i}`;
+        const baseToken = tokenByIndex.get(u.tokens[0]);
+        const quoteToken = tokenByIndex.get(u.tokens[1]);
+        if (!baseToken || !quoteToken) return null;
 
-        const ctx = ctxByCoin.get(symbol) ?? assetCtxs[i];
+        const pair = `${baseToken.name}/${quoteToken.name}`;
+        const symbol = baseToken.name;
+        const ctx = assetCtxs[u.index];
         if (!ctx) return null;
 
         const markPx = parseFloat(ctx.markPx);
@@ -49,11 +48,21 @@ export async function GET() {
         const marketCap = circulatingSupply * markPx;
         const priceChange24h =
           prevDayPx > 0 ? ((markPx - prevDayPx) / prevDayPx) * 100 : 0;
+        if (
+          !Number.isFinite(markPx) ||
+          !Number.isFinite(midPx) ||
+          !Number.isFinite(prevDayPx) ||
+          !Number.isFinite(dayVolume)
+        ) {
+          return null;
+        }
 
         return {
+          marketIndex: u.index,
+          spotAssetId: 10000 + u.index,
           symbol,
-          name: token?.fullName ?? symbol,
-          market: u.name,
+          name: baseToken.fullName ?? symbol,
+          market: pair,
           markPx,
           midPx,
           prevDayPx,

@@ -35,6 +35,8 @@ export interface MarketAsset {
 export type SpotCategory = "Stocks" | "Commodities" | "Crypto" | "Other";
 
 export interface SpotAsset {
+  marketIndex: number;
+  spotAssetId: number;
   symbol: string;
   name: string;
   market: string;
