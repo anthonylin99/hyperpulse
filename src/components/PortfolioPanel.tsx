@@ -4,6 +4,7 @@ import { Wallet } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { useMarket } from "@/context/MarketContext";
 import { formatUSD, formatPct, formatCompact } from "@/lib/format";
+import { assertOrderSucceeded } from "@/lib/order";
 import toast from "react-hot-toast";
 
 export default function PortfolioPanel() {
@@ -52,7 +53,7 @@ export default function PortfolioPanel() {
         asset.markPx < 1 ? 6 : 2
       );
 
-      await exchangeClient.order({
+      const orderResp = await exchangeClient.order({
         orders: [
           {
             a: asset.assetIndex,
@@ -65,8 +66,8 @@ export default function PortfolioPanel() {
         ],
         grouping: "na",
       });
-
-      toast.success(`Closed ${coin} position`);
+      const execution = assertOrderSucceeded(orderResp);
+      toast.success(`Closed ${coin} position (${execution})`);
       setTimeout(refreshPortfolio, 2000);
     } catch (err) {
       toast.error(

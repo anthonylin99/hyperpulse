@@ -49,12 +49,38 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     Record<string, FundingHistoryPoint[]>
   >({});
   const prevOIRef = useRef<Record<string, number>>({});
-  const assetsRef = useRef<MarketAsset[]>([]);
   const wsInitRef = useRef(false);
 
   const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
     const id = `act-${++activityIdCounter}`;
     setActivityFeed((prev) => [{ ...entry, id }, ...prev].slice(0, 50));
+  }, []);
+
+  const fetchFundingHistories = useCallback(async (coins: string[]) => {
+    const now = Date.now();
+    const startTime = now - 7 * 24 * 60 * 60 * 1000;
+
+    const results: Record<string, FundingHistoryPoint[]> = {};
+
+    await Promise.allSettled(
+      coins.map(async (coin) => {
+        try {
+          const res = await fetch(
+            `/api/market/funding?coin=${coin}&startTime=${startTime}&endTime=${now}`
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          results[coin] = data.map((f: { time: number; fundingRate: string }) => ({
+            time: f.time,
+            rate: parseFloat(f.fundingRate),
+          }));
+        } catch {
+          // Ignore per-coin funding failures
+        }
+      })
+    );
+
+    setFundingHistories((prev) => ({ ...prev, ...results }));
   }, []);
 
   const fetchMarketData = useCallback(async () => {
@@ -84,17 +110,20 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           const openInterest = parseFloat(ctx.openInterest) * markPx;
           const dayVolume = parseFloat(ctx.dayNtlVlm);
           const priceChange24h =
-            prevDayPx > 0
-              ? ((markPx - prevDayPx) / prevDayPx) * 100
-              : 0;
+            prevDayPx > 0 ? ((markPx - prevDayPx) / prevDayPx) * 100 : 0;
 
           const prevOIValue = prevOI[u.name] ?? null;
           const oiChangePct =
-            prevOIValue !== null && prevOIValue > 0
+            prevOIValue != null && prevOIValue > 0
               ? ((openInterest - prevOIValue) / prevOIValue) * 100
               : null;
 
-          const signal = fundingToSignal(fundingAPR, u.name, openInterest, oiChangePct ?? 0);
+          const signal = fundingToSignal(
+            fundingAPR,
+            u.name,
+            openInterest,
+            oiChangePct ?? 0
+          );
 
           return {
             coin: u.name,
@@ -114,9 +143,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
             maxLeverage: u.maxLeverage,
           } as MarketAsset;
         })
-        .filter((a: MarketAsset | null): a is MarketAsset => a !== null);
+        .filter((a: MarketAsset | null): a is MarketAsset => a != null);
 
-      // Detect OI spikes before updating prevOI
       if (Object.keys(prevOI).length > 0) {
         for (const asset of parsed) {
           const prev = prevOI[asset.coin];
@@ -135,7 +163,6 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Store current OI for next poll delta
       const newOI: Record<string, number> = {};
       for (const asset of parsed) {
         newOI[asset.coin] = asset.openInterest;
@@ -143,15 +170,12 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       prevOIRef.current = newOI;
 
       setAssets(parsed);
-      assetsRef.current = parsed;
       setError(null);
       setLastUpdated(new Date());
 
-      // Fetch funding history for top 10 assets by OI
       const top10 = [...parsed]
         .sort((a, b) => b.openInterest - a.openInterest)
         .slice(0, 10);
-
       fetchFundingHistories(top10.map((a) => a.coin));
     } catch (err) {
       console.error("Failed to fetch market data:", err);
@@ -159,48 +183,14 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [addActivity]);
+  }, [addActivity, fetchFundingHistories]);
 
-  const fetchFundingHistories = useCallback(
-    async (coins: string[]) => {
-      const now = Date.now();
-      const startTime = now - 7 * 24 * 60 * 60 * 1000; // 7 days
-
-      const results: Record<string, FundingHistoryPoint[]> = {};
-
-      await Promise.allSettled(
-        coins.map(async (coin) => {
-          try {
-            const res = await fetch(
-              `/api/market/funding?coin=${coin}&startTime=${startTime}&endTime=${now}`
-            );
-            if (!res.ok) return;
-            const data = await res.json();
-            results[coin] = data.map(
-              (f: { time: number; fundingRate: string }) => ({
-                time: f.time,
-                rate: parseFloat(f.fundingRate),
-              })
-            );
-          } catch {
-            // Silently skip failed funding history fetches
-          }
-        })
-      );
-
-      setFundingHistories((prev) => ({ ...prev, ...results }));
-    },
-    []
-  );
-
-  // REST polling
   useEffect(() => {
     fetchMarketData();
     const interval = setInterval(fetchMarketData, POLL_INTERVAL_MARKET);
     return () => clearInterval(interval);
   }, [fetchMarketData]);
 
-  // WebSocket: allMids for real-time price updates + trades for whale detection
   useEffect(() => {
     if (wsInitRef.current) return;
     wsInitRef.current = true;
@@ -212,25 +202,21 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       try {
         const sub = getSubscriptionClient();
 
-        // Subscribe to allMids for real-time price updates
         allMidsSub = await sub.allMids((event) => {
           const mids = event.mids;
-          setAssets((prev) => {
-            const updated = prev.map((asset) => {
+          setAssets((prev) =>
+            prev.map((asset) => {
               const newMid = mids[asset.coin];
               if (newMid) {
                 const newMidPx = parseFloat(newMid);
                 return { ...asset, midPx: newMidPx, markPx: newMidPx };
               }
               return asset;
-            });
-            assetsRef.current = updated;
-            return updated;
-          });
+            })
+          );
           setLastUpdated(new Date());
         });
 
-        // Subscribe to trades for major coins to detect whale trades
         const whaleCoins = ["BTC", "ETH", "SOL"];
         for (const coin of whaleCoins) {
           try {

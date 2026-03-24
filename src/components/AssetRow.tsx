@@ -1,17 +1,25 @@
 "use client";
 
 import { LineChart, Line } from "recharts";
+import type { ReactNode } from "react";
 import type { MarketAsset } from "@/types";
-import { formatUSD, formatCompact, formatPct, formatFundingRate, formatFundingAPR } from "@/lib/format";
+import {
+  formatUSD,
+  formatCompact,
+  formatPct,
+  formatFundingRate,
+  formatFundingAPR,
+} from "@/lib/format";
 import { getAssetCategory } from "@/lib/constants";
 import SignalBadge from "./SignalBadge";
-import type { ReactNode } from "react";
 
 interface AssetRowProps {
   asset: MarketAsset;
   index: number;
   isExpanded: boolean;
   onSelect: () => void;
+  onTrade: (direction: "long" | "short") => void;
+  onConnectRequest: () => void;
   walletConnected: boolean;
   fundingHistory?: { time: number; rate: number }[];
   detailNode: ReactNode;
@@ -22,6 +30,8 @@ export default function AssetRow({
   index,
   isExpanded,
   onSelect,
+  onTrade,
+  onConnectRequest,
   walletConnected,
   fundingHistory,
   detailNode,
@@ -41,7 +51,7 @@ export default function AssetRow({
         : "text-zinc-50";
 
   const oiDeltaColor =
-    asset.oiChangePct !== null
+    asset.oiChangePct != null
       ? asset.oiChangePct > 0
         ? "text-green-500"
         : asset.oiChangePct < 0
@@ -50,11 +60,11 @@ export default function AssetRow({
       : "text-zinc-600";
 
   const oiDeltaArrow =
-    asset.oiChangePct !== null
+    asset.oiChangePct != null
       ? asset.oiChangePct > 0
-        ? "\u2191"
+        ? "↑"
         : asset.oiChangePct < 0
-          ? "\u2193"
+          ? "↓"
           : ""
       : "";
 
@@ -68,7 +78,6 @@ export default function AssetRow({
         onClick={onSelect}
         className={`h-9 border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors text-sm font-mono ${rowBg} ${isExpanded ? "bg-zinc-800/40" : ""}`}
       >
-        {/* Asset */}
         <td className="px-3 py-1 whitespace-nowrap">
           <div className="flex items-center gap-2">
             <span className="text-zinc-50 font-medium">{asset.coin}</span>
@@ -76,53 +85,44 @@ export default function AssetRow({
           </div>
         </td>
 
-        {/* Mark Price */}
         <td className="px-3 py-1 text-right text-zinc-50 whitespace-nowrap">
           {formatUSD(asset.markPx, priceDecimals)}
         </td>
 
-        {/* 24h Change */}
         <td className={`px-3 py-1 text-right whitespace-nowrap ${priceColor}`}>
           {formatPct(asset.priceChange24h)}
         </td>
 
-        {/* Open Interest */}
         <td className="px-3 py-1 text-right text-zinc-300 whitespace-nowrap">
           {formatCompact(asset.openInterest)}
         </td>
 
-        {/* OI Delta */}
         <td className={`px-3 py-1 text-right whitespace-nowrap ${oiDeltaColor}`}>
-          {asset.oiChangePct !== null ? (
+          {asset.oiChangePct != null ? (
             <>
               {oiDeltaArrow} {Math.abs(asset.oiChangePct).toFixed(1)}%
             </>
           ) : (
-            <span className="text-zinc-700">&mdash;</span>
+            <span className="text-zinc-700">—</span>
           )}
         </td>
 
-        {/* Volume 24h */}
         <td className="px-3 py-1 text-right text-zinc-300 whitespace-nowrap">
           {formatCompact(asset.dayVolume)}
         </td>
 
-        {/* Funding/hr */}
         <td className={`px-3 py-1 text-right whitespace-nowrap ${fundingColor}`}>
           {formatFundingRate(asset.fundingRate)}
         </td>
 
-        {/* Funding APR */}
         <td className={`px-3 py-1 text-right whitespace-nowrap ${fundingColor}`}>
           {formatFundingAPR(asset.fundingAPR)}
         </td>
 
-        {/* Signal */}
         <td className="px-3 py-1">
           <SignalBadge signal={asset.signal} oiChangePct={asset.oiChangePct} />
         </td>
 
-        {/* 7d Chart Sparkline */}
         <td className="px-3 py-1">
           {fundingHistory && fundingHistory.length > 0 ? (
             <LineChart width={40} height={20} data={fundingHistory}>
@@ -136,31 +136,39 @@ export default function AssetRow({
               />
             </LineChart>
           ) : (
-            <span className="text-zinc-700">&mdash;</span>
+            <span className="text-zinc-700">—</span>
           )}
         </td>
 
-        {/* Trade Button */}
         <td className="px-3 py-1 whitespace-nowrap">
           {walletConnected ? (
             <div className="flex gap-1">
               <button
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTrade("long");
+                }}
                 className="px-2 py-0.5 text-[11px] rounded font-medium transition-colors bg-green-500/10 text-green-500 hover:bg-green-500/20"
               >
-                Long &uarr;
+                Long ↑
               </button>
               <button
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTrade("short");
+                }}
                 className="px-2 py-0.5 text-[11px] rounded font-medium transition-colors bg-red-500/10 text-red-500 hover:bg-red-500/20"
               >
-                Short &darr;
+                Short ↓
               </button>
             </div>
           ) : (
             <button
-              disabled
-              className="px-2 py-0.5 text-[11px] rounded font-medium bg-zinc-800 text-zinc-600 cursor-not-allowed"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConnectRequest();
+              }}
+              className="px-2 py-0.5 text-[11px] rounded font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"
             >
               Connect to trade
             </button>

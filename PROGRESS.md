@@ -174,3 +174,32 @@ These are NOT in the perps API. Requires:
 
 ### Collaborators
 - **PogChan** — GitHub write access
+
+---
+
+## Update — March 23, 2026 (Codex Handoff Continuation)
+
+### Phase 2A Wiring Progress
+Completed the first wallet-integration wiring pass:
+
+- `WalletProvider` is now mounted in `src/app/layout.tsx`
+- `Nav.tsx` now uses live `WalletConnect` (replaced disabled stub)
+- `MarketTable.tsx` now reads wallet connection state from `useWallet()` and passes it to rows
+- `AssetRow.tsx` Long/Short buttons now trigger `onTrade(...)` callbacks
+- `page.tsx` now opens/closes `TradeDrawer` from MarketTable trade actions
+- `page.tsx` sidebar now renders live `PortfolioPanel` instead of "Coming Soon"
+
+### Next Recommended Slice
+- Add optional “connect shortcut” from disconnected `Connect to trade` row button (open wallet modal)
+- Harden wallet verification in `WalletContext.connect(...)` so failed portfolio verification cannot silently pass
+- Add response validation for `exchangeClient.order(...)` success/partial/reject handling before showing success toast
+
+### Update — Phase 2A Hardening (March 23, 2026)
+- Added strict connection verification in wallet flow (`openOrders` + portfolio fetch with throw-on-error)
+- Added order response status validation helper (`src/lib/order.ts`) and integrated into trade/close flows
+- Added row-level "Connect to trade" shortcut that opens wallet modal when disconnected
+- Fixed MarketContext callback ordering/dependencies so lint/build are clean without hook warnings
+
+### Still Pending In Phase 2
+- Phase 2B HIP-3 spot markets (`/api/spot`, Spot/Perps toggle, spot-specific table columns)
+- Phase 2C userEvents + funding-payment activity feed extensions

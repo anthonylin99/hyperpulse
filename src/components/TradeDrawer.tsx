@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import { formatUSD, formatFundingRate } from "@/lib/format";
+import { assertOrderSucceeded } from "@/lib/order";
 import toast from "react-hot-toast";
 
 interface TradeDrawerProps {
@@ -89,7 +90,7 @@ export default function TradeDrawer({
       // Round to reasonable precision
       const sizeStr = sizeCoin.toPrecision(6);
 
-      await exchangeClient.order({
+      const orderResp = await exchangeClient.order({
         orders: [
           {
             a: asset.assetIndex,
@@ -106,9 +107,10 @@ export default function TradeDrawer({
         ],
         grouping: "na",
       });
+      const execution = assertOrderSucceeded(orderResp);
 
       toast.success(
-        `${direction === "long" ? "Long" : "Short"} ${coin} placed — ${sizeCoin.toFixed(4)} ${coin} @ ${orderType === "market" ? "market" : formatUSD(parseFloat(price), priceDecimals)}`
+        `${direction === "long" ? "Long" : "Short"} ${coin} placed (${execution}) — ${sizeCoin.toFixed(4)} ${coin} @ ${orderType === "market" ? "market" : formatUSD(parseFloat(price), priceDecimals)}`
       );
 
       setTimeout(refreshPortfolio, 2000);

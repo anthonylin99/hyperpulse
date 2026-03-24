@@ -10,11 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { privateKeyToAccount } from "viem/accounts";
-import {
-  HttpTransport,
-  InfoClient,
-  ExchangeClient,
-} from "@nktkas/hyperliquid";
+import { HttpTransport, InfoClient, ExchangeClient } from "@nktkas/hyperliquid";
 import { POLL_INTERVAL_PORTFOLIO } from "@/lib/constants";
 import { IS_TESTNET } from "@/lib/hyperliquid";
 import type { AccountState, Position } from "@/types";
@@ -24,9 +20,7 @@ const SESSION_API_KEY = "hp_api_key";
 const SESSION_MAIN_ADDR = "hp_main_address";
 
 interface WalletContextValue {
-  /** Main wallet address — used for all info queries */
   address: string | null;
-  /** API wallet address — derived from private key, used for signing */
   apiAddress: string | null;
   isConnected: boolean;
   accountState: AccountState | null;
@@ -73,8 +67,8 @@ function parsePositions(
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const [address, setAddress] = useState<string | null>(null); // main wallet
-  const [apiAddress, setApiAddress] = useState<string | null>(null); // API wallet
+  const [address, setAddress] = useState<string | null>(null);
+  const [apiAddress, setApiAddress] = useState<string | null>(null);
   const [accountState, setAccountState] = useState<AccountState | null>(null);
   const [exchangeClient, setExchangeClient] = useState<ExchangeClient | null>(
     null
@@ -92,7 +86,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchPortfolio = useCallback(
-    async (mainAddress: string) => {
+    async (mainAddress: string, throwOnError = false) => {
       try {
         const info = getInfo();
         const state = await info.clearinghouseState({
@@ -114,6 +108,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("Failed to fetch portfolio:", err);
+        if (throwOnError) {
+          throw err;
+        }
       }
     },
     [getInfo]
@@ -123,29 +120,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (apiPrivateKey: string, mainWalletAddress: string) => {
       setLoading(true);
       try {
-        // Normalize the API private key
         const key = apiPrivateKey.startsWith("0x")
           ? (apiPrivateKey as `0x${string}`)
           : (`0x${apiPrivateKey}` as `0x${string}`);
-
-        // Normalize the main wallet address
         const mainAddr = mainWalletAddress.trim() as `0x${string}`;
 
-        // Create the API wallet account (for signing trades)
         const apiWallet = privateKeyToAccount(key);
-
-        // Create ExchangeClient with API wallet
         const transport = new HttpTransport({ isTestnet: IS_TESTNET });
         const exchange = new ExchangeClient({ transport, wallet: apiWallet });
 
-        // Verify by fetching portfolio using the MAIN wallet address
-        await fetchPortfolio(mainAddr);
+        // Connectivity verification: open orders + account state for main wallet
+        const info = getInfo();
+        await info.openOrders({ user: mainAddr });
+        await fetchPortfolio(mainAddr, true);
 
         setAddress(mainAddr);
         setApiAddress(apiWallet.address);
         setExchangeClient(exchange);
 
-        // Store both in sessionStorage
         sessionStorage.setItem(SESSION_API_KEY, key);
         sessionStorage.setItem(SESSION_MAIN_ADDR, mainAddr);
 
@@ -161,7 +153,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [fetchPortfolio]
+    [fetchPortfolio, getInfo]
   );
 
   const disconnect = useCallback(() => {
@@ -184,7 +176,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [address, fetchPortfolio]);
 
-  // Auto-reconnect from sessionStorage
   useEffect(() => {
     const storedKey = sessionStorage.getItem(SESSION_API_KEY);
     const storedAddr = sessionStorage.getItem(SESSION_MAIN_ADDR);
@@ -197,7 +188,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Poll portfolio when connected
   useEffect(() => {
     if (address) {
       intervalRef.current = setInterval(

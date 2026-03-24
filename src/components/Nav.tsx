@@ -1,6 +1,7 @@
 "use client";
 
 import { useMarket } from "@/context/MarketContext";
+import WalletConnect from "./WalletConnect";
 
 export default function Nav() {
   const { lastUpdated, loading } = useMarket();
@@ -29,13 +30,8 @@ export default function Nav() {
         <span className="font-mono">{timeStr}</span>
       </div>
 
-      {/* Right: Disabled wallet connect stub */}
-      <button
-        disabled
-        className="px-3 py-1.5 text-xs font-mono rounded border border-zinc-700 text-zinc-600 cursor-not-allowed"
-      >
-        Connect Wallet
-      </button>
+      {/* Right: Wallet connect */}
+      <WalletConnect />
     </div>
   );
 }
