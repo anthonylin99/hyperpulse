@@ -1,0 +1,131 @@
+import type { MarketAsset } from "@/types";
+
+export interface HyperPulseVixResult {
+  score: number; // 0..100 (0 fear, 100 greed)
+  label: "Extreme Fear" | "Fear" | "Neutral" | "Greed" | "Extreme Greed";
+  volatilityBreadthPct: number;
+  fundingRegimeScore: number;
+  breadthScore: number;
+  volatilityScore: number; // fear-oriented before inversion
+  maScore: number;
+}
+
+function clamp(n: number, min = 0, max = 100): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function toGreedBand(
+  score: number
+): HyperPulseVixResult["label"] {
+  if (score < 20) return "Extreme Fear";
+  if (score < 40) return "Fear";
+  if (score <= 60) return "Neutral";
+  if (score <= 80) return "Greed";
+  return "Extreme Greed";
+}
+
+function avg(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((s, v) => s + v, 0) / values.length;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+function movingAverage(values: number[], window: number): number {
+  if (values.length === 0) return 0;
+  const start = Math.max(0, values.length - window);
+  return avg(values.slice(start));
+}
+
+export function computeHyperPulseVix(args: {
+  assets: MarketAsset[];
+  fundingHistories: Record<string, { time: number; rate: number }[]>;
+}): HyperPulseVixResult {
+  const { assets, fundingHistories } = args;
+
+  if (assets.length === 0) {
+    return {
+      score: 50,
+      label: "Neutral",
+      volatilityBreadthPct: 0,
+      fundingRegimeScore: 50,
+      breadthScore: 50,
+      volatilityScore: 50,
+      maScore: 50,
+    };
+  }
+
+  // Funding regime
+  const fundingApr = assets.map((a) => a.fundingAPR);
+  const medFundingApr = median(fundingApr);
+  const fundingDirectionGreed = clamp(50 + medFundingApr * 1.4);
+
+  const longSignals = assets.filter(
+    (a) => a.signal.type === "crowded-long" || a.signal.type === "extreme-longs"
+  ).length;
+  const shortSignals = assets.filter((a) => a.signal.type === "crowded-short").length;
+  const signalBiasGreed = clamp(
+    50 + ((longSignals - shortSignals) / Math.max(assets.length, 1)) * 100
+  );
+
+  // MA regime from funding history (24h MA vs 7d MA annualized APR)
+  const maDiffs: number[] = [];
+  for (const history of Object.values(fundingHistories)) {
+    if (!history || history.length < 24) continue;
+    const aprSeries = history.map((h) => h.rate * 8760 * 100);
+    const ma24h = movingAverage(aprSeries, 24);
+    const ma7d = movingAverage(aprSeries, 24 * 7);
+    maDiffs.push(ma24h - ma7d);
+  }
+  const maDiff = avg(maDiffs);
+  const maScore = clamp(50 + maDiff * 1.2);
+
+  const fundingRegimeScore =
+    fundingDirectionGreed * 0.45 + signalBiasGreed * 0.35 + maScore * 0.2;
+
+  // Breadth
+  const upCount = assets.filter((a) => a.priceChange24h > 0).length;
+  const oiUpCount = assets.filter((a) => (a.oiChangePct ?? 0) > 0).length;
+  const breadthScore = clamp(
+    ((upCount / assets.length) * 100) * 0.7 +
+      ((oiUpCount / assets.length) * 100) * 0.3
+  );
+
+  // Volatility breadth (fear-oriented first, then invert to greed)
+  const abs24h = assets.map((a) => Math.abs(a.priceChange24h));
+  const absOi = assets
+    .map((a) => Math.abs(a.oiChangePct ?? 0))
+    .filter((v) => Number.isFinite(v));
+
+  const avgAbs24h = avg(abs24h);
+  const avgAbsOi = avg(absOi);
+  const volBreadthPct =
+    (assets.filter((a) => Math.abs(a.priceChange24h) >= 6).length / assets.length) *
+    100;
+
+  const volatilityFearScore = clamp(
+    (avgAbs24h / 12) * 55 + (volBreadthPct / 100) * 35 + (avgAbsOi / 8) * 10
+  );
+  const volatilityGreedScore = 100 - volatilityFearScore;
+
+  const score = clamp(
+    fundingRegimeScore * 0.4 + breadthScore * 0.35 + volatilityGreedScore * 0.25
+  );
+
+  return {
+    score: Math.round(score),
+    label: toGreedBand(score),
+    volatilityBreadthPct: Math.round(volBreadthPct),
+    fundingRegimeScore: Math.round(fundingRegimeScore),
+    breadthScore: Math.round(breadthScore),
+    volatilityScore: Math.round(volatilityFearScore),
+    maScore: Math.round(maScore),
+  };
+}

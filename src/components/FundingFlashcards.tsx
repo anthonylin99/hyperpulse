@@ -2,6 +2,7 @@
 
 import { useMarket } from "@/context/MarketContext";
 import { formatFundingRate, formatFundingAPR } from "@/lib/format";
+import SentimentSlider from "./SentimentSlider";
 
 const DASHBOARD_MAJORS = ["BTC", "HYPE", "ETH", "SOL"] as const;
 
@@ -29,6 +30,7 @@ export default function FundingFlashcards() {
 
   return (
     <div className="flex items-center gap-1.5 px-3 h-full overflow-x-auto scrollbar-hide">
+      <SentimentSlider />
       {majorAssets.map((asset) => {
         const isSelected = selectedAsset === asset.coin;
         const fundingColor =
