@@ -8,7 +8,7 @@ export type SignalType =
 export interface Signal {
   type: SignalType;
   label: string;
-  color: 'red' | 'orange' | 'green' | 'gray';
+  color: "red" | "orange" | "green" | "gray";
   fundingAPR: number;
   oiUSD: number;
   oiChangePct: number;
@@ -20,21 +20,38 @@ export interface MarketAsset {
   markPx: number;
   midPx: number;
   oraclePx: number;
-  fundingRate: number; // raw hourly rate (decimal, e.g. 0.0001 = 0.01%)
-  fundingAPR: number; // annualized percentage (e.g. 87.6)
-  openInterest: number; // USD
-  prevOpenInterest: number | null; // USD, from previous poll
-  oiChangePct: number | null; // percent change since last poll
-  dayVolume: number; // USD
+  fundingRate: number;
+  fundingAPR: number;
+  openInterest: number;
+  prevOpenInterest: number | null;
+  oiChangePct: number | null;
+  dayVolume: number;
   prevDayPx: number;
-  priceChange24h: number; // percent
+  priceChange24h: number;
   signal: Signal;
   maxLeverage: number;
 }
 
+export type SpotCategory = "Stocks" | "Commodities" | "Crypto" | "Other";
+
+export interface SpotAsset {
+  symbol: string;
+  name: string;
+  market: string;
+  markPx: number;
+  midPx: number;
+  prevDayPx: number;
+  priceChange24h: number;
+  dayVolume: number;
+  circulatingSupply: number;
+  totalSupply: number;
+  marketCap: number;
+  category: SpotCategory;
+}
+
 export interface Position {
   coin: string;
-  szi: number; // signed size (negative = short)
+  szi: number;
   entryPx: number;
   markPx: number;
   unrealizedPnl: number;
