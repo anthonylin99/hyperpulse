@@ -18,6 +18,8 @@ import toast from "react-hot-toast";
 
 const SESSION_API_KEY = "hp_api_key";
 const SESSION_MAIN_ADDR = "hp_main_address";
+const MAIN_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+const PRIVATE_KEY_REGEX = /^0x[a-fA-F0-9]{64}$/;
 
 interface WalletContextValue {
   address: string | null;
@@ -120,10 +122,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (apiPrivateKey: string, mainWalletAddress: string) => {
       setLoading(true);
       try {
-        const key = apiPrivateKey.startsWith("0x")
-          ? (apiPrivateKey as `0x${string}`)
-          : (`0x${apiPrivateKey}` as `0x${string}`);
-        const mainAddr = mainWalletAddress.trim() as `0x${string}`;
+        const rawKey = apiPrivateKey.trim();
+        const normalizedKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`;
+        const normalizedAddress = mainWalletAddress.trim();
+
+        if (!PRIVATE_KEY_REGEX.test(normalizedKey)) {
+          throw new Error(
+            "Invalid API wallet private key. Expected 64-byte hex (0x...)."
+          );
+        }
+        if (!MAIN_ADDRESS_REGEX.test(normalizedAddress)) {
+          throw new Error(
+            "Invalid main wallet address. Expected 42-char 0x address."
+          );
+        }
+
+        const key = normalizedKey as `0x${string}`;
+        const mainAddr = normalizedAddress as `0x${string}`;
 
         const apiWallet = privateKeyToAccount(key);
         const transport = new HttpTransport({ isTestnet: IS_TESTNET });
@@ -138,7 +153,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setApiAddress(apiWallet.address);
         setExchangeClient(exchange);
 
-        sessionStorage.setItem(SESSION_API_KEY, key);
+        sessionStorage.setItem(SESSION_API_KEY, normalizedKey);
         sessionStorage.setItem(SESSION_MAIN_ADDR, mainAddr);
 
         toast.success(

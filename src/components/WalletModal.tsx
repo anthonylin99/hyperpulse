@@ -15,25 +15,44 @@ export default function WalletModal({ onClose }: WalletModalProps) {
   const [mainAddress, setMainAddress] = useState("");
   const [error, setError] = useState("");
 
+  const trimmedApiKey = apiKey.trim();
+  const trimmedMainAddress = mainAddress.trim();
+
   const handleConnect = async () => {
-    if (!apiKey.trim()) {
+    if (!trimmedApiKey) {
       setError("Please enter your API wallet private key");
       return;
     }
-    if (!mainAddress.trim()) {
+    if (!trimmedMainAddress) {
       setError("Please enter your main wallet address");
       return;
     }
-    if (!mainAddress.trim().startsWith("0x")) {
-      setError("Main wallet address must start with 0x");
+
+    const normalizedApiKey = trimmedApiKey.startsWith("0x")
+      ? trimmedApiKey
+      : `0x${trimmedApiKey}`;
+    const addressOk = /^0x[a-fA-F0-9]{40}$/.test(trimmedMainAddress);
+    const keyOk = /^0x[a-fA-F0-9]{64}$/.test(normalizedApiKey);
+
+    if (!addressOk) {
+      setError("Main wallet address must be a valid 42-character 0x hex");
       return;
     }
+    if (!keyOk) {
+      setError("API wallet private key must be a valid 64-byte hex string");
+      return;
+    }
+
     setError("");
     try {
-      await connect(apiKey.trim(), mainAddress.trim());
+      await connect(normalizedApiKey, trimmedMainAddress);
       onClose();
-    } catch {
-      setError("Connection failed — check your keys and try again");
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Connection failed — check your keys and try again";
+      setError(message);
     }
   };
 
@@ -119,7 +138,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
           {/* Connect button */}
           <button
             onClick={handleConnect}
-            disabled={loading || !apiKey.trim() || !mainAddress.trim()}
+            disabled={loading || !trimmedApiKey || !trimmedMainAddress}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
           >
             {loading ? "Connecting..." : "Connect"}
