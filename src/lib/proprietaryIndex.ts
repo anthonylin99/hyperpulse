@@ -8,6 +8,25 @@ export interface HyperPulseVixResult {
   breadthScore: number;
   volatilityScore: number; // fear-oriented before inversion
   maScore: number;
+  upCount: number;
+  oiUpCount: number;
+  assetCount: number;
+  longSignals: number;
+  shortSignals: number;
+  medianFundingApr: number;
+  avgAbs24hMove: number;
+  avgAbsOiMove: number;
+  // Public composition metadata for UI disclosure.
+  weights: {
+    fundingRegime: number;
+    breadth: number;
+    volatility: number;
+  };
+  fundingSubWeights: {
+    directionApr: number;
+    signalBias: number;
+    maRegime: number;
+  };
 }
 
 function clamp(n: number, min = 0, max = 100): number {
@@ -59,6 +78,20 @@ export function computeHyperPulseVix(args: {
       breadthScore: 50,
       volatilityScore: 50,
       maScore: 50,
+      upCount: 0,
+      oiUpCount: 0,
+      assetCount: 0,
+      longSignals: 0,
+      shortSignals: 0,
+      medianFundingApr: 0,
+      avgAbs24hMove: 0,
+      avgAbsOiMove: 0,
+      weights: { fundingRegime: 0.4, breadth: 0.35, volatility: 0.25 },
+      fundingSubWeights: {
+        directionApr: 0.45,
+        signalBias: 0.35,
+        maRegime: 0.2,
+      },
     };
   }
 
@@ -127,5 +160,19 @@ export function computeHyperPulseVix(args: {
     breadthScore: Math.round(breadthScore),
     volatilityScore: Math.round(volatilityFearScore),
     maScore: Math.round(maScore),
+    upCount,
+    oiUpCount,
+    assetCount: assets.length,
+    longSignals,
+    shortSignals,
+    medianFundingApr: Number(medFundingApr.toFixed(2)),
+    avgAbs24hMove: Number(avgAbs24h.toFixed(2)),
+    avgAbsOiMove: Number(avgAbsOi.toFixed(2)),
+    weights: { fundingRegime: 0.4, breadth: 0.35, volatility: 0.25 },
+    fundingSubWeights: {
+      directionApr: 0.45,
+      signalBias: 0.35,
+      maRegime: 0.2,
+    },
   };
 }
