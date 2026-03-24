@@ -65,8 +65,12 @@ export interface Position {
 
 export interface AccountState {
   accountValue: number;
+  crossAccountValue: number;
+  isolatedAccountValue: number;
   totalMarginUsed: number;
   withdrawable: number;
+  spotUsdcTotal: number;
+  spotUsdcHold: number;
   unrealizedPnl: number;
   positions: Position[];
 }

@@ -91,20 +91,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (mainAddress: string, throwOnError = false) => {
       try {
         const info = getInfo();
-        const state = await info.clearinghouseState({
-          user: mainAddress as `0x${string}`,
-        });
+        const [state, spotState] = await Promise.all([
+          info.clearinghouseState({
+            user: mainAddress as `0x${string}`,
+          }),
+          info.spotClearinghouseState({
+            user: mainAddress as `0x${string}`,
+          }),
+        ]);
 
         const positions = parsePositions(state.assetPositions);
         const totalUnrealizedPnl = positions.reduce(
           (sum, p) => sum + p.unrealizedPnl,
           0
         );
+        const usdcBalance = spotState.balances.find((b) => b.coin === "USDC");
+        const spotUsdcTotal = usdcBalance ? parseFloat(usdcBalance.total) : 0;
+        const spotUsdcHold = usdcBalance ? parseFloat(usdcBalance.hold) : 0;
+        const crossAccountValue = parseFloat(state.crossMarginSummary.accountValue);
+        const isolatedAccountValue = parseFloat(state.marginSummary.accountValue);
 
         setAccountState({
-          accountValue: parseFloat(state.marginSummary.accountValue),
-          totalMarginUsed: parseFloat(state.marginSummary.totalMarginUsed),
+          // Use cross summary for main dashboard "account value" to align with
+          // Hyperliquid's cross-margin trading view.
+          accountValue: crossAccountValue,
+          crossAccountValue,
+          isolatedAccountValue,
+          totalMarginUsed: parseFloat(state.crossMarginSummary.totalMarginUsed),
           withdrawable: parseFloat(state.withdrawable),
+          spotUsdcTotal,
+          spotUsdcHold,
           unrealizedPnl: totalUnrealizedPnl,
           positions,
         });

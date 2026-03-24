@@ -28,8 +28,11 @@ export default function PortfolioPanel() {
 
   const {
     accountValue,
+    isolatedAccountValue,
     totalMarginUsed,
     withdrawable,
+    spotUsdcTotal,
+    spotUsdcHold,
     unrealizedPnl,
     positions,
   } = accountState;
@@ -82,19 +85,30 @@ export default function PortfolioPanel() {
       <div className="px-4 py-3 border-b border-zinc-800 space-y-2">
         <div className="flex justify-between items-baseline">
           <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-            Account Value
+            Perp Account Value (Cross)
           </span>
           <span className="text-lg font-mono font-bold">
             {formatUSD(accountValue)}
           </span>
         </div>
+        <div className="flex justify-between text-[11px] font-mono text-zinc-500">
+          <span>Isolated Summary</span>
+          <span>{formatUSD(isolatedAccountValue)}</span>
+        </div>
         <div className="flex justify-between text-xs font-mono">
           <span className="text-zinc-500">Buying Power</span>
           <span className="text-zinc-300">{formatUSD(withdrawable)}</span>
         </div>
+        <div className="flex justify-between text-[11px] font-mono text-zinc-500">
+          <span>Spot USDC</span>
+          <span>
+            {formatUSD(spotUsdcTotal)}{" "}
+            {spotUsdcHold > 0 ? `(hold ${formatUSD(spotUsdcHold)})` : ""}
+          </span>
+        </div>
         <p className="text-[10px] text-zinc-600 font-sans">
-          Buying power is your currently available USDC margin (`withdrawable`)
-          that can be committed to new positions.
+          Buying power is current perp withdrawable USDC. Spot USDC may require
+          transfer to perp before it is usable for perp orders.
         </p>
         <div className="flex justify-between text-xs font-mono">
           <span className="text-zinc-500">Unrealized PnL</span>
