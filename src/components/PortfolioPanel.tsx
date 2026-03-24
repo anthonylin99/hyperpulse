@@ -92,6 +92,10 @@ export default function PortfolioPanel() {
           <span className="text-zinc-500">Buying Power</span>
           <span className="text-zinc-300">{formatUSD(withdrawable)}</span>
         </div>
+        <p className="text-[10px] text-zinc-600 font-sans">
+          Buying power is your currently available USDC margin (`withdrawable`)
+          that can be committed to new positions.
+        </p>
         <div className="flex justify-between text-xs font-mono">
           <span className="text-zinc-500">Unrealized PnL</span>
           <span className={pnlColor}>{formatUSD(unrealizedPnl)}</span>

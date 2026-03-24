@@ -10,6 +10,7 @@ import {
   formatFundingRate,
   formatFundingAPR,
 } from "@/lib/format";
+import { getFundingRegime } from "@/lib/fundingRegime";
 import { getAssetCategory } from "@/lib/constants";
 import SignalBadge from "./SignalBadge";
 
@@ -71,6 +72,15 @@ export default function AssetRow({
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const rowBg = index % 2 === 0 ? "bg-zinc-950" : "bg-zinc-900/50";
   const category = getAssetCategory(asset.coin);
+  const fundingRegime = getFundingRegime(asset.fundingRate, fundingHistory);
+  const fundingRegimeShort =
+    fundingRegime.percentile == null
+      ? null
+      : fundingRegime.percentile >= 80
+        ? "Hist High"
+        : fundingRegime.percentile <= 20
+          ? "Hist Low"
+          : null;
 
   return (
     <>
@@ -116,7 +126,21 @@ export default function AssetRow({
         </td>
 
         <td className={`px-3 py-1 text-right whitespace-nowrap ${fundingColor}`}>
-          {formatFundingAPR(asset.fundingAPR)}
+          <div className="flex items-center justify-end gap-1">
+            <span>{formatFundingAPR(asset.fundingAPR)}</span>
+            {fundingRegimeShort && (
+              <span
+                className={`text-[9px] px-1 py-0.5 rounded ${
+                  fundingRegime.percentile != null && fundingRegime.percentile >= 80
+                    ? "bg-red-500/10 text-red-400"
+                    : "bg-green-500/10 text-green-400"
+                }`}
+                title={fundingRegime.label}
+              >
+                {fundingRegimeShort}
+              </span>
+            )}
+          </div>
         </td>
 
         <td className="px-3 py-1">

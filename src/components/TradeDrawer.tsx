@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
-import { formatUSD, formatFundingRate } from "@/lib/format";
+import { formatUSD, formatFundingRate, formatFundingAPR } from "@/lib/format";
 import { assertOrderSucceeded } from "@/lib/order";
+import { getFundingRegime } from "@/lib/fundingRegime";
 import toast from "react-hot-toast";
 
 interface TradeDrawerProps {
@@ -16,12 +17,29 @@ interface TradeDrawerProps {
 
 const LEVERAGE_OPTIONS = [1, 2, 5, 10, 20] as const;
 
+interface OrderBookLevel {
+  px: number;
+  sz: number;
+  n: number;
+}
+
+interface OrderBookSnapshot {
+  coin: string;
+  time: number;
+  bestBid: number | null;
+  bestAsk: number | null;
+  spread: number | null;
+  spreadBps: number | null;
+  bids: OrderBookLevel[];
+  asks: OrderBookLevel[];
+}
+
 export default function TradeDrawer({
   coin,
   direction: initialDirection,
   onClose,
 }: TradeDrawerProps) {
-  const { assets } = useMarket();
+  const { assets, fundingHistories } = useMarket();
   const { isConnected, exchangeClient, accountState, refreshPortfolio } =
     useWallet();
 
@@ -35,13 +53,53 @@ export default function TradeDrawer({
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [limitPrice, setLimitPrice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
+  const [orderBookLoading, setOrderBookLoading] = useState(false);
+  const [orderBookError, setOrderBookError] = useState<string | null>(null);
 
   // Auto-fill limit price when switching to limit
   const markPx = asset?.markPx ?? 0;
   const priceDecimals = markPx < 0.01 ? 6 : markPx < 1 ? 4 : 2;
+  const fundingRegime = useMemo(
+    () => getFundingRegime(asset?.fundingRate ?? 0, fundingHistories[coin]),
+    [asset?.fundingRate, coin, fundingHistories]
+  );
+  const fundingRegimeColor =
+    fundingRegime.tone === "red"
+      ? "text-red-400"
+      : fundingRegime.tone === "green"
+        ? "text-green-400"
+        : "text-zinc-400";
+
+  const fetchOrderBook = useCallback(async () => {
+    try {
+      setOrderBookLoading(true);
+      setOrderBookError(null);
+      const res = await fetch(`/api/market/orderbook?coin=${coin}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as OrderBookSnapshot;
+      setOrderBook(data);
+    } catch (err) {
+      setOrderBookError(
+        err instanceof Error ? err.message : "Failed to load order book"
+      );
+    } finally {
+      setOrderBookLoading(false);
+    }
+  }, [coin]);
+
+  useEffect(() => {
+    fetchOrderBook();
+    const interval = setInterval(fetchOrderBook, 5000);
+    return () => clearInterval(interval);
+  }, [fetchOrderBook]);
 
   const computed = useMemo(() => {
     const usd = parseFloat(sizeUSD) || 0;
+    const marginRequired = usd;
     const notional = usd * leverage;
     const positionSize = markPx > 0 ? notional / markPx : 0;
 
@@ -58,8 +116,17 @@ export default function TradeDrawer({
       (direction === "long" && fundingRate < 0) ||
       (direction === "short" && fundingRate > 0);
 
-    return { notional, positionSize, liqPrice, fundingCostDay, fundingEarns };
+    return {
+      marginRequired,
+      notional,
+      positionSize,
+      liqPrice,
+      fundingCostDay,
+      fundingEarns,
+    };
   }, [sizeUSD, leverage, markPx, direction, asset]);
+  const buyingPower = accountState?.withdrawable ?? 0;
+  const insufficientBuyingPower = computed.marginRequired > buyingPower;
 
   // Check for existing position
   const existingPosition = accountState?.positions.find(
@@ -72,6 +139,10 @@ export default function TradeDrawer({
     const usd = parseFloat(sizeUSD);
     if (!usd || usd < 10) {
       toast.error("Minimum size is $10");
+      return;
+    }
+    if (usd > buyingPower) {
+      toast.error("Insufficient buying power for this margin size");
       return;
     }
 
@@ -175,7 +246,7 @@ export default function TradeDrawer({
           {/* Size input */}
           <div>
             <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 block">
-              Size (USDC)
+              Margin Size (USDC)
             </label>
             <input
               type="number"
@@ -185,6 +256,9 @@ export default function TradeDrawer({
               onChange={(e) => setSizeUSD(e.target.value)}
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
             />
+            <p className="text-[10px] text-zinc-600 mt-1">
+              Margin used from buying power. Order notional = margin × leverage.
+            </p>
           </div>
 
           {/* Leverage selector */}
@@ -261,6 +335,20 @@ export default function TradeDrawer({
           {/* Computed fields */}
           {parseFloat(sizeUSD) > 0 && (
             <div className="space-y-1.5 text-xs font-mono border-t border-zinc-800 pt-3">
+              <div className="flex justify-between text-zinc-300">
+                <span>Buying Power</span>
+                <span>{formatUSD(buyingPower)}</span>
+              </div>
+              <div className="flex justify-between text-zinc-300">
+                <span>Margin Required</span>
+                <span
+                  className={
+                    insufficientBuyingPower ? "text-red-400" : "text-zinc-300"
+                  }
+                >
+                  {formatUSD(computed.marginRequired)}
+                </span>
+              </div>
               <div className="flex justify-between text-zinc-400">
                 <span>Position Size</span>
                 <span>
@@ -268,7 +356,7 @@ export default function TradeDrawer({
                 </span>
               </div>
               <div className="flex justify-between text-zinc-400">
-                <span>Notional Value</span>
+                <span>Order Value (Notional)</span>
                 <span>{formatUSD(computed.notional)}</span>
               </div>
               <div className="flex justify-between text-zinc-400">
@@ -294,8 +382,119 @@ export default function TradeDrawer({
                   <span>{formatFundingRate(asset.fundingRate)}</span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Funding Regime</span>
+                <span className={fundingRegimeColor}>{fundingRegime.label}</span>
+              </div>
+              {fundingRegime.percentile != null && (
+                <div className="flex justify-between text-zinc-500">
+                  <span>Historical Percentile</span>
+                  <span>{fundingRegime.percentile.toFixed(0)}th</span>
+                </div>
+              )}
+              {fundingRegime.meanAPR != null && (
+                <div className="flex justify-between text-zinc-500">
+                  <span>Historical Mean APR</span>
+                  <span>{formatFundingAPR(fundingRegime.meanAPR)}</span>
+                </div>
+              )}
+              {insufficientBuyingPower && (
+                <div className="text-red-400 text-[11px]">
+                  Margin exceeds available buying power.
+                </div>
+              )}
             </div>
           )}
+
+          {/* Order book snapshot */}
+          <div className="border-t border-zinc-800 pt-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+                Order Book (Top Levels)
+              </span>
+              <button
+                onClick={fetchOrderBook}
+                className="text-[10px] text-zinc-500 hover:text-zinc-300"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {orderBook && (
+              <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
+                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+                  <div className="text-zinc-500 text-[10px]">Best Bid</div>
+                  <div className="text-green-400">
+                    {orderBook.bestBid != null
+                      ? formatUSD(orderBook.bestBid, priceDecimals)
+                      : "—"}
+                  </div>
+                </div>
+                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+                  <div className="text-zinc-500 text-[10px]">Best Ask</div>
+                  <div className="text-red-400">
+                    {orderBook.bestAsk != null
+                      ? formatUSD(orderBook.bestAsk, priceDecimals)
+                      : "—"}
+                  </div>
+                </div>
+                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+                  <div className="text-zinc-500 text-[10px]">Spread</div>
+                  <div className="text-zinc-300">
+                    {orderBook.spreadBps != null
+                      ? `${orderBook.spreadBps.toFixed(2)} bps`
+                      : "—"}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {orderBook && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded border border-zinc-800 overflow-hidden">
+                  <div className="px-2 py-1 text-[10px] uppercase text-zinc-500 bg-zinc-950">
+                    Asks
+                  </div>
+                  <div className="max-h-28 overflow-auto">
+                    {orderBook.asks.slice(0, 6).map((lvl, idx) => (
+                      <div
+                        key={`ask-${idx}-${lvl.px}`}
+                        className="px-2 py-1 text-[11px] font-mono flex justify-between text-red-300 border-t border-zinc-900"
+                      >
+                        <span>{lvl.px.toFixed(priceDecimals)}</span>
+                        <span>{lvl.sz.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded border border-zinc-800 overflow-hidden">
+                  <div className="px-2 py-1 text-[10px] uppercase text-zinc-500 bg-zinc-950">
+                    Bids
+                  </div>
+                  <div className="max-h-28 overflow-auto">
+                    {orderBook.bids.slice(0, 6).map((lvl, idx) => (
+                      <div
+                        key={`bid-${idx}-${lvl.px}`}
+                        className="px-2 py-1 text-[11px] font-mono flex justify-between text-green-300 border-t border-zinc-900"
+                      >
+                        <span>{lvl.px.toFixed(priceDecimals)}</span>
+                        <span>{lvl.sz.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {orderBookLoading && !orderBook && (
+              <div className="text-[11px] text-zinc-600">Loading order book...</div>
+            )}
+            {orderBookError && (
+              <div className="text-[11px] text-zinc-500">
+                Order book unavailable: {orderBookError}
+              </div>
+            )}
+          </div>
 
           {/* Existing position warning */}
           {existingPosition && (
@@ -322,7 +521,9 @@ export default function TradeDrawer({
         <div className="flex-shrink-0 px-4 py-4 border-t border-zinc-800 space-y-3">
           <button
             onClick={handleSubmit}
-            disabled={!isConnected || submitting || !sizeUSD}
+            disabled={
+              !isConnected || submitting || !sizeUSD || insufficientBuyingPower
+            }
             className={`w-full py-3 text-sm font-medium rounded transition-colors ${
               direction === "long"
                 ? "bg-green-600 hover:bg-green-500 disabled:bg-zinc-700"

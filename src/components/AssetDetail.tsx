@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import type { MarketAsset } from "@/types";
 import { formatUSD, formatPct, formatFundingRate, formatFundingAPR, formatCompact } from "@/lib/format";
+import { getFundingRegime } from "@/lib/fundingRegime";
 import PriceChart from "./PriceChart";
 
 interface AssetDetailProps {
@@ -81,6 +82,16 @@ export default function AssetDetail({
     time: f.time,
     apr: f.rate * 8760 * 100,
   }));
+  const fundingRegime = getFundingRegime(
+    asset.fundingRate,
+    activeFunding ?? undefined
+  );
+  const regimeColor =
+    fundingRegime.tone === "red"
+      ? "text-red-400"
+      : fundingRegime.tone === "green"
+        ? "text-green-400"
+        : "text-zinc-400";
 
   return (
     <div className="bg-zinc-900/80 border-t border-b border-zinc-700 animate-fade-in">
@@ -168,8 +179,22 @@ export default function AssetDetail({
             </div>
 
             {aprData && aprData.length > 0 ? (
-              <div className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-[11px] font-mono">
+                  <span className={regimeColor}>{fundingRegime.label}</span>
+                  {fundingRegime.percentile != null && (
+                    <span className="text-zinc-500">
+                      {fundingRegime.percentile.toFixed(0)}th percentile
+                    </span>
+                  )}
+                  {fundingRegime.meanAPR != null && (
+                    <span className="text-zinc-500">
+                      Mean: {formatFundingAPR(fundingRegime.meanAPR)}
+                    </span>
+                  )}
+                </div>
+                <div className="h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
                   <LineChart
                     data={aprData}
                     margin={{ top: 4, right: 10, left: 10, bottom: 0 }}
@@ -223,7 +248,8 @@ export default function AssetDetail({
                       ]}
                     />
                   </LineChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                </div>
               </div>
             ) : (
               <div className="h-[200px] flex items-center justify-center text-xs text-zinc-600 font-mono">
