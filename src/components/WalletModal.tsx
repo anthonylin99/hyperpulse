@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { X, Key } from "lucide-react";
-import { useWallet } from "@/context/WalletContext";
+import {
+  useWallet,
+  type BrowserWalletPreference,
+} from "@/context/WalletContext";
 import { IS_TESTNET } from "@/lib/hyperliquid";
 
 interface WalletModalProps {
@@ -57,10 +60,12 @@ export default function WalletModal({ onClose }: WalletModalProps) {
     }
   };
 
-  const handleBrowserWalletConnect = async () => {
+  const handleBrowserWalletConnect = async (
+    preference: BrowserWalletPreference = "auto"
+  ) => {
     setError("");
     try {
-      await connectWithBrowserWallet();
+      await connectWithBrowserWallet(preference);
       onClose();
     } catch (err) {
       const message =
@@ -110,12 +115,39 @@ export default function WalletModal({ onClose }: WalletModalProps) {
           </div>
 
           <button
-            onClick={handleBrowserWalletConnect}
+            onClick={() => handleBrowserWalletConnect("auto")}
             disabled={loading}
             className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
           >
             {loading ? "Connecting..." : "Connect Browser Wallet"}
           </button>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => handleBrowserWalletConnect("metamask")}
+              disabled={loading}
+              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
+            >
+              MetaMask
+            </button>
+            <button
+              onClick={() => handleBrowserWalletConnect("rabby")}
+              disabled={loading}
+              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
+            >
+              Rabby
+            </button>
+            <button
+              onClick={() => handleBrowserWalletConnect("coinbase")}
+              disabled={loading}
+              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
+            >
+              Coinbase
+            </button>
+          </div>
+          <p className="text-[10px] text-zinc-600">
+            If one wallet hijacks connect, choose your wallet explicitly here.
+          </p>
 
           <button
             onClick={() => setShowManual((v) => !v)}

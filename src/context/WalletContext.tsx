@@ -22,6 +22,12 @@ const SESSION_MAIN_ADDR = "hp_main_address";
 const MAIN_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 const PRIVATE_KEY_REGEX = /^0x[a-fA-F0-9]{64}$/;
 
+export type BrowserWalletPreference =
+  | "auto"
+  | "metamask"
+  | "rabby"
+  | "coinbase";
+
 interface WalletContextValue {
   address: string | null;
   apiAddress: string | null;
@@ -30,12 +36,64 @@ interface WalletContextValue {
   exchangeClient: ExchangeClient | null;
   loading: boolean;
   connect: (apiPrivateKey: string, mainWalletAddress: string) => Promise<void>;
-  connectWithBrowserWallet: () => Promise<void>;
+  connectWithBrowserWallet: (
+    preference?: BrowserWalletPreference
+  ) => Promise<void>;
   disconnect: () => void;
   refreshPortfolio: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
+
+interface InjectedEthereumProvider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  providers?: InjectedEthereumProvider[];
+  isMetaMask?: boolean;
+  isRabby?: boolean;
+  isCoinbaseWallet?: boolean;
+}
+
+function matchesPreference(
+  provider: InjectedEthereumProvider,
+  preference: BrowserWalletPreference
+): boolean {
+  if (preference === "metamask") {
+    return !!provider.isMetaMask && !provider.isCoinbaseWallet;
+  }
+  if (preference === "rabby") {
+    return !!provider.isRabby;
+  }
+  if (preference === "coinbase") {
+    return !!provider.isCoinbaseWallet;
+  }
+  return true;
+}
+
+function selectProvider(
+  rootProvider: InjectedEthereumProvider,
+  preference: BrowserWalletPreference
+): InjectedEthereumProvider {
+  const providers =
+    Array.isArray(rootProvider.providers) && rootProvider.providers.length > 0
+      ? rootProvider.providers
+      : [rootProvider];
+
+  if (preference !== "auto") {
+    const explicit = providers.find((p) => matchesPreference(p, preference));
+    if (!explicit) {
+      throw new Error(`Selected wallet provider (${preference}) not found.`);
+    }
+    return explicit;
+  }
+
+  // Auto selection order to avoid unintentional Coinbase default hijacking.
+  return (
+    providers.find((p) => !!p.isRabby) ??
+    providers.find((p) => !!p.isMetaMask && !p.isCoinbaseWallet) ??
+    providers.find((p) => !p.isCoinbaseWallet) ??
+    providers[0]
+  );
+}
 
 function parsePositions(
   assetPositions: Array<{
@@ -189,78 +247,86 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [fetchPortfolio, getInfo]
   );
 
-  const connectWithBrowserWallet = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (typeof window === "undefined") {
-        throw new Error("Browser wallet is unavailable in this environment.");
+  const connectWithBrowserWallet = useCallback(
+    async (preference: BrowserWalletPreference = "auto") => {
+      setLoading(true);
+      try {
+        if (typeof window === "undefined") {
+          throw new Error("Browser wallet is unavailable in this environment.");
+        }
+        const ethereum = (
+          window as Window & { ethereum?: InjectedEthereumProvider }
+        ).ethereum;
+        if (!ethereum) {
+          throw new Error("No browser wallet found. Install MetaMask or Rabby.");
+        }
+        const injectedProvider = selectProvider(ethereum, preference);
+
+        const transport = new HttpTransport({ isTestnet: IS_TESTNET });
+        const walletClient = createWalletClient({
+          transport: custom(injectedProvider),
+        });
+        const [mainAddr] = await walletClient.requestAddresses();
+        if (!mainAddr) {
+          throw new Error("Wallet connection failed: no address returned.");
+        }
+
+        const browserWallet = {
+          getAddresses: async () => [mainAddr as Address],
+          getChainId: async () => walletClient.getChainId(),
+          signTypedData: async (params: {
+            domain: Record<string, unknown>;
+            types: Record<string, Array<{ name: string; type: string }>>;
+            primaryType: string;
+            message: Record<string, unknown>;
+          }) =>
+            walletClient.signTypedData({
+              ...params,
+              account: mainAddr as Address,
+            } as Parameters<typeof walletClient.signTypedData>[0]),
+        };
+
+        // Generate a local agent key in-browser, approve it once using the connected wallet.
+        const agentPrivateKey = generatePrivateKey();
+        const agentWallet = privateKeyToAccount(agentPrivateKey);
+        const approver = new ExchangeClient({
+          transport,
+          wallet: browserWallet as never,
+        });
+        const agentName = `hyperpulse-${Date.now()}`;
+        await approver.approveAgent({
+          agentAddress: agentWallet.address,
+          agentName,
+        });
+
+        // Trading client uses the approved local agent wallet.
+        const exchange = new ExchangeClient({ transport, wallet: agentWallet });
+
+        const info = getInfo();
+        await info.openOrders({ user: mainAddr });
+        await fetchPortfolio(mainAddr, true);
+
+        setAddress(mainAddr);
+        setApiAddress(agentWallet.address);
+        setExchangeClient(exchange);
+
+        sessionStorage.setItem(SESSION_API_KEY, agentPrivateKey);
+        sessionStorage.setItem(SESSION_MAIN_ADDR, mainAddr);
+
+        toast.success(`Connected: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`);
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Failed to connect with browser wallet";
+        toast.error(msg);
+        throw err;
+      } finally {
+        setLoading(false);
       }
-      const ethereum = (window as Window & { ethereum?: unknown }).ethereum;
-      if (!ethereum) {
-        throw new Error("No browser wallet found. Install MetaMask or Rabby.");
-      }
-      const injectedProvider = ethereum as {
-        request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-      };
-
-      const transport = new HttpTransport({ isTestnet: IS_TESTNET });
-      const walletClient = createWalletClient({
-        transport: custom(injectedProvider),
-      });
-      const [mainAddr] = await walletClient.requestAddresses();
-      if (!mainAddr) {
-        throw new Error("Wallet connection failed: no address returned.");
-      }
-
-      const browserWallet = {
-        getAddresses: async () => [mainAddr as Address],
-        getChainId: async () => walletClient.getChainId(),
-        signTypedData: async (params: {
-          domain: Record<string, unknown>;
-          types: Record<string, Array<{ name: string; type: string }>>;
-          primaryType: string;
-          message: Record<string, unknown>;
-        }) =>
-          walletClient.signTypedData({
-            ...params,
-            account: mainAddr as Address,
-          } as Parameters<typeof walletClient.signTypedData>[0]),
-      };
-
-      // Generate a local agent key in-browser, approve it once using the connected wallet.
-      const agentPrivateKey = generatePrivateKey();
-      const agentWallet = privateKeyToAccount(agentPrivateKey);
-      const approver = new ExchangeClient({ transport, wallet: browserWallet as never });
-      const agentName = `hyperpulse-${Date.now()}`;
-      await approver.approveAgent({
-        agentAddress: agentWallet.address,
-        agentName,
-      });
-
-      // Trading client uses the approved local agent wallet.
-      const exchange = new ExchangeClient({ transport, wallet: agentWallet });
-
-      const info = getInfo();
-      await info.openOrders({ user: mainAddr });
-      await fetchPortfolio(mainAddr, true);
-
-      setAddress(mainAddr);
-      setApiAddress(agentWallet.address);
-      setExchangeClient(exchange);
-
-      sessionStorage.setItem(SESSION_API_KEY, agentPrivateKey);
-      sessionStorage.setItem(SESSION_MAIN_ADDR, mainAddr);
-
-      toast.success(`Connected: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`);
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to connect with browser wallet";
-      toast.error(msg);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchPortfolio, getInfo]);
+    },
+    [fetchPortfolio, getInfo]
+  );
 
   const disconnect = useCallback(() => {
     setAddress(null);
