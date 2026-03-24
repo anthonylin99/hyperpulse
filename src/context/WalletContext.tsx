@@ -26,12 +26,7 @@ export type BrowserWalletPreference =
   | "auto"
   | "metamask"
   | "rabby"
-  | "coinbase"
-  | "phantom"
-  | "okx"
-  | "trust"
-  | "brave"
-  | "any";
+  | "coinbase";
 
 interface WalletContextValue {
   address: string | null;
@@ -56,11 +51,6 @@ interface InjectedEthereumProvider {
   isMetaMask?: boolean;
   isRabby?: boolean;
   isCoinbaseWallet?: boolean;
-  isPhantom?: boolean;
-  isOkxWallet?: boolean;
-  isTrust?: boolean;
-  isTrustWallet?: boolean;
-  isBraveWallet?: boolean;
 }
 
 function matchesPreference(
@@ -75,21 +65,6 @@ function matchesPreference(
   }
   if (preference === "coinbase") {
     return !!provider.isCoinbaseWallet;
-  }
-  if (preference === "phantom") {
-    return !!provider.isPhantom;
-  }
-  if (preference === "okx") {
-    return !!provider.isOkxWallet;
-  }
-  if (preference === "trust") {
-    return !!provider.isTrust || !!provider.isTrustWallet;
-  }
-  if (preference === "brave") {
-    return !!provider.isBraveWallet;
-  }
-  if (preference === "any") {
-    return true;
   }
   return true;
 }
@@ -115,10 +90,6 @@ function selectProvider(
   return (
     providers.find((p) => !!p.isRabby) ??
     providers.find((p) => !!p.isMetaMask && !p.isCoinbaseWallet) ??
-    providers.find((p) => !!p.isPhantom) ??
-    providers.find((p) => !!p.isOkxWallet) ??
-    providers.find((p) => !!p.isTrust || !!p.isTrustWallet) ??
-    providers.find((p) => !!p.isBraveWallet) ??
     providers.find((p) => !p.isCoinbaseWallet) ??
     providers[0]
   );
@@ -322,7 +293,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           transport,
           wallet: browserWallet as never,
         });
-        const agentName = `hyperpulse-${Date.now()}`;
+        // Hyperliquid requires base agent name length <= 16.
+        const agentName = `hp${Date.now().toString(36).slice(-10)}`;
         await approver.approveAgent({
           agentAddress: agentWallet.address,
           agentName,

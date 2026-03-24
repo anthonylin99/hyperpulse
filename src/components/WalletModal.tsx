@@ -144,41 +144,6 @@ export default function WalletModal({ onClose }: WalletModalProps) {
             >
               Coinbase
             </button>
-            <button
-              onClick={() => handleBrowserWalletConnect("phantom")}
-              disabled={loading}
-              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
-            >
-              Phantom
-            </button>
-            <button
-              onClick={() => handleBrowserWalletConnect("okx")}
-              disabled={loading}
-              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
-            >
-              OKX
-            </button>
-            <button
-              onClick={() => handleBrowserWalletConnect("trust")}
-              disabled={loading}
-              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
-            >
-              Trust
-            </button>
-            <button
-              onClick={() => handleBrowserWalletConnect("brave")}
-              disabled={loading}
-              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
-            >
-              Brave
-            </button>
-            <button
-              onClick={() => handleBrowserWalletConnect("any")}
-              disabled={loading}
-              className="py-2 text-[11px] text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 disabled:text-zinc-500"
-            >
-              Any Injected
-            </button>
           </div>
           <p className="text-[10px] text-zinc-600">
             If one wallet hijacks connect, choose your wallet explicitly here.
