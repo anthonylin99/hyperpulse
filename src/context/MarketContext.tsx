@@ -54,6 +54,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
     const signature = `${entry.type}|${entry.coin}|${entry.message}`;
     const now = Date.now();
+    const coalesceWindowMs = entry.type === "whale" ? 20_000 : 45_000;
     const id = `act-${++activityIdCounter}`;
     const nextEntry: ActivityEntry = {
       ...entry,
@@ -72,6 +73,11 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       }
 
       const match = prev[matchIndex];
+      const withinWindow = now - match.timestamp <= coalesceWindowMs;
+      if (!withinWindow) {
+        return [nextEntry, ...prev].slice(0, 50);
+      }
+
       const mergedEntry: ActivityEntry = {
         ...match,
         timestamp: now,

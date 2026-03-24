@@ -25,8 +25,7 @@ export default function FundingFlashcards() {
   const majorAssets = DASHBOARD_MAJORS.map((coin) =>
     assets.find((a) => a.coin === coin)
   )
-    .filter((asset): asset is NonNullable<(typeof assets)[number]> => !!asset)
-    .sort((a, b) => b.openInterest - a.openInterest);
+    .filter((asset): asset is NonNullable<(typeof assets)[number]> => !!asset);
 
   return (
     <div className="flex items-center gap-1.5 px-3 h-full overflow-x-auto scrollbar-hide bg-gradient-to-r from-emerald-950/10 via-transparent to-teal-950/10">
