@@ -132,7 +132,7 @@ export default function AssetDetail({
             onClick={() => setTab("price")}
             className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
               tab === "price"
-                ? "bg-emerald-500/20 text-emerald-300"
+                ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
         >
@@ -142,7 +142,7 @@ export default function AssetDetail({
             onClick={() => setTab("funding")}
             className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
               tab === "funding"
-                ? "bg-emerald-500/20 text-emerald-300"
+                ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
         >
@@ -166,7 +166,7 @@ export default function AssetDetail({
                   onClick={() => setFundingRange(r.days as 7 | 30 | 60)}
                   className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
                     fundingRange === r.days
-                      ? "bg-emerald-500/20 text-emerald-300"
+                      ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
                       : "text-zinc-600 hover:text-zinc-400"
                   }`}
                 >
@@ -205,7 +205,7 @@ export default function AssetDetail({
                     <Line
                       type="monotone"
                       dataKey="apr"
-                      stroke="#2dd4bf"
+                      stroke="#7dd4c4"
                       strokeWidth={1.5}
                       dot={false}
                     />

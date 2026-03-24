@@ -151,7 +151,7 @@ export default function AssetRow({
               <Line
                 type="monotone"
                 dataKey="rate"
-                stroke="#2dd4bf"
+                stroke="#7dd4c4"
                 strokeWidth={1}
                 dot={false}
                 isAnimationActive={false}

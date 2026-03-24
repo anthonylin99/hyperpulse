@@ -18,13 +18,13 @@ export default function SentimentSlider() {
     result.score < 40
       ? "text-red-400"
       : result.score > 60
-        ? "text-green-400"
+        ? "text-[#7dd4c4]"
         : "text-zinc-300";
   const scoreBadgeClass =
     result.score < 40
       ? "bg-red-500/15 text-red-300 border-red-500/30"
       : result.score > 60
-        ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/30"
+        ? "bg-[#7dd4c4]/20 text-[#b9ece2] border-[#7dd4c4]/40"
         : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
 
   return (

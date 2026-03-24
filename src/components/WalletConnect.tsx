@@ -15,7 +15,7 @@ export default function WalletConnect() {
       <>
         <button
           onClick={() => setShowModal(true)}
-          className="px-2.5 py-1 text-[11px] font-mono rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+          className="px-2.5 py-1 text-[11px] font-mono rounded border border-[#24786d]/70 text-[#b8d8d2] hover:border-[#7dd4c4]/70 hover:text-white hover:bg-[#7dd4c4]/10 transition-colors"
         >
           Connect Wallet
         </button>
@@ -30,12 +30,12 @@ export default function WalletConnect() {
     <div className="relative">
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded border border-[#24786d]/70 text-[#b8d8d2] hover:border-[#7dd4c4]/70 hover:bg-[#7dd4c4]/10 transition-colors"
       >
         <div className="w-2 h-2 rounded-full bg-green-500" />
         <span>{truncateAddress(address!)}</span>
         <span className="text-zinc-500">|</span>
-        <span className="text-green-400">{formatUSD(buyingPower, 0)}</span>
+        <span className="text-[#7dd4c4]">{formatUSD(buyingPower, 0)}</span>
       </button>
 
       {showDropdown && (
@@ -44,7 +44,7 @@ export default function WalletConnect() {
             className="fixed inset-0 z-40"
             onClick={() => setShowDropdown(false)}
           />
-          <div className="absolute right-0 top-full mt-1 w-40 bg-zinc-900 border border-zinc-700 rounded shadow-lg z-50">
+          <div className="absolute right-0 top-full mt-1 w-40 bg-[#101416] border border-[#24786d]/70 rounded shadow-lg z-50">
             <button
               onClick={() => {
                 disconnect();

@@ -160,7 +160,7 @@ export default function PriceChart({ coin }: PriceChartProps) {
             onClick={() => setInterval_(iv)}
             className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
               interval === iv
-                ? "bg-emerald-500/20 text-emerald-300"
+                ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
                 : "text-zinc-600 hover:text-zinc-400"
             }`}
           >

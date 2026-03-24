@@ -254,7 +254,7 @@ export default function TradeDrawer({
               min="10"
               value={sizeUSD}
               onChange={(e) => setSizeUSD(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded text-xs font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+              className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded text-xs font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-[#7dd4c4] transition-colors"
             />
             <p className="text-[9px] text-zinc-600 mt-1">
               Margin used from buying power. Order notional = margin × leverage.
@@ -274,7 +274,7 @@ export default function TradeDrawer({
                   disabled={asset ? lev > asset.maxLeverage : false}
                   className={`flex-1 py-1 text-[11px] font-mono rounded transition-colors ${
                     leverage === lev
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
                       : "bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600"
                   } disabled:opacity-30 disabled:cursor-not-allowed`}
                 >
@@ -327,7 +327,7 @@ export default function TradeDrawer({
                 type="number"
                 value={limitPrice}
                 onChange={(e) => setLimitPrice(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded text-xs font-mono text-zinc-200 focus:outline-none focus:border-[#7dd4c4] transition-colors"
               />
             </div>
           )}

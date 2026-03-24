@@ -86,7 +86,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            <Key className="w-4 h-4 text-emerald-400" />
+            <Key className="w-4 h-4 text-[#7dd4c4]" />
             <span className="text-sm font-medium">Connect Wallet</span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
               {IS_TESTNET ? "TESTNET" : "MAINNET"}
@@ -117,7 +117,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
           <button
             onClick={() => handleBrowserWalletConnect("auto")}
             disabled={loading}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
+            className="w-full py-2.5 bg-[#24786d] hover:bg-[#2b8b7f] disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
           >
             {loading ? "Connecting..." : "Connect Browser Wallet"}
           </button>
@@ -167,7 +167,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
                   placeholder="0x509292a... (your public address)"
                   value={mainAddress}
                   onChange={(e) => setMainAddress(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-[#7dd4c4] transition-colors"
                 />
               </div>
 
@@ -181,14 +181,14 @@ export default function WalletModal({ onClose }: WalletModalProps) {
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-[#7dd4c4] transition-colors"
                 />
               </div>
 
               <button
                 onClick={handleConnect}
                 disabled={loading || !trimmedApiKey || !trimmedMainAddress}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
+                className="w-full py-2.5 bg-[#24786d] hover:bg-[#2b8b7f] disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded transition-colors"
               >
                 {loading ? "Connecting..." : "Connect with API Key"}
               </button>

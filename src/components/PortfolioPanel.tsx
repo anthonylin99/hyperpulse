@@ -157,7 +157,7 @@ export default function PortfolioPanel() {
         {/* Margin bar */}
         <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-emerald-500 rounded-full transition-all"
+            className="h-full bg-[#7dd4c4] rounded-full transition-all"
             style={{ width: `${Math.min(marginPct, 100)}%` }}
           />
         </div>

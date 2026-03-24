@@ -216,7 +216,7 @@ export default function MarketTable({
               placeholder={mode === "perps" ? "Search perps..." : "Search HIP-3 spot..."}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-7 pr-2 py-1 w-[160px] text-[11px] font-mono bg-zinc-900 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-500/60"
+              className="pl-7 pr-2 py-1 w-[160px] text-[11px] font-mono bg-zinc-900 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-[#7dd4c4]/70"
             />
           </div>
 
@@ -225,7 +225,7 @@ export default function MarketTable({
               onClick={() => setMode("perps")}
               className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
                 mode === "perps"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
                   : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
               }`}
             >
@@ -235,7 +235,7 @@ export default function MarketTable({
               onClick={() => setMode("spot")}
               className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
                 mode === "spot"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
                   : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
               }`}
             >
@@ -250,7 +250,7 @@ export default function MarketTable({
                   onClick={() => setCategoryFilter("All")}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                     categoryFilter === "All"
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
                       : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                   }`}
                 >
@@ -262,7 +262,7 @@ export default function MarketTable({
                     onClick={() => setCategoryFilter(cat)}
                     className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                       categoryFilter === cat
-                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
                         : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                     }`}
                   >
@@ -277,7 +277,7 @@ export default function MarketTable({
                     type="checkbox"
                     checked={hideSmallCaps}
                     onChange={(e) => setHideSmallCaps(e.target.checked)}
-                    className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 accent-emerald-500"
+                    className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 accent-[#7dd4c4]"
                   />
                   <span className="text-[10px] text-zinc-500 whitespace-nowrap">
                     &gt;$10M OI
@@ -293,7 +293,7 @@ export default function MarketTable({
                   onClick={() => setSpotFilter(cat)}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                     spotFilter === cat
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
                       : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                   }`}
                 >
@@ -324,7 +324,7 @@ export default function MarketTable({
                     >
                       {col.label}
                       {perpSortKey === col.key && (
-                        <span className="ml-1 text-emerald-400">
+                        <span className="ml-1 text-[#7dd4c4]">
                           {perpSortAsc ? "↑" : "↓"}
                         </span>
                       )}
@@ -383,7 +383,7 @@ export default function MarketTable({
                     >
                       {col.label}
                       {spotSortKey === col.key && (
-                        <span className="ml-1 text-emerald-500">
+                        <span className="ml-1 text-[#7dd4c4]">
                           {spotSortAsc ? "↑" : "↓"}
                         </span>
                       )}
