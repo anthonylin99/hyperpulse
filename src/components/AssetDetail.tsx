@@ -193,6 +193,9 @@ export default function AssetDetail({
                     </span>
                   )}
                 </div>
+                <div className="text-[10px] text-zinc-600">
+                  Funding chart is annualized APR (hourly rate x 8760).
+                </div>
                 <div className="h-[200px]">
                   <ResponsiveContainer width="100%" height="100%">
                   <LineChart
