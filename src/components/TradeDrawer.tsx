@@ -198,13 +198,13 @@ export default function TradeDrawer({
   return (
     <>
       {/* Drawer — no backdrop, does not block page interaction */}
-      <div className="fixed top-0 right-0 h-full w-[380px] bg-zinc-900 border-l border-zinc-800 z-50 flex flex-col animate-slide-in">
+      <div className="fixed top-0 right-0 h-full w-[352px] bg-zinc-900 border-l border-zinc-800 z-50 flex flex-col animate-slide-in">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 flex-shrink-0">
           <div>
-            <span className="text-sm font-mono font-bold">{coin}</span>
+            <span className="text-[13px] font-mono font-bold">{coin}</span>
             {asset && (
-              <span className="ml-2 text-sm font-mono text-zinc-400">
+              <span className="ml-1.5 text-[13px] font-mono text-zinc-400">
                 {formatUSD(markPx, priceDecimals)}
               </span>
             )}
@@ -218,12 +218,12 @@ export default function TradeDrawer({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-auto px-4 py-4 space-y-4">
+        <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
           {/* Direction toggle */}
-          <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+          <div className="flex rounded-md overflow-hidden border border-zinc-700">
             <button
               onClick={() => setDirection("long")}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
                 direction === "long"
                   ? "bg-green-500/20 text-green-500"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -233,7 +233,7 @@ export default function TradeDrawer({
             </button>
             <button
               onClick={() => setDirection("short")}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
                 direction === "short"
                   ? "bg-red-500/20 text-red-500"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -254,9 +254,9 @@ export default function TradeDrawer({
               min="10"
               value={sizeUSD}
               onChange={(e) => setSizeUSD(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded text-xs font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
             />
-            <p className="text-[10px] text-zinc-600 mt-1">
+            <p className="text-[9px] text-zinc-600 mt-1">
               Margin used from buying power. Order notional = margin × leverage.
             </p>
           </div>
@@ -272,9 +272,9 @@ export default function TradeDrawer({
                   key={lev}
                   onClick={() => setLeverage(lev)}
                   disabled={asset ? lev > asset.maxLeverage : false}
-                  className={`flex-1 py-1.5 text-xs font-mono rounded transition-colors ${
+                  className={`flex-1 py-1 text-[11px] font-mono rounded transition-colors ${
                     leverage === lev
-                      ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                       : "bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600"
                   } disabled:opacity-30 disabled:cursor-not-allowed`}
                 >
@@ -292,7 +292,7 @@ export default function TradeDrawer({
             <div className="flex gap-1">
               <button
                 onClick={() => setOrderType("market")}
-                className={`flex-1 py-1.5 text-xs font-mono rounded transition-colors ${
+                className={`flex-1 py-1 text-[11px] font-mono rounded transition-colors ${
                   orderType === "market"
                     ? "bg-zinc-700 text-white"
                     : "bg-zinc-800 text-zinc-400 hover:text-zinc-300"
@@ -306,7 +306,7 @@ export default function TradeDrawer({
                   if (!limitPrice)
                     setLimitPrice(markPx.toFixed(priceDecimals));
                 }}
-                className={`flex-1 py-1.5 text-xs font-mono rounded transition-colors ${
+                className={`flex-1 py-1 text-[11px] font-mono rounded transition-colors ${
                   orderType === "limit"
                     ? "bg-zinc-700 text-white"
                     : "bg-zinc-800 text-zinc-400 hover:text-zinc-300"
@@ -327,14 +327,14 @@ export default function TradeDrawer({
                 type="number"
                 value={limitPrice}
                 onChange={(e) => setLimitPrice(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded text-sm font-mono text-zinc-200 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
           )}
 
           {/* Computed fields */}
           {parseFloat(sizeUSD) > 0 && (
-            <div className="space-y-1.5 text-xs font-mono border-t border-zinc-800 pt-3">
+            <div className="space-y-1 text-[11px] font-mono border-t border-zinc-800 pt-2.5">
               <div className="flex justify-between text-zinc-300">
                 <span>Buying Power</span>
                 <span>{formatUSD(buyingPower)}</span>
@@ -399,7 +399,7 @@ export default function TradeDrawer({
                 </div>
               )}
               {insufficientBuyingPower && (
-                <div className="text-red-400 text-[11px]">
+                <div className="text-red-400 text-[10px]">
                   Margin exceeds available buying power.
                 </div>
               )}
@@ -407,22 +407,22 @@ export default function TradeDrawer({
           )}
 
           {/* Order book snapshot */}
-          <div className="border-t border-zinc-800 pt-3 space-y-2">
+          <div className="border-t border-zinc-800 pt-2.5 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] uppercase tracking-wider text-zinc-500">
                 Order Book (Top Levels)
               </span>
               <button
                 onClick={fetchOrderBook}
-                className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                className="text-[9px] text-zinc-500 hover:text-zinc-300"
               >
                 Refresh
               </button>
             </div>
 
             {orderBook && (
-              <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
-                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+              <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono">
+                <div className="p-1.5 rounded bg-zinc-950 border border-zinc-800">
                   <div className="text-zinc-500 text-[10px]">Best Bid</div>
                   <div className="text-green-400">
                     {orderBook.bestBid != null
@@ -430,7 +430,7 @@ export default function TradeDrawer({
                       : "—"}
                   </div>
                 </div>
-                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+                <div className="p-1.5 rounded bg-zinc-950 border border-zinc-800">
                   <div className="text-zinc-500 text-[10px]">Best Ask</div>
                   <div className="text-red-400">
                     {orderBook.bestAsk != null
@@ -438,7 +438,7 @@ export default function TradeDrawer({
                       : "—"}
                   </div>
                 </div>
-                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+                <div className="p-1.5 rounded bg-zinc-950 border border-zinc-800">
                   <div className="text-zinc-500 text-[10px]">Spread</div>
                   <div className="text-zinc-300">
                     {orderBook.spreadBps != null
@@ -450,16 +450,16 @@ export default function TradeDrawer({
             )}
 
             {orderBook && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div className="rounded border border-zinc-800 overflow-hidden">
-                  <div className="px-2 py-1 text-[10px] uppercase text-zinc-500 bg-zinc-950">
+                  <div className="px-2 py-1 text-[9px] uppercase text-zinc-500 bg-zinc-950">
                     Asks
                   </div>
-                  <div className="max-h-28 overflow-auto">
+                  <div className="max-h-24 overflow-auto">
                     {orderBook.asks.slice(0, 6).map((lvl, idx) => (
                       <div
                         key={`ask-${idx}-${lvl.px}`}
-                        className="px-2 py-1 text-[11px] font-mono flex justify-between text-red-300 border-t border-zinc-900"
+                        className="px-2 py-0.5 text-[10px] font-mono flex justify-between text-red-300 border-t border-zinc-900"
                       >
                         <span>{lvl.px.toFixed(priceDecimals)}</span>
                         <span>{lvl.sz.toFixed(2)}</span>
@@ -468,14 +468,14 @@ export default function TradeDrawer({
                   </div>
                 </div>
                 <div className="rounded border border-zinc-800 overflow-hidden">
-                  <div className="px-2 py-1 text-[10px] uppercase text-zinc-500 bg-zinc-950">
+                  <div className="px-2 py-1 text-[9px] uppercase text-zinc-500 bg-zinc-950">
                     Bids
                   </div>
-                  <div className="max-h-28 overflow-auto">
+                  <div className="max-h-24 overflow-auto">
                     {orderBook.bids.slice(0, 6).map((lvl, idx) => (
                       <div
                         key={`bid-${idx}-${lvl.px}`}
-                        className="px-2 py-1 text-[11px] font-mono flex justify-between text-green-300 border-t border-zinc-900"
+                        className="px-2 py-0.5 text-[10px] font-mono flex justify-between text-green-300 border-t border-zinc-900"
                       >
                         <span>{lvl.px.toFixed(priceDecimals)}</span>
                         <span>{lvl.sz.toFixed(2)}</span>
@@ -487,10 +487,10 @@ export default function TradeDrawer({
             )}
 
             {orderBookLoading && !orderBook && (
-              <div className="text-[11px] text-zinc-600">Loading order book...</div>
+              <div className="text-[10px] text-zinc-600">Loading order book...</div>
             )}
             {orderBookError && (
-              <div className="text-[11px] text-zinc-500">
+              <div className="text-[10px] text-zinc-500">
                 Order book unavailable: {orderBookError}
               </div>
             )}
@@ -518,13 +518,13 @@ export default function TradeDrawer({
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 px-4 py-4 border-t border-zinc-800 space-y-3">
+        <div className="flex-shrink-0 px-3 py-3 border-t border-zinc-800 space-y-2">
           <button
             onClick={handleSubmit}
             disabled={
               !isConnected || submitting || !sizeUSD || insufficientBuyingPower
             }
-            className={`w-full py-3 text-sm font-medium rounded transition-colors ${
+            className={`w-full py-2 text-xs font-medium rounded transition-colors ${
               direction === "long"
                 ? "bg-green-600 hover:bg-green-500 disabled:bg-zinc-700"
                 : "bg-red-600 hover:bg-red-500 disabled:bg-zinc-700"
@@ -536,7 +536,7 @@ export default function TradeDrawer({
                 ? "Connect Wallet"
                 : `Place ${direction === "long" ? "Long" : "Short"}`}
           </button>
-          <p className="text-[10px] text-zinc-600 font-sans text-center">
+          <p className="text-[9px] text-zinc-600 font-sans text-center">
             Not available to US persons. Use at your own risk.
           </p>
         </div>

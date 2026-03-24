@@ -36,8 +36,8 @@ body {
 /* Dashboard 6-zone grid */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr 380px;
-  grid-template-rows: 48px 62px 1fr;
+  grid-template-columns: 1fr 360px;
+  grid-template-rows: 44px 54px 1fr;
   height: 100vh;
   width: 100vw;
   overflow: hidden;

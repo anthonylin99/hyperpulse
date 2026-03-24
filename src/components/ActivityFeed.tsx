@@ -11,7 +11,7 @@ export default function ActivityFeed() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800 flex-shrink-0">
         <div
           className="live-dot"
           style={{
@@ -20,7 +20,7 @@ export default function ActivityFeed() {
             background: hasActivity ? "#22c55e" : "#71717a",
           }}
         />
-        <span className="text-xs uppercase tracking-wider text-zinc-500 font-sans">
+        <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-sans">
           Activity Feed
         </span>
         {activityFeed.length > 0 && (

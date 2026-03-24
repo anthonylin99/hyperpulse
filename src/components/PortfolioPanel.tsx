@@ -82,31 +82,31 @@ export default function PortfolioPanel() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Account summary */}
-      <div className="px-4 py-3 border-b border-zinc-800 space-y-2">
+      <div className="px-3 py-2.5 border-b border-zinc-800 space-y-1.5">
         <div className="flex justify-between items-baseline">
           <span
-            className="text-[10px] uppercase tracking-wider text-zinc-500"
+            className="text-[9px] uppercase tracking-wider text-zinc-500"
             title="Cross-margin account value from Hyperliquid clearinghouse"
           >
             Perp Cross Value
           </span>
           <span className="flex items-baseline gap-2">
-            <span className="text-lg font-mono font-bold">
+            <span className="text-base font-mono font-bold">
               {formatUSD(accountValue)}
             </span>
             <span
-              className="text-[9px] uppercase tracking-wider text-zinc-600"
+              className="text-[8px] uppercase tracking-wider text-zinc-600"
               title="Cross-margin account value"
             >
               cross
             </span>
           </span>
         </div>
-        <div className="flex justify-between text-[11px] font-mono text-zinc-500">
+        <div className="flex justify-between text-[10px] font-mono text-zinc-500">
           <span>Isolated Summary</span>
           <span>{formatUSD(isolatedAccountValue)}</span>
         </div>
-        <div className="flex justify-between text-xs font-mono">
+        <div className="flex justify-between text-[11px] font-mono">
           <span
             className="text-zinc-500"
             title="Hyperliquid perp withdrawable balance from the clearinghouse"
@@ -116,14 +116,14 @@ export default function PortfolioPanel() {
           <span className="flex items-baseline gap-2">
             <span className="text-zinc-300">{formatUSD(withdrawable)}</span>
             <span
-              className="text-[9px] uppercase tracking-wider text-zinc-600"
+              className="text-[8px] uppercase tracking-wider text-zinc-600"
               title="Perp balance available for withdrawal or trading"
             >
               perp
             </span>
           </span>
         </div>
-        <div className="flex justify-between text-[11px] font-mono text-zinc-500">
+        <div className="flex justify-between text-[10px] font-mono text-zinc-500">
           <span
             title="Hyperliquid spot wallet USDC balance and held amount"
           >
@@ -135,29 +135,29 @@ export default function PortfolioPanel() {
               {spotUsdcHold > 0 ? `(hold ${formatUSD(spotUsdcHold)})` : ""}
             </span>
             <span
-              className="text-[9px] uppercase tracking-wider text-zinc-600"
+              className="text-[8px] uppercase tracking-wider text-zinc-600"
               title="Spot balance from the spot clearinghouse"
             >
               spot
             </span>
           </span>
         </div>
-        <p className="text-[10px] text-zinc-600 font-sans">
+        <p className="text-[9px] text-zinc-600 font-sans">
           Perp withdrawable is the current USDC available on the perp side.
           Spot USDC may need a transfer before it can be used for perp orders.
         </p>
-        <div className="flex justify-between text-xs font-mono">
+        <div className="flex justify-between text-[11px] font-mono">
           <span className="text-zinc-500">Unrealized PnL</span>
           <span className={pnlColor}>{formatUSD(unrealizedPnl)}</span>
         </div>
-        <div className="flex justify-between text-xs font-mono">
+        <div className="flex justify-between text-[11px] font-mono">
           <span className="text-zinc-500">Margin Used</span>
           <span className="text-zinc-300">{formatPct(marginPct)}</span>
         </div>
         {/* Margin bar */}
         <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-blue-500 rounded-full transition-all"
+            className="h-full bg-emerald-500 rounded-full transition-all"
             style={{ width: `${Math.min(marginPct, 100)}%` }}
           />
         </div>
@@ -165,11 +165,11 @@ export default function PortfolioPanel() {
 
       {/* Positions */}
       <div className="flex-1 overflow-auto">
-        <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-zinc-500">
+        <div className="px-3 py-1.5 text-[9px] uppercase tracking-wider text-zinc-500">
           Open Positions ({positions.length})
         </div>
         {positions.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-zinc-600">
+          <div className="px-3 py-4 text-center text-[11px] text-zinc-600">
             No open positions
           </div>
         ) : (
@@ -185,27 +185,27 @@ export default function PortfolioPanel() {
               return (
                 <div
                   key={pos.coin}
-                  className="px-4 py-2 border-b border-zinc-800/50 hover:bg-zinc-800/30"
+                  className="px-3 py-1.5 border-b border-zinc-800/50 hover:bg-zinc-800/30"
                 >
-                  <div className="flex justify-between items-center mb-1">
+                  <div className="flex justify-between items-center mb-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-medium">
+                      <span className="text-[11px] font-mono font-medium">
                         {pos.coin}
                       </span>
                       <span
-                        className={`text-[10px] font-mono font-medium ${sideColor}`}
+                        className={`text-[9px] font-mono font-medium ${sideColor}`}
                       >
                         {isLong ? "LONG" : "SHORT"} {pos.leverage}x
                       </span>
                     </div>
                     <button
                       onClick={() => handleClose(pos.coin, pos.szi)}
-                      className="px-2 py-0.5 text-[10px] text-red-400 border border-red-500/20 rounded hover:bg-red-500/10 transition-colors"
+                      className="px-1.5 py-0.5 text-[9px] text-red-400 border border-red-500/20 rounded hover:bg-red-500/10 transition-colors"
                     >
                       Close
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 text-[11px] font-mono text-zinc-400">
+                  <div className="grid grid-cols-2 gap-x-3 text-[10px] font-mono text-zinc-400">
                     <div>
                       Size: {Math.abs(pos.szi).toFixed(4)}{" "}
                       <span className="text-zinc-600">
@@ -223,7 +223,7 @@ export default function PortfolioPanel() {
                     </div>
                   </div>
                   {pos.liquidationPx && (
-                    <div className="text-[10px] font-mono text-zinc-600 mt-0.5">
+                    <div className="text-[9px] font-mono text-zinc-600 mt-0.5">
                       Liq:{" "}
                       {formatUSD(
                         pos.liquidationPx,

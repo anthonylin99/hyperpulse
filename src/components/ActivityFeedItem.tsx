@@ -30,24 +30,24 @@ export default function ActivityFeedItem({ entry }: ActivityFeedItemProps) {
 
   return (
     <div
-      className="px-4 py-2 border-b border-zinc-800/30 animate-fade-in"
+      className="px-3 py-1.5 border-b border-zinc-800/30 animate-fade-in"
       style={{ backgroundColor: style.bgColor }}
     >
       <div className="flex justify-between items-start gap-2">
         <div className="flex-1 min-w-0">
           <p
-            className="text-xs font-mono leading-relaxed"
+            className="text-[11px] font-mono leading-relaxed"
             style={{ color: style.color }}
           >
             {entry.message}
           </p>
           {count > 1 && (
-            <span className="mt-1 inline-flex items-center rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
+            <span className="mt-0.5 inline-flex items-center rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-mono text-zinc-400">
               x{count}
             </span>
           )}
         </div>
-        <span className="text-[10px] font-mono text-zinc-600 whitespace-nowrap flex-shrink-0">
+        <span className="text-[9px] font-mono text-zinc-600 whitespace-nowrap flex-shrink-0">
           {relativeTime(entry.timestamp)}
         </span>
       </div>

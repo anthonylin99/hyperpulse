@@ -129,22 +129,22 @@ export default function AssetDetail({
       {/* Tab selector */}
       <div className="flex items-center gap-1 px-4 pb-2">
         <button
-          onClick={() => setTab("price")}
-          className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
-            tab === "price"
-              ? "bg-blue-500/20 text-blue-400"
-              : "text-zinc-500 hover:text-zinc-300"
-          }`}
+            onClick={() => setTab("price")}
+            className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
+              tab === "price"
+                ? "bg-emerald-500/20 text-emerald-300"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
         >
           Price Chart
         </button>
         <button
-          onClick={() => setTab("funding")}
-          className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
-            tab === "funding"
-              ? "bg-blue-500/20 text-blue-400"
-              : "text-zinc-500 hover:text-zinc-300"
-          }`}
+            onClick={() => setTab("funding")}
+            className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
+              tab === "funding"
+                ? "bg-emerald-500/20 text-emerald-300"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
         >
           Funding History
         </button>
@@ -166,7 +166,7 @@ export default function AssetDetail({
                   onClick={() => setFundingRange(r.days as 7 | 30 | 60)}
                   className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
                     fundingRange === r.days
-                      ? "bg-blue-500/20 text-blue-400"
+                      ? "bg-emerald-500/20 text-emerald-300"
                       : "text-zinc-600 hover:text-zinc-400"
                   }`}
                 >
@@ -202,7 +202,7 @@ export default function AssetDetail({
                     <Line
                       type="monotone"
                       dataKey="apr"
-                      stroke="#3b82f6"
+                      stroke="#2dd4bf"
                       strokeWidth={1.5}
                       dot={false}
                     />

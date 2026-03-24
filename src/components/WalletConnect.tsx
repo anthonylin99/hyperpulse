@@ -15,7 +15,7 @@ export default function WalletConnect() {
       <>
         <button
           onClick={() => setShowModal(true)}
-          className="px-3 py-1.5 text-xs font-mono rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+          className="px-2.5 py-1 text-[11px] font-mono rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
         >
           Connect Wallet
         </button>
@@ -30,7 +30,7 @@ export default function WalletConnect() {
     <div className="relative">
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors"
       >
         <div className="w-2 h-2 rounded-full bg-green-500" />
         <span>{truncateAddress(address!)}</span>

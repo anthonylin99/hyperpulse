@@ -84,28 +84,28 @@ export default function AssetRow({
     <>
       <tr
         onClick={onSelect}
-        className={`h-9 border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors text-sm font-mono ${rowBg} ${isExpanded ? "bg-zinc-800/40" : ""}`}
+        className={`h-8 border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors text-xs font-mono ${rowBg} ${isExpanded ? "bg-zinc-800/40" : ""}`}
       >
-        <td className="px-3 py-1 whitespace-nowrap">
+        <td className="px-2.5 py-0.5 whitespace-nowrap">
           <div className="flex items-center gap-2">
             <span className="text-zinc-50 font-medium">{asset.coin}</span>
-            <span className="text-[9px] text-zinc-600 uppercase">{category}</span>
+            <span className="text-[8px] text-zinc-600 uppercase">{category}</span>
           </div>
         </td>
 
-        <td className="px-3 py-1 text-right text-zinc-50 whitespace-nowrap">
+        <td className="px-2.5 py-0.5 text-right text-zinc-50 whitespace-nowrap">
           {formatUSD(asset.markPx, priceDecimals)}
         </td>
 
-        <td className={`px-3 py-1 text-right whitespace-nowrap ${priceColor}`}>
+        <td className={`px-2.5 py-0.5 text-right whitespace-nowrap ${priceColor}`}>
           {formatPct(asset.priceChange24h)}
         </td>
 
-        <td className="px-3 py-1 text-right text-zinc-300 whitespace-nowrap">
+        <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
           {formatCompact(asset.openInterest)}
         </td>
 
-        <td className={`px-3 py-1 text-right whitespace-nowrap ${oiDeltaColor}`}>
+        <td className={`px-2.5 py-0.5 text-right whitespace-nowrap ${oiDeltaColor}`}>
           {asset.oiChangePct != null ? (
             <>
               {oiDeltaArrow} {Math.abs(asset.oiChangePct).toFixed(1)}%
@@ -115,20 +115,20 @@ export default function AssetRow({
           )}
         </td>
 
-        <td className="px-3 py-1 text-right text-zinc-300 whitespace-nowrap">
+        <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
           {formatCompact(asset.dayVolume)}
         </td>
 
-        <td className={`px-3 py-1 text-right whitespace-nowrap ${fundingColor}`}>
+        <td className={`px-2.5 py-0.5 text-right whitespace-nowrap ${fundingColor}`}>
           {formatFundingRate(asset.fundingRate)}
         </td>
 
-        <td className={`px-3 py-1 text-right whitespace-nowrap ${fundingColor}`}>
+        <td className={`px-2.5 py-0.5 text-right whitespace-nowrap ${fundingColor}`}>
           <div className="flex items-center justify-end gap-1">
             <span>{formatFundingAPR(asset.fundingAPR)}</span>
             {fundingRegimeShort && (
               <span
-                className={`text-[9px] px-1 py-0.5 rounded ${
+                className={`text-[8px] px-1 py-0.5 rounded ${
                   fundingRegime.percentile != null && fundingRegime.percentile >= 80
                     ? "bg-red-500/10 text-red-400"
                     : "bg-green-500/10 text-green-400"
@@ -141,17 +141,17 @@ export default function AssetRow({
           </div>
         </td>
 
-        <td className="px-3 py-1">
+        <td className="px-2.5 py-0.5">
           <SignalBadge signal={asset.signal} oiChangePct={asset.oiChangePct} />
         </td>
 
-        <td className="px-3 py-1">
+        <td className="px-2.5 py-0.5">
           {fundingHistory && fundingHistory.length > 0 ? (
-            <LineChart width={40} height={20} data={fundingHistory}>
+            <LineChart width={36} height={16} data={fundingHistory}>
               <Line
                 type="monotone"
                 dataKey="rate"
-                stroke="#3b82f6"
+                stroke="#2dd4bf"
                 strokeWidth={1}
                 dot={false}
                 isAnimationActive={false}
@@ -163,14 +163,14 @@ export default function AssetRow({
         </td>
 
         {walletConnected && (
-          <td className="px-3 py-1 whitespace-nowrap">
+          <td className="px-2.5 py-0.5 whitespace-nowrap">
             <div className="flex gap-1">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onTrade("long");
                 }}
-                className="px-2 py-0.5 text-[11px] rounded font-medium transition-colors bg-green-500/10 text-green-500 hover:bg-green-500/20"
+                className="px-1.5 py-0.5 text-[10px] rounded font-medium transition-colors bg-green-500/10 text-green-500 hover:bg-green-500/20"
               >
                 Long ↑
               </button>
@@ -179,7 +179,7 @@ export default function AssetRow({
                   e.stopPropagation();
                   onTrade("short");
                 }}
-                className="px-2 py-0.5 text-[11px] rounded font-medium transition-colors bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                className="px-1.5 py-0.5 text-[10px] rounded font-medium transition-colors bg-red-500/10 text-red-500 hover:bg-red-500/20"
               >
                 Short ↓
               </button>

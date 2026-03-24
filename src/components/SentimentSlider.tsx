@@ -23,10 +23,10 @@ export default function SentimentSlider() {
 
   return (
     <>
-      <div className="flex-shrink-0 min-w-[280px] h-[52px] rounded-md border border-zinc-800 bg-zinc-900/70 px-3 py-2">
+      <div className="flex-shrink-0 min-w-[248px] h-[46px] rounded-md border border-zinc-800 bg-zinc-900/70 px-2.5 py-1.5">
         <div className="flex items-baseline justify-between">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+            <span className="text-[9px] uppercase tracking-wider text-zinc-500">
               HyperPulse VIX Sentiment
             </span>
             <button
@@ -39,28 +39,28 @@ export default function SentimentSlider() {
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className={`text-sm font-mono font-bold ${colorClass}`}>
+            <span className={`text-[13px] font-mono font-bold ${colorClass}`}>
               {result.score} · {result.label}
             </span>
             <span
-              className="rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400"
+              className="rounded border border-zinc-700 bg-zinc-950 px-1 py-0.5 text-[8px] font-mono uppercase tracking-wider text-zinc-400"
               title="Hyperliquid-native scope"
             >
               HL-native
             </span>
           </div>
         </div>
-        <div className="mt-1.5 relative h-2 rounded-full bg-zinc-800 overflow-hidden">
+        <div className="mt-1 relative h-1.5 rounded-full bg-zinc-800 overflow-hidden">
           <div
             className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 via-zinc-500 to-green-500"
             style={{ width: "100%" }}
           />
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border border-zinc-900"
-            style={{ left: `calc(${result.score}% - 5px)` }}
+            className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white border border-zinc-900"
+            style={{ left: `calc(${result.score}% - 4px)` }}
           />
         </div>
-        <div className="mt-1 flex justify-between text-[9px] text-zinc-500 font-mono">
+        <div className="mt-0.5 flex justify-between text-[8px] text-zinc-500 font-mono">
           <span>Fear</span>
           <span>Neutral</span>
           <span>Greed</span>

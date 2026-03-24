@@ -195,9 +195,9 @@ export default function MarketTable({
 
   if (activeLoading) {
     return (
-      <div className="p-4 space-y-2 h-full overflow-hidden">
+      <div className="p-3 space-y-1.5 h-full overflow-hidden">
         {Array.from({ length: 20 }).map((_, i) => (
-          <div key={i} className="h-9 skeleton rounded" />
+          <div key={i} className="h-8 skeleton rounded" />
         ))}
       </div>
     );
@@ -208,7 +208,7 @@ export default function MarketTable({
   return (
     <>
       <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 border-b border-zinc-800 bg-zinc-950">
+        <div className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 border-b border-zinc-800 bg-zinc-950">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
             <input
@@ -216,16 +216,16 @@ export default function MarketTable({
               placeholder={mode === "perps" ? "Search perps..." : "Search HIP-3 spot..."}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-7 pr-2 py-1 w-[180px] text-xs font-mono bg-zinc-900 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+              className="pl-7 pr-2 py-1 w-[160px] text-[11px] font-mono bg-zinc-900 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-500/60"
             />
           </div>
 
           <div className="flex items-center gap-1">
             <button
               onClick={() => setMode("perps")}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+              className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
                 mode === "perps"
-                  ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                   : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
               }`}
             >
@@ -233,9 +233,9 @@ export default function MarketTable({
             </button>
             <button
               onClick={() => setMode("spot")}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+              className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
                 mode === "spot"
-                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                   : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
               }`}
             >
@@ -248,9 +248,9 @@ export default function MarketTable({
               <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
                 <button
                   onClick={() => setCategoryFilter("All")}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-full whitespace-nowrap transition-colors ${
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                     categoryFilter === "All"
-                      ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                       : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                   }`}
                 >
@@ -260,9 +260,9 @@ export default function MarketTable({
                   <button
                     key={cat}
                     onClick={() => setCategoryFilter(cat)}
-                    className={`px-2.5 py-1 text-[11px] font-medium rounded-full whitespace-nowrap transition-colors ${
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                       categoryFilter === cat
-                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                         : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                     }`}
                   >
@@ -271,15 +271,15 @@ export default function MarketTable({
                 ))}
               </div>
 
-              <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+              <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
                 <label className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={hideSmallCaps}
                     onChange={(e) => setHideSmallCaps(e.target.checked)}
-                    className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 accent-blue-500"
+                    className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 accent-emerald-500"
                   />
-                  <span className="text-[11px] text-zinc-500 whitespace-nowrap">
+                  <span className="text-[10px] text-zinc-500 whitespace-nowrap">
                     &gt;$10M OI
                   </span>
                 </label>
@@ -291,9 +291,9 @@ export default function MarketTable({
                 <button
                   key={cat}
                   onClick={() => setSpotFilter(cat)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-full whitespace-nowrap transition-colors ${
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                     spotFilter === cat
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                       : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                   }`}
                 >
@@ -308,7 +308,7 @@ export default function MarketTable({
           {mode === "perps" ? (
             <table className="w-full border-collapse">
               <thead className="sticky top-0 bg-zinc-950 z-10">
-                <tr className="text-[11px] uppercase tracking-wider text-zinc-500 font-sans">
+                <tr className="text-[10px] uppercase tracking-wider text-zinc-500 font-sans">
                   {PERP_COLUMNS.map((col) => (
                     <th
                       key={col.key}
@@ -320,19 +320,19 @@ export default function MarketTable({
                           setPerpSortAsc(false);
                         }
                       }}
-                      className={`px-3 py-2 cursor-pointer hover:text-zinc-300 transition-colors select-none whitespace-nowrap ${col.align}`}
+                      className={`px-2.5 py-1.5 cursor-pointer hover:text-zinc-300 transition-colors select-none whitespace-nowrap ${col.align}`}
                     >
                       {col.label}
                       {perpSortKey === col.key && (
-                        <span className="ml-1 text-blue-500">
+                        <span className="ml-1 text-emerald-400">
                           {perpSortAsc ? "↑" : "↓"}
                         </span>
                       )}
                     </th>
                   ))}
-                  <th className="px-3 py-2 text-left whitespace-nowrap">7d Chart</th>
+                  <th className="px-2.5 py-1.5 text-left whitespace-nowrap">7d Chart</th>
                   {isConnected && (
-                    <th className="px-3 py-2 text-left whitespace-nowrap">Trade</th>
+                    <th className="px-2.5 py-1.5 text-left whitespace-nowrap">Trade</th>
                   )}
                 </tr>
               </thead>
@@ -367,7 +367,7 @@ export default function MarketTable({
           ) : (
             <table className="w-full border-collapse">
               <thead className="sticky top-0 bg-zinc-950 z-10">
-                <tr className="text-[11px] uppercase tracking-wider text-zinc-500 font-sans">
+                <tr className="text-[10px] uppercase tracking-wider text-zinc-500 font-sans">
                   {SPOT_COLUMNS.map((col) => (
                     <th
                       key={col.key}
@@ -379,7 +379,7 @@ export default function MarketTable({
                           setSpotSortAsc(false);
                         }
                       }}
-                      className={`px-3 py-2 cursor-pointer hover:text-zinc-300 transition-colors select-none whitespace-nowrap ${col.align}`}
+                      className={`px-2.5 py-1.5 cursor-pointer hover:text-zinc-300 transition-colors select-none whitespace-nowrap ${col.align}`}
                     >
                       {col.label}
                       {spotSortKey === col.key && (
@@ -389,8 +389,8 @@ export default function MarketTable({
                       )}
                     </th>
                   ))}
-                  <th className="px-3 py-2 text-left whitespace-nowrap">Category</th>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">Market</th>
+                  <th className="px-2.5 py-1.5 text-left whitespace-nowrap">Category</th>
+                  <th className="px-2.5 py-1.5 text-left whitespace-nowrap">Market</th>
                 </tr>
               </thead>
               <tbody>
@@ -407,23 +407,23 @@ export default function MarketTable({
                   return (
                     <tr
                       key={asset.marketIndex}
-                      className={`h-9 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors text-sm font-mono ${rowBg}`}
+                      className={`h-8 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors text-xs font-mono ${rowBg}`}
                     >
-                      <td className="px-3 py-1 text-zinc-50 font-medium whitespace-nowrap">{asset.symbol}</td>
-                      <td className="px-3 py-1 text-right text-zinc-50 whitespace-nowrap">
+                      <td className="px-2.5 py-0.5 text-zinc-50 font-medium whitespace-nowrap">{asset.symbol}</td>
+                      <td className="px-2.5 py-0.5 text-right text-zinc-50 whitespace-nowrap">
                         {formatUSD(asset.markPx, decimals)}
                       </td>
-                      <td className={`px-3 py-1 text-right whitespace-nowrap ${priceColor}`}>
+                      <td className={`px-2.5 py-0.5 text-right whitespace-nowrap ${priceColor}`}>
                         {formatPct(asset.priceChange24h)}
                       </td>
-                      <td className="px-3 py-1 text-right text-zinc-300 whitespace-nowrap">
+                      <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
                         {formatCompact(asset.dayVolume)}
                       </td>
-                      <td className="px-3 py-1 text-right text-zinc-300 whitespace-nowrap">
+                      <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
                         {formatCompact(asset.marketCap)}
                       </td>
-                      <td className="px-3 py-1 text-zinc-400 whitespace-nowrap">{asset.category}</td>
-                      <td className="px-3 py-1 text-zinc-500 whitespace-nowrap">{asset.market}</td>
+                      <td className="px-2.5 py-0.5 text-zinc-400 whitespace-nowrap">{asset.category}</td>
+                      <td className="px-2.5 py-0.5 text-zinc-500 whitespace-nowrap">{asset.market}</td>
                     </tr>
                   );
                 })}
@@ -444,7 +444,7 @@ export default function MarketTable({
           )}
         </div>
 
-        <div className="flex-shrink-0 flex items-center justify-between px-3 py-1.5 text-[11px] text-zinc-600 font-mono border-t border-zinc-800">
+        <div className="flex-shrink-0 flex items-center justify-between px-2.5 py-1 text-[10px] text-zinc-600 font-mono border-t border-zinc-800">
           {mode === "perps" ? (
             <>
               <span>{perpsFiltered.length} of {assets.length} perps</span>
