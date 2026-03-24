@@ -4,16 +4,16 @@
 
 :root {
   --bg: #09090b;
-  --bg-card: #18181b;
-  --bg-elevated: #27272a;
-  --border: #27272a;
+  --bg-card: #0f1412;
+  --bg-elevated: #151b18;
+  --border: #1f2a26;
   --text: #fafafa;
-  --text-muted: #71717a;
-  --positive: #22c55e;
+  --text-muted: #7c8b84;
+  --positive: #2dd4bf;
   --negative: #ef4444;
-  --warning: #f97316;
-  --oi-spike: #eab308;
-  --accent: #3b82f6;
+  --warning: #22c55e;
+  --oi-spike: #14b8a6;
+  --accent: #10b981;
 }
 
 * {
@@ -26,7 +26,10 @@ body {
   padding: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 30%),
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.05), transparent 24%),
+    linear-gradient(180deg, #070b0a 0%, #09090b 45%, #050607 100%);
   color: var(--text);
 }
 
@@ -39,30 +42,41 @@ body {
   width: 100vw;
   overflow: hidden;
   gap: 1px;
-  background: var(--border);
+  background:
+    linear-gradient(180deg, rgba(45, 212, 191, 0.08), transparent 22%),
+    var(--border);
 }
 
 .zone-nav {
   grid-column: 1 / -1;
-  background: var(--bg-card);
+  background:
+    linear-gradient(180deg, rgba(16, 185, 129, 0.08), rgba(15, 20, 18, 0.98)),
+    var(--bg-card);
+  border-bottom: 1px solid rgba(45, 212, 191, 0.08);
 }
 
 .zone-flashcards {
   grid-column: 1 / -1;
-  background: var(--bg);
+  background:
+    linear-gradient(180deg, rgba(16, 185, 129, 0.03), transparent 72%),
+    var(--bg);
 }
 
 .zone-table {
   grid-column: 1 / 2;
   grid-row: 3 / 4;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.05), transparent 24%),
+    var(--bg);
   overflow: hidden;
 }
 
 .zone-sidebar {
   grid-column: 2 / 3;
   grid-row: 3 / 4;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.05), transparent 26%),
+    var(--bg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -79,12 +93,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #24312b;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #325046;
 }
 
 /* Hide scrollbar for flashcard strip */
@@ -99,7 +113,7 @@ body {
 /* Animations */
 @keyframes price-flash-up {
   0% {
-    background-color: rgba(34, 197, 94, 0.2);
+    background-color: rgba(45, 212, 191, 0.16);
   }
   100% {
     background-color: transparent;
@@ -151,11 +165,11 @@ body {
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.35);
   }
   50% {
     opacity: 0.7;
-    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+    box-shadow: 0 0 0 6px rgba(45, 212, 191, 0);
   }
 }
 
@@ -163,9 +177,9 @@ body {
 .skeleton {
   background: linear-gradient(
     90deg,
-    #27272a 25%,
-    #3f3f46 50%,
-    #27272a 75%
+    #16201c 25%,
+    #22322c 50%,
+    #16201c 75%
   );
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;

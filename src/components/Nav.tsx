@@ -15,19 +15,21 @@ export default function Nav() {
     : "--:--:--";
 
   return (
-    <div className="flex items-center justify-between px-4 h-full">
+    <div className="flex items-center justify-between px-4 h-full border-b border-emerald-400/10 bg-gradient-to-r from-zinc-950/95 via-zinc-950 to-emerald-950/20 backdrop-blur-sm">
       {/* Left: Wordmark */}
       <div className="font-mono text-lg font-bold tracking-tight text-white">
-        HyperPulse
+        <span className="bg-gradient-to-r from-white via-emerald-100 to-teal-300 bg-clip-text text-transparent">
+          HyperPulse
+        </span>
       </div>
 
       {/* Center: Live indicator */}
-      <div className="flex items-center gap-2 text-xs text-zinc-500">
+      <div className="flex items-center gap-2 rounded-full border border-emerald-400/10 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-500 shadow-[0_0_0_1px_rgba(16,185,129,0.02)]">
         <div className={loading ? "live-dot opacity-30" : "live-dot"} />
-        <span className="text-zinc-400 font-mono">
+        <span className="text-emerald-200/80 font-mono">
           {loading ? "Connecting..." : "Live"}
         </span>
-        <span className="font-mono">{timeStr}</span>
+        <span className="font-mono text-zinc-300">{timeStr}</span>
       </div>
 
       {/* Right: Wallet connect */}
