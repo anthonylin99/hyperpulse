@@ -1,0 +1,296 @@
+"use client";
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
+import { getSubscriptionClient } from "@/lib/hyperliquid";
+import { fundingToSignal } from "@/lib/signals";
+import {
+  POLL_INTERVAL_MARKET,
+  WHALE_THRESHOLD_USD,
+  OI_SPIKE_THRESHOLD_PCT,
+} from "@/lib/constants";
+import type { MarketAsset, ActivityEntry } from "@/types";
+
+interface FundingHistoryPoint {
+  time: number;
+  rate: number;
+}
+
+interface MarketContextValue {
+  assets: MarketAsset[];
+  loading: boolean;
+  error: string | null;
+  lastUpdated: Date | null;
+  selectedAsset: string | null;
+  setSelectedAsset: (coin: string | null) => void;
+  activityFeed: ActivityEntry[];
+  fundingHistories: Record<string, FundingHistoryPoint[]>;
+}
+
+const MarketContext = createContext<MarketContextValue | null>(null);
+
+let activityIdCounter = 0;
+
+export function MarketProvider({ children }: { children: ReactNode }) {
+  const [assets, setAssets] = useState<MarketAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+  const [activityFeed, setActivityFeed] = useState<ActivityEntry[]>([]);
+  const [fundingHistories, setFundingHistories] = useState<
+    Record<string, FundingHistoryPoint[]>
+  >({});
+  const prevOIRef = useRef<Record<string, number>>({});
+  const assetsRef = useRef<MarketAsset[]>([]);
+  const wsInitRef = useRef(false);
+
+  const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
+    const id = `act-${++activityIdCounter}`;
+    setActivityFeed((prev) => [{ ...entry, id }, ...prev].slice(0, 50));
+  }, []);
+
+  const fetchMarketData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/market");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+
+      const [meta, assetCtxs] = data;
+      const prevOI = prevOIRef.current;
+
+      const parsed = meta.universe
+        .map((u: { name: string; isDelisted: boolean; maxLeverage: number }, i: number) => {
+          if (u.isDelisted) return null;
+          const ctx = assetCtxs[i];
+          if (!ctx) return null;
+
+          const markPx = parseFloat(ctx.markPx);
+          const midPx = ctx.midPx ? parseFloat(ctx.midPx) : markPx;
+          const oraclePx = parseFloat(ctx.oraclePx);
+          const prevDayPx = parseFloat(ctx.prevDayPx);
+          const fundingRate = parseFloat(ctx.funding);
+          const fundingAPR = fundingRate * 8760 * 100;
+          const openInterest = parseFloat(ctx.openInterest) * markPx;
+          const dayVolume = parseFloat(ctx.dayNtlVlm);
+          const priceChange24h =
+            prevDayPx > 0
+              ? ((markPx - prevDayPx) / prevDayPx) * 100
+              : 0;
+
+          const prevOIValue = prevOI[u.name] ?? null;
+          const oiChangePct =
+            prevOIValue !== null && prevOIValue > 0
+              ? ((openInterest - prevOIValue) / prevOIValue) * 100
+              : null;
+
+          const signal = fundingToSignal(fundingAPR, u.name, openInterest, oiChangePct ?? 0);
+
+          return {
+            coin: u.name,
+            assetIndex: i,
+            markPx,
+            midPx,
+            oraclePx,
+            fundingRate,
+            fundingAPR,
+            openInterest,
+            prevOpenInterest: prevOIValue,
+            oiChangePct,
+            dayVolume,
+            prevDayPx,
+            priceChange24h,
+            signal,
+            maxLeverage: u.maxLeverage,
+          } as MarketAsset;
+        })
+        .filter((a: MarketAsset | null): a is MarketAsset => a !== null);
+
+      // Detect OI spikes before updating prevOI
+      if (Object.keys(prevOI).length > 0) {
+        for (const asset of parsed) {
+          const prev = prevOI[asset.coin];
+          if (prev && prev > 0) {
+            const changePct = ((asset.openInterest - prev) / prev) * 100;
+            if (Math.abs(changePct) > OI_SPIKE_THRESHOLD_PCT) {
+              addActivity({
+                type: "oi-spike",
+                coin: asset.coin,
+                message: `[OI ${changePct > 0 ? "SPIKE" : "FLUSH"}] ${asset.coin} open interest ${changePct > 0 ? "up" : "down"} ${Math.abs(changePct).toFixed(1)}% in 30s`,
+                timestamp: Date.now(),
+                notional: asset.openInterest,
+              });
+            }
+          }
+        }
+      }
+
+      // Store current OI for next poll delta
+      const newOI: Record<string, number> = {};
+      for (const asset of parsed) {
+        newOI[asset.coin] = asset.openInterest;
+      }
+      prevOIRef.current = newOI;
+
+      setAssets(parsed);
+      assetsRef.current = parsed;
+      setError(null);
+      setLastUpdated(new Date());
+
+      // Fetch funding history for top 10 assets by OI
+      const top10 = [...parsed]
+        .sort((a, b) => b.openInterest - a.openInterest)
+        .slice(0, 10);
+
+      fetchFundingHistories(top10.map((a) => a.coin));
+    } catch (err) {
+      console.error("Failed to fetch market data:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
+  }, [addActivity]);
+
+  const fetchFundingHistories = useCallback(
+    async (coins: string[]) => {
+      const now = Date.now();
+      const startTime = now - 7 * 24 * 60 * 60 * 1000; // 7 days
+
+      const results: Record<string, FundingHistoryPoint[]> = {};
+
+      await Promise.allSettled(
+        coins.map(async (coin) => {
+          try {
+            const res = await fetch(
+              `/api/market/funding?coin=${coin}&startTime=${startTime}&endTime=${now}`
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            results[coin] = data.map(
+              (f: { time: number; fundingRate: string }) => ({
+                time: f.time,
+                rate: parseFloat(f.fundingRate),
+              })
+            );
+          } catch {
+            // Silently skip failed funding history fetches
+          }
+        })
+      );
+
+      setFundingHistories((prev) => ({ ...prev, ...results }));
+    },
+    []
+  );
+
+  // REST polling
+  useEffect(() => {
+    fetchMarketData();
+    const interval = setInterval(fetchMarketData, POLL_INTERVAL_MARKET);
+    return () => clearInterval(interval);
+  }, [fetchMarketData]);
+
+  // WebSocket: allMids for real-time price updates + trades for whale detection
+  useEffect(() => {
+    if (wsInitRef.current) return;
+    wsInitRef.current = true;
+
+    let allMidsSub: { unsubscribe: () => Promise<void> } | null = null;
+    const tradeSubs: Array<{ unsubscribe: () => Promise<void> }> = [];
+
+    const initWs = async () => {
+      try {
+        const sub = getSubscriptionClient();
+
+        // Subscribe to allMids for real-time price updates
+        allMidsSub = await sub.allMids((event) => {
+          const mids = event.mids;
+          setAssets((prev) => {
+            const updated = prev.map((asset) => {
+              const newMid = mids[asset.coin];
+              if (newMid) {
+                const newMidPx = parseFloat(newMid);
+                return { ...asset, midPx: newMidPx, markPx: newMidPx };
+              }
+              return asset;
+            });
+            assetsRef.current = updated;
+            return updated;
+          });
+          setLastUpdated(new Date());
+        });
+
+        // Subscribe to trades for major coins to detect whale trades
+        const whaleCoins = ["BTC", "ETH", "SOL"];
+        for (const coin of whaleCoins) {
+          try {
+            const tradeSub = await sub.trades({ coin }, (trades) => {
+              for (const trade of trades) {
+                const px = parseFloat(trade.px);
+                const sz = parseFloat(trade.sz);
+                const notional = px * sz;
+                if (notional >= WHALE_THRESHOLD_USD) {
+                  const side = trade.side === "B" ? "Long" : "Short";
+                  const taker = trade.users[1];
+                  const truncAddr = `${taker.slice(0, 6)}...${taker.slice(-4)}`;
+                  addActivity({
+                    type: "whale",
+                    coin: trade.coin,
+                    message: `[WHALE] ${side} ${trade.coin} $${(notional / 1_000_000).toFixed(1)}M — ${truncAddr}`,
+                    timestamp: trade.time,
+                    notional,
+                  });
+                }
+              }
+            });
+            tradeSubs.push(tradeSub);
+          } catch (err) {
+            console.warn(`Failed to subscribe to ${coin} trades:`, err);
+          }
+        }
+      } catch (err) {
+        console.warn("WebSocket init failed, relying on REST polling:", err);
+      }
+    };
+
+    initWs();
+
+    return () => {
+      allMidsSub?.unsubscribe().catch(console.warn);
+      tradeSubs.forEach((s) => s.unsubscribe().catch(console.warn));
+    };
+  }, [addActivity]);
+
+  return (
+    <MarketContext.Provider
+      value={{
+        assets,
+        loading,
+        error,
+        lastUpdated,
+        selectedAsset,
+        setSelectedAsset,
+        activityFeed,
+        fundingHistories,
+      }}
+    >
+      {children}
+    </MarketContext.Provider>
+  );
+}
+
+export function useMarket() {
+  const ctx = useContext(MarketContext);
+  if (!ctx) throw new Error("useMarket must be used within MarketProvider");
+  return ctx;
+}
