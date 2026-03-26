@@ -146,13 +146,20 @@ export function computePortfolioStats(
     avgWin: 0,
     avgLoss: 0,
     profitFactor: 0,
+    payoffRatio: 0,
+    kellyCriterion: 0,
     sharpeRatio: 0,
     sortinoRatio: 0,
     maxDrawdown: 0,
     maxDrawdownPeriod: null,
     calmarRatio: 0,
+    recoveryFactor: 0,
+    avgWinDuration: 0,
+    avgLossDuration: 0,
     avgTradeDuration: 0,
     totalPnl: 0,
+    grossProfit: 0,
+    grossLoss: 0,
     totalFeesPaid: 0,
     totalFundingNet: 0,
     bestTrade: null,
@@ -160,6 +167,9 @@ export function computePortfolioStats(
     longestWinStreak: 0,
     longestLoseStreak: 0,
     expectancy: 0,
+    largestWin: 0,
+    largestLoss: 0,
+    avgRMultiple: 0,
   };
 
   if (trades.length === 0) return empty;
@@ -224,22 +234,64 @@ export function computePortfolioStats(
 
   const sorted = [...trades].sort((a, b) => a.pnl - b.pnl);
 
+  const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
+  const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+
+  // Payoff ratio (risk/reward): how much you make on wins vs lose on losses
+  const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
+
+  // Kelly Criterion: f* = W - (1-W)/R where W = win rate, R = payoff ratio
+  // Tells you optimal fraction of capital to risk per trade
+  const winRate = wins.length / trades.length;
+  const kellyRaw = payoffRatio > 0
+    ? winRate - (1 - winRate) / payoffRatio
+    : 0;
+  const kellyCriterion = Math.max(kellyRaw, 0); // negative kelly = don't trade
+
+  // Recovery factor: net profit / max drawdown (in absolute terms)
+  const maxDDAbsolute = maxDrawdown * startingBalance;
+  const recoveryFactor = maxDDAbsolute > 0 ? totalPnl / maxDDAbsolute : 0;
+
+  // Win/loss duration analysis
+  const avgWinDuration = wins.length > 0
+    ? wins.reduce((s, t) => s + t.duration, 0) / wins.length
+    : 0;
+  const avgLossDuration = losses.length > 0
+    ? losses.reduce((s, t) => s + t.duration, 0) / losses.length
+    : 0;
+
+  // Largest single win/loss
+  const largestWin = wins.length > 0 ? Math.max(...wins.map((t) => t.pnl)) : 0;
+  const largestLoss = losses.length > 0 ? Math.min(...losses.map((t) => t.pnl)) : 0;
+
+  // R-multiple: express each trade's P&L as a multiple of avg loss ("1R")
+  const avgRMultiple = avgLoss > 0
+    ? (totalPnl / trades.length) / avgLoss
+    : 0;
+
   return {
     totalTrades: trades.length,
     winners: wins.length,
     losers: losses.length,
-    winRate: wins.length / trades.length,
-    avgWin: wins.length > 0 ? grossProfit / wins.length : 0,
-    avgLoss: losses.length > 0 ? grossLoss / losses.length : 0,
+    winRate,
+    avgWin,
+    avgLoss,
     profitFactor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0,
+    payoffRatio,
+    kellyCriterion,
     sharpeRatio,
     sortinoRatio,
     maxDrawdown,
     maxDrawdownPeriod,
     calmarRatio,
+    recoveryFactor,
+    avgWinDuration,
+    avgLossDuration,
     avgTradeDuration:
       trades.reduce((s, t) => s + t.duration, 0) / trades.length,
-    totalPnl: totalPnl,
+    totalPnl,
+    grossProfit,
+    grossLoss,
     totalFeesPaid: totalFees,
     totalFundingNet,
     bestTrade: sorted[sorted.length - 1] ?? null,
@@ -247,6 +299,9 @@ export function computePortfolioStats(
     longestWinStreak: maxWinStreak,
     longestLoseStreak: maxLoseStreak,
     expectancy: totalPnl / trades.length,
+    largestWin,
+    largestLoss,
+    avgRMultiple,
   };
 }
 

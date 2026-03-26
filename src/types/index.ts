@@ -129,13 +129,20 @@ export interface PortfolioStats {
   avgWin: number;
   avgLoss: number;
   profitFactor: number; // gross profit / gross loss
+  payoffRatio: number; // avg win / avg loss (risk/reward)
+  kellyCriterion: number; // optimal position size fraction
   sharpeRatio: number;
   sortinoRatio: number;
   maxDrawdown: number; // as decimal (0.22 = 22%)
   maxDrawdownPeriod: { start: number; end: number } | null;
   calmarRatio: number;
+  recoveryFactor: number; // net profit / max drawdown (absolute)
+  avgWinDuration: number; // ms — how long winning trades last
+  avgLossDuration: number; // ms — how long losing trades last
   avgTradeDuration: number; // ms
   totalPnl: number;
+  grossProfit: number;
+  grossLoss: number;
   totalFeesPaid: number;
   totalFundingNet: number;
   bestTrade: RoundTripTrade | null;
@@ -143,6 +150,9 @@ export interface PortfolioStats {
   longestWinStreak: number;
   longestLoseStreak: number;
   expectancy: number; // avg P&L per trade
+  largestWin: number;
+  largestLoss: number;
+  avgRMultiple: number; // avg trade P&L / avg loss (how many "R" per trade)
 }
 
 export interface AssetBreakdown {
