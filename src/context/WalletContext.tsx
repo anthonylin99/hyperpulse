@@ -32,6 +32,7 @@ interface WalletContextValue {
   address: string | null;
   apiAddress: string | null;
   isConnected: boolean;
+  isReadOnly: boolean;
   accountState: AccountState | null;
   exchangeClient: ExchangeClient | null;
   loading: boolean;
@@ -39,6 +40,7 @@ interface WalletContextValue {
   connectWithBrowserWallet: (
     preference?: BrowserWalletPreference
   ) => Promise<void>;
+  connectReadOnly: (walletAddress: string) => Promise<void>;
   disconnect: () => void;
   refreshPortfolio: () => Promise<void>;
 }
@@ -131,6 +133,7 @@ function parsePositions(
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [apiAddress, setApiAddress] = useState<string | null>(null);
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const [accountState, setAccountState] = useState<AccountState | null>(null);
   const [exchangeClient, setExchangeClient] = useState<ExchangeClient | null>(
     null
@@ -329,9 +332,44 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [fetchPortfolio, getInfo]
   );
 
+  const connectReadOnly = useCallback(
+    async (walletAddress: string) => {
+      setLoading(true);
+      try {
+        const normalized = walletAddress.trim();
+        if (!MAIN_ADDRESS_REGEX.test(normalized)) {
+          throw new Error("Invalid wallet address. Expected 42-char 0x address.");
+        }
+
+        await fetchPortfolio(normalized, true);
+
+        setAddress(normalized);
+        setApiAddress(null);
+        setExchangeClient(null);
+        setIsReadOnly(true);
+
+        sessionStorage.setItem(SESSION_MAIN_ADDR, normalized);
+        sessionStorage.removeItem(SESSION_API_KEY);
+
+        toast.success(
+          `Viewing: ${normalized.slice(0, 6)}...${normalized.slice(-4)} (read-only)`
+        );
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Failed to load address";
+        toast.error(msg);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchPortfolio]
+  );
+
   const disconnect = useCallback(() => {
     setAddress(null);
     setApiAddress(null);
+    setIsReadOnly(false);
     setAccountState(null);
     setExchangeClient(null);
     sessionStorage.removeItem(SESSION_API_KEY);
@@ -355,6 +393,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (storedKey && storedAddr) {
       connect(storedKey, storedAddr).catch(() => {
         sessionStorage.removeItem(SESSION_API_KEY);
+        sessionStorage.removeItem(SESSION_MAIN_ADDR);
+      });
+    } else if (storedAddr && !storedKey) {
+      // Restore read-only session
+      connectReadOnly(storedAddr).catch(() => {
         sessionStorage.removeItem(SESSION_MAIN_ADDR);
       });
     }
@@ -382,11 +425,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         address,
         apiAddress,
         isConnected: !!address,
+        isReadOnly,
         accountState,
         exchangeClient,
         loading,
         connect,
         connectWithBrowserWallet,
+        connectReadOnly,
         disconnect,
         refreshPortfolio,
       }}

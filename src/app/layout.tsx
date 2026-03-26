@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { Toaster } from "react-hot-toast";
 import { MarketProvider } from "@/context/MarketContext";
 import { WalletProvider } from "@/context/WalletContext";
+import { PortfolioProvider } from "@/context/PortfolioContext";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -17,9 +18,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "HyperPulse — Hyperliquid Market Intelligence",
+  title: "HyperPulse — Portfolio Analytics for Hyperliquid",
   description:
-    "Real-time funding rates, open interest, and trading for Hyperliquid",
+    "TradFi-grade portfolio analytics, trade journal, and AI insights for Hyperliquid traders",
 };
 
 export default function RootLayout({
@@ -34,7 +35,9 @@ export default function RootLayout({
       >
         <MarketProvider>
           <WalletProvider>
+            <PortfolioProvider>
             {children}
+            </PortfolioProvider>
             <Toaster
               position="bottom-right"
               toastOptions={{
