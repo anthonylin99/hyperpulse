@@ -174,10 +174,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const crossAccountValue = parseFloat(state.crossMarginSummary.accountValue);
         const isolatedAccountValue = parseFloat(state.marginSummary.accountValue);
 
+        // Total account value = perps equity + spot USDC balance
+        // When funds are in spot (not deposited to perps), crossAccountValue is 0
+        const totalAccountValue = crossAccountValue + spotUsdcTotal;
+
         setAccountState({
-          // Use cross summary for main dashboard "account value" to align with
-          // Hyperliquid's cross-margin trading view.
-          accountValue: crossAccountValue,
+          accountValue: totalAccountValue,
           crossAccountValue,
           isolatedAccountValue,
           totalMarginUsed: parseFloat(state.crossMarginSummary.totalMarginUsed),
