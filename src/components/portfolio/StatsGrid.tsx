@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, cn } from "@/lib/format";
 
@@ -9,15 +10,16 @@ interface StatCardProps {
   subValue?: string;
   positive?: boolean | null;
   tooltip?: string;
+  large?: boolean;
 }
 
-function StatCard({ label, value, subValue, positive, tooltip }: StatCardProps) {
+function StatCard({ label, value, subValue, positive, tooltip, large }: StatCardProps) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4" title={tooltip}>
       <div className="text-xs text-zinc-500 mb-1">{label}</div>
       <div
         className={cn(
-          "text-xl font-bold",
+          large ? "text-2xl font-bold" : "text-xl font-bold",
           positive === true && "text-emerald-400",
           positive === false && "text-red-400",
           positive === null && "text-zinc-100",
@@ -40,129 +42,149 @@ function formatDuration(ms: number): string {
 }
 
 export default function StatsGrid() {
-  const { stats } = usePortfolio();
+  const { stats, fills, trades, byAsset, funding } = usePortfolio();
 
-  if (!stats || stats.totalTrades === 0) return null;
+  const derived = useMemo(() => {
+    if (!stats || stats.totalTrades === 0) return null;
+
+    // Liquidation count from fills
+    const liquidations = fills.filter((f) => f.liquidation).length;
+
+    // Long vs Short P&L
+    let longPnl = 0;
+    let shortPnl = 0;
+    let longCount = 0;
+    let shortCount = 0;
+    for (const t of trades) {
+      if (t.direction === "long") { longPnl += t.pnl; longCount++; }
+      else { shortPnl += t.pnl; shortCount++; }
+    }
+
+    // Best/worst asset
+    const sortedAssets = [...byAsset].sort((a, b) => b.pnl - a.pnl);
+    const bestAsset = sortedAssets[0] ?? null;
+    const worstAsset = sortedAssets[sortedAssets.length - 1] ?? null;
+
+    // Fee as % of volume
+    const totalVolume = trades.reduce((s, t) => s + t.notional, 0);
+    const feePct = totalVolume > 0 ? (stats.totalFeesPaid / totalVolume) * 100 : 0;
+
+    // Funding earned vs paid
+    const fundingEarned = funding.filter((f) => f.usdc > 0).reduce((s, f) => s + f.usdc, 0);
+    const fundingPaid = funding.filter((f) => f.usdc < 0).reduce((s, f) => s + f.usdc, 0);
+
+    return {
+      liquidations,
+      longPnl, shortPnl, longCount, shortCount,
+      bestAsset, worstAsset,
+      feePct, totalVolume,
+      fundingEarned, fundingPaid,
+    };
+  }, [stats, fills, trades, byAsset, funding]);
+
+  if (!stats || stats.totalTrades === 0 || !derived) return null;
+
+  const netPnl = stats.totalPnl + stats.totalFundingNet - stats.totalFeesPaid;
 
   return (
     <div className="space-y-3">
-      {/* Primary metrics */}
+      {/* Row 1: The Money — what matters most */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard
+          label="Net P&L"
+          value={formatUSD(netPnl)}
+          subValue={`trading ${formatUSD(stats.totalPnl)} + funding ${formatUSD(stats.totalFundingNet)} - fees ${formatUSD(stats.totalFeesPaid)}`}
+          positive={netPnl > 0 ? true : netPnl < 0 ? false : null}
+          large
+        />
         <StatCard
           label="Win Rate"
           value={`${(stats.winRate * 100).toFixed(1)}%`}
           subValue={`${stats.winners}W / ${stats.losers}L`}
           positive={stats.winRate > 0.5 ? true : stats.winRate < 0.4 ? false : null}
-          tooltip="Percentage of trades that were profitable"
+          tooltip="Percentage of round-trip trades that were profitable"
         />
         <StatCard
-          label="Profit Factor"
-          value={
-            stats.profitFactor === Infinity
-              ? "∞"
-              : stats.profitFactor.toFixed(2)
-          }
-          subValue={`$${stats.grossProfit.toFixed(0)} / $${stats.grossLoss.toFixed(0)}`}
-          positive={
-            stats.profitFactor > 1.5
-              ? true
-              : stats.profitFactor < 1
-                ? false
-                : null
-          }
-          tooltip="Gross profit divided by gross loss. Above 1.5 is strong"
-        />
-        <StatCard
-          label="Sharpe Ratio"
-          value={stats.sharpeRatio.toFixed(2)}
-          subValue="annualized"
-          positive={
-            stats.sharpeRatio > 1 ? true : stats.sharpeRatio < 0.5 ? false : null
-          }
-          tooltip="Risk-adjusted return. Above 1.0 is good, above 2.0 is excellent"
+          label="Avg Win vs Avg Loss"
+          value={`${formatUSD(stats.avgWin)} / ${formatUSD(stats.avgLoss)}`}
+          subValue={stats.avgWin > stats.avgLoss ? "winners > losers" : "losers > winners — cut losses faster"}
+          positive={stats.avgWin > stats.avgLoss ? true : false}
+          tooltip="Are your winning trades bigger than your losing trades? If not, you're giving back profits."
         />
         <StatCard
           label="Max Drawdown"
           value={`${(stats.maxDrawdown * 100).toFixed(1)}%`}
+          subValue={stats.maxDrawdown > 0.3 ? "high risk — consider smaller size" : stats.maxDrawdown < 0.1 ? "well controlled" : "moderate"}
           positive={
-            stats.maxDrawdown < 0.15
-              ? true
-              : stats.maxDrawdown > 0.3
-                ? false
-                : null
+            stats.maxDrawdown < 0.15 ? true : stats.maxDrawdown > 0.3 ? false : null
           }
-          tooltip="Largest peak-to-trough decline in portfolio equity"
+          tooltip="Largest peak-to-trough decline. Above 30% is dangerous for account longevity."
         />
       </div>
 
-      {/* Risk / reward metrics */}
+      {/* Row 2: Perps-specific — funding, fees, liquidations */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
-          label="Payoff Ratio"
-          value={
-            stats.payoffRatio === Infinity
-              ? "∞"
-              : stats.payoffRatio.toFixed(2)
-          }
-          subValue={`${formatUSD(stats.avgWin)} / ${formatUSD(stats.avgLoss)}`}
-          positive={
-            stats.payoffRatio > 1.5
-              ? true
-              : stats.payoffRatio < 0.8
-                ? false
-                : null
-          }
-          tooltip="Avg win / avg loss. Above 1.0 means wins are bigger than losses"
+          label="Funding P&L"
+          value={formatUSD(stats.totalFundingNet)}
+          subValue={`earned ${formatUSD(derived.fundingEarned)} / paid ${formatUSD(Math.abs(derived.fundingPaid))}`}
+          positive={stats.totalFundingNet > 0 ? true : stats.totalFundingNet < -5 ? false : null}
+          tooltip="Net funding payments. Positive = you earned funding by being on the less crowded side."
         />
         <StatCard
-          label="Kelly Criterion"
-          value={`${(stats.kellyCriterion * 100).toFixed(1)}%`}
-          subValue={stats.kellyCriterion === 0 ? "edge insufficient" : "optimal size"}
-          positive={
-            stats.kellyCriterion > 0.1
-              ? true
-              : stats.kellyCriterion === 0
-                ? false
-                : null
-          }
-          tooltip="Optimal fraction of capital to risk per trade based on your edge"
+          label="Fees Paid"
+          value={formatUSD(stats.totalFeesPaid)}
+          subValue={`${derived.feePct.toFixed(2)}% of volume`}
+          positive={derived.feePct < 0.03 ? true : derived.feePct > 0.06 ? false : null}
+          tooltip="Total trading fees. Use limit orders to reduce fees — makers pay less than takers on Hyperliquid."
         />
         <StatCard
-          label="Expectancy"
-          value={formatUSD(stats.expectancy)}
-          subValue="per trade"
-          positive={
-            stats.expectancy > 0 ? true : stats.expectancy < 0 ? false : null
-          }
-          tooltip="Average profit/loss per trade. Must be positive to be profitable long-term"
-        />
-        <StatCard
-          label="Sortino Ratio"
-          value={stats.sortinoRatio.toFixed(2)}
-          subValue="downside only"
-          positive={
-            stats.sortinoRatio > 1.5 ? true : stats.sortinoRatio < 0.5 ? false : null
-          }
-          tooltip="Like Sharpe but only penalizes downside volatility. Higher is better"
-        />
-      </div>
-
-      {/* Duration & streak metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard
-          label="Total Trades"
-          value={stats.totalTrades.toLocaleString()}
-          subValue={`avg ${formatDuration(stats.avgTradeDuration)} hold`}
+          label="Biggest Win / Loss"
+          value={`${formatUSD(stats.largestWin)} / ${formatUSD(stats.largestLoss)}`}
+          subValue={stats.bestTrade ? `${stats.bestTrade.coin} / ${stats.worstTrade?.coin}` : ""}
           positive={null}
+          tooltip="Your single best and worst trades. Large outliers suggest inconsistent sizing."
         />
         <StatCard
-          label="Win vs Loss Duration"
-          value={`${formatDuration(stats.avgWinDuration)} / ${formatDuration(stats.avgLossDuration)}`}
+          label="Liquidations"
+          value={derived.liquidations.toString()}
+          subValue={derived.liquidations === 0 ? "clean record" : "reduce leverage or use stops"}
+          positive={derived.liquidations === 0 ? true : false}
+          tooltip="Number of fills that were liquidations. Even one means your risk management needs work."
+        />
+      </div>
+
+      {/* Row 3: Behavioral — directional bias, best/worst coins, hold time */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard
+          label="Long vs Short P&L"
+          value={`${formatUSD(derived.longPnl)} / ${formatUSD(derived.shortPnl)}`}
+          subValue={`${derived.longCount}L / ${derived.shortCount}S trades`}
+          positive={null}
+          tooltip="P&L split by direction. If one side is consistently negative, consider trading only your profitable direction."
+        />
+        <StatCard
+          label="Best Asset"
+          value={derived.bestAsset ? `${derived.bestAsset.coin} ${formatUSD(derived.bestAsset.pnl)}` : "—"}
+          subValue={derived.bestAsset ? `${derived.bestAsset.trades} trades, ${(derived.bestAsset.winRate * 100).toFixed(0)}% win` : ""}
+          positive={derived.bestAsset && derived.bestAsset.pnl > 0 ? true : null}
+          tooltip="The coin you're most profitable on. Focus your edge here."
+        />
+        <StatCard
+          label="Worst Asset"
+          value={derived.worstAsset ? `${derived.worstAsset.coin} ${formatUSD(derived.worstAsset.pnl)}` : "—"}
+          subValue={derived.worstAsset ? `${derived.worstAsset.trades} trades, ${(derived.worstAsset.winRate * 100).toFixed(0)}% win` : ""}
+          positive={derived.worstAsset && derived.worstAsset.pnl < 0 ? false : null}
+          tooltip="The coin you're losing the most on. Consider avoiding it or changing your strategy."
+        />
+        <StatCard
+          label="Avg Hold Time"
+          value={`${formatDuration(stats.avgWinDuration)} W / ${formatDuration(stats.avgLossDuration)} L`}
           subValue={
             stats.avgLossDuration > stats.avgWinDuration * 1.5
               ? "holding losers too long"
               : stats.avgWinDuration > stats.avgLossDuration * 1.5
-                ? "letting winners run"
+                ? "letting winners run — good"
                 : "balanced"
           }
           positive={
@@ -172,29 +194,7 @@ export default function StatsGrid() {
                 ? true
                 : null
           }
-          tooltip="How long winning trades last vs losing trades"
-        />
-        <StatCard
-          label="Calmar Ratio"
-          value={stats.calmarRatio.toFixed(2)}
-          subValue="return / drawdown"
-          positive={
-            stats.calmarRatio > 2 ? true : stats.calmarRatio < 0.5 ? false : null
-          }
-          tooltip="Annualized return divided by max drawdown. Higher means better risk-adjusted"
-        />
-        <StatCard
-          label="Recovery Factor"
-          value={stats.recoveryFactor.toFixed(2)}
-          subValue={`${stats.longestWinStreak}W / ${stats.longestLoseStreak}L streaks`}
-          positive={
-            stats.recoveryFactor > 1
-              ? true
-              : stats.recoveryFactor < 0
-                ? false
-                : null
-          }
-          tooltip="Net profit / max drawdown. Above 1.0 means you've recovered from your worst dip"
+          tooltip="How long you hold winning vs losing trades. Holding losers longer than winners is a classic retail mistake."
         />
       </div>
     </div>

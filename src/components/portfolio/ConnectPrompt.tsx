@@ -1,14 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWallet } from "@/context/WalletContext";
-import { cn } from "@/lib/format";
+import { getSavedWallets, removeWallet, type SavedWallet } from "@/lib/savedWallets";
+import { truncateAddress, cn } from "@/lib/format";
 
 export default function ConnectPrompt() {
   const { connectReadOnly, connectWithBrowserWallet, loading } = useWallet();
   const [addressInput, setAddressInput] = useState("");
   const [mode, setMode] = useState<"main" | "paste">("main");
   const [error, setError] = useState<string | null>(null);
+  const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
+
+  useEffect(() => {
+    setSavedWallets(getSavedWallets());
+  }, []);
 
   const handlePasteSubmit = async () => {
     if (!addressInput.trim()) return;
@@ -29,6 +35,21 @@ export default function ConnectPrompt() {
     }
   };
 
+  const handleSavedWalletClick = async (wallet: SavedWallet) => {
+    setError(null);
+    try {
+      await connectReadOnly(wallet.address);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load wallet");
+    }
+  };
+
+  const handleRemoveSaved = (e: React.MouseEvent, address: string) => {
+    e.stopPropagation();
+    const updated = removeWallet(address);
+    setSavedWallets(updated);
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
       <div className="max-w-md w-full space-y-8 text-center">
@@ -43,6 +64,50 @@ export default function ConnectPrompt() {
             Connect your wallet or paste any address to get started.
           </p>
         </div>
+
+        {/* Saved Wallets */}
+        {savedWallets.length > 0 && mode === "main" && (
+          <div className="space-y-2">
+            <div className="text-xs text-zinc-500 uppercase tracking-wider">
+              Saved Wallets
+            </div>
+            <div className="space-y-1.5">
+              {savedWallets
+                .sort((a, b) => b.lastUsed - a.lastUsed)
+                .map((wallet) => (
+                  <button
+                    key={wallet.address}
+                    onClick={() => handleSavedWalletClick(wallet)}
+                    disabled={loading}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm transition-all",
+                      "bg-zinc-900 border border-zinc-800 hover:border-teal-600/50 hover:bg-zinc-800/80",
+                      "disabled:opacity-50 disabled:cursor-not-allowed",
+                    )}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0" />
+                      <div className="text-left min-w-0">
+                        <div className="text-zinc-200 font-medium truncate">
+                          {wallet.nickname}
+                        </div>
+                        <div className="text-zinc-500 font-mono text-xs">
+                          {truncateAddress(wallet.address)}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => handleRemoveSaved(e, wallet.address)}
+                      className="text-zinc-600 hover:text-red-400 text-xs px-2 py-1 transition-colors flex-shrink-0"
+                      title="Remove saved wallet"
+                    >
+                      ×
+                    </button>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
 
         {mode === "main" ? (
           <div className="space-y-3">
