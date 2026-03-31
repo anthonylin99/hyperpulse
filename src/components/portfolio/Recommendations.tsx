@@ -35,24 +35,25 @@ function generateRecommendations(
     });
   }
 
-  // 2. Position sizing with Kelly
+  // 2. Position sizing
   if (stats.kellyCriterion === 0) {
     recs.push({
       priority: 2,
       icon: "s",
       title: "Reduce position sizes immediately",
-      problem: `Kelly Criterion is 0% — your current win rate (${(stats.winRate * 100).toFixed(0)}%) and payoff ratio (${stats.payoffRatio.toFixed(2)}) don't justify any position.`,
-      action: "Trade paper or micro-size (0.5% of account per trade) until you develop a consistent edge. Focus on improving payoff ratio first.",
-      impact: `At your current expectancy of ${formatUSD(stats.expectancy)}/trade, every trade you take has negative expected value.`,
+      problem: `Your win rate (${(stats.winRate * 100).toFixed(0)}%) and avg win/loss ratio (${stats.payoffRatio.toFixed(2)}) don't mathematically justify risk. Every trade has negative expected value.`,
+      action: "Trade paper or micro-size (0.5% of account per trade) until you develop a consistent edge. Focus on improving your avg win vs avg loss ratio first.",
+      impact: `At your current expectancy of ${formatUSD(stats.expectancy)}/trade, sizing down prevents account blowup while you improve.`,
     });
   } else if (stats.kellyCriterion > 0 && stats.kellyCriterion < 0.05) {
+    const suggestedPct = (stats.kellyCriterion * 50 * 100).toFixed(1);
     recs.push({
       priority: 2,
       icon: "s",
-      title: `Size positions at ${(stats.kellyCriterion * 50 * 100).toFixed(1)}% of account`,
-      problem: `Your edge is thin. Kelly suggests ${(stats.kellyCriterion * 100).toFixed(1)}%, so half-Kelly is safer.`,
-      action: `Risk no more than ${formatUSD((stats.kellyCriterion * 0.5) * 197)} per trade (half-Kelly on $197 account).`,
-      impact: "Prevents ruin while your edge compounds. You can size up as metrics improve.",
+      title: `Size positions at ${suggestedPct}% of account`,
+      problem: `Your edge is thin. Math suggests risking ${(stats.kellyCriterion * 100).toFixed(1)}% per trade, but using half that is safer with a small sample size.`,
+      action: `Risk no more than ${suggestedPct}% of your account value per trade. You can size up as your win rate and avg win/loss ratio improve.`,
+      impact: "Prevents ruin while your edge compounds. Slow and steady beats blown accounts.",
     });
   }
 
@@ -64,10 +65,10 @@ function generateRecommendations(
       recs.push({
         priority: 3,
         icon: "t",
-        title: "Let winners run with trailing stops",
+        title: "Let winners run longer",
         problem: `Your best trade (${formatUSD(stats.bestTrade.pnl)}) was ${bestToAvg.toFixed(1)}x your avg win. Most winners are being closed too early.`,
-        action: "Use trailing stop-losses instead of fixed take-profits. Move stop to breakeven after 1R of profit, then trail at 0.5R.",
-        impact: "If avg winners increased to even half your best trade, profit factor would exceed 1.0.",
+        action: `Instead of taking profit at ${formatUSD(stats.avgWin)}, move your stop-loss to breakeven once you're up that amount, then let the trade run. Only close when your thesis breaks — not when you see green.`,
+        impact: `If your avg winning trade increased to even half your best trade (${formatUSD(stats.bestTrade.pnl / 2)}), your overall P&L would improve significantly.`,
       });
     }
   }
@@ -81,7 +82,7 @@ function generateRecommendations(
         icon: "f",
         title: "Switch to limit orders",
         problem: `${formatUSD(stats.totalFeesPaid)} in fees = ${(feePct * 100).toFixed(0)}% of your gross profit. Market orders (taker fees ~0.035%) are 7x more expensive than limits (maker rebate ~0.005%).`,
-        action: "Place limit orders 0.01-0.05% away from mid price. You'll save on fees AND get better entry prices.",
+        action: "Place limit orders slightly away from mid price instead of market orders. You'll save on fees AND get better entry prices. On Hyperliquid, makers get rebates while takers pay ~0.035%.",
         impact: `Could save ~${formatUSD(stats.totalFeesPaid * 0.7)} (70% fee reduction) over the same trades.`,
       });
     }

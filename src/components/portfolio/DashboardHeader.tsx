@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/context/WalletContext";
 import { usePortfolio } from "@/context/PortfolioContext";
-import { formatUSD, formatPct, truncateAddress, cn } from "@/lib/format";
+import { formatUSD, truncateAddress, cn } from "@/lib/format";
 import {
   getSavedWallets,
   saveWallet,
@@ -191,9 +191,12 @@ export default function DashboardHeader() {
         </div>
 
         <div className="flex items-baseline gap-4">
-          <span className="text-3xl font-bold text-zinc-50">
-            {formatUSD(accountValue)}
-          </span>
+          <div>
+            <span className="text-3xl font-bold text-zinc-50">
+              {formatUSD(accountValue)}
+            </span>
+            <span className="text-xs text-zinc-600 ml-2">equity</span>
+          </div>
           {trades.length > 0 && (
             <>
               <span
@@ -214,12 +217,8 @@ export default function DashboardHeader() {
                       : "text-red-400/70",
                   )}
                 >
-                  {formatPct(
-                    accountValue > 0
-                      ? (unrealizedPnl / accountValue) * 100
-                      : 0,
-                  )}{" "}
-                  unrealized
+                  {unrealizedPnl >= 0 ? "+" : ""}
+                  {formatUSD(unrealizedPnl)} unrealized
                 </span>
               )}
             </>

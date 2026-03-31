@@ -6,7 +6,7 @@ import { formatUSD, cn } from "@/lib/format";
 
 interface StatCardProps {
   label: string;
-  value: string;
+  value: string | React.ReactNode;
   subValue?: string;
   positive?: boolean | null;
   tooltip?: string;
@@ -20,9 +20,9 @@ function StatCard({ label, value, subValue, positive, tooltip, large }: StatCard
       <div
         className={cn(
           large ? "text-2xl font-bold" : "text-xl font-bold",
-          positive === true && "text-emerald-400",
-          positive === false && "text-red-400",
-          positive === null && "text-zinc-100",
+          typeof value === "string" && positive === true && "text-emerald-400",
+          typeof value === "string" && positive === false && "text-red-400",
+          typeof value === "string" && positive === null && "text-zinc-100",
         )}
       >
         {value}
@@ -106,9 +106,15 @@ export default function StatsGrid() {
         />
         <StatCard
           label="Avg Win vs Avg Loss"
-          value={`${formatUSD(stats.avgWin)} / ${formatUSD(stats.avgLoss)}`}
+          value={
+            <span>
+              <span className="text-emerald-400">{formatUSD(stats.avgWin)}</span>
+              <span className="text-zinc-500"> / </span>
+              <span className="text-red-400">{formatUSD(stats.avgLoss)}</span>
+            </span>
+          }
           subValue={stats.avgWin > stats.avgLoss ? "winners > losers" : "losers > winners — cut losses faster"}
-          positive={stats.avgWin > stats.avgLoss ? true : false}
+          positive={null}
           tooltip="Are your winning trades bigger than your losing trades? If not, you're giving back profits."
         />
         <StatCard
@@ -140,7 +146,13 @@ export default function StatsGrid() {
         />
         <StatCard
           label="Biggest Win / Loss"
-          value={`${formatUSD(stats.largestWin)} / ${formatUSD(stats.largestLoss)}`}
+          value={
+            <span>
+              <span className="text-emerald-400">{formatUSD(stats.largestWin)}</span>
+              <span className="text-zinc-500"> / </span>
+              <span className="text-red-400">{formatUSD(stats.largestLoss)}</span>
+            </span>
+          }
           subValue={stats.bestTrade ? `${stats.bestTrade.coin} / ${stats.worstTrade?.coin}` : ""}
           positive={null}
           tooltip="Your single best and worst trades. Large outliers suggest inconsistent sizing."
@@ -158,8 +170,14 @@ export default function StatsGrid() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           label="Long vs Short P&L"
-          value={`${formatUSD(derived.longPnl)} / ${formatUSD(derived.shortPnl)}`}
-          subValue={`${derived.longCount}L / ${derived.shortCount}S trades`}
+          value={
+            <span>
+              <span className={derived.longPnl >= 0 ? "text-emerald-400" : "text-red-400"}>{formatUSD(derived.longPnl)}</span>
+              <span className="text-zinc-500"> / </span>
+              <span className={derived.shortPnl >= 0 ? "text-emerald-400" : "text-red-400"}>{formatUSD(derived.shortPnl)}</span>
+            </span>
+          }
+          subValue={`${derived.longCount} long / ${derived.shortCount} short trades`}
           positive={null}
           tooltip="P&L split by direction. If one side is consistently negative, consider trading only your profitable direction."
         />

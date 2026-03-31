@@ -178,20 +178,51 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       );
       setTrades(tradesWithFunding);
 
-      // Estimate starting balance: current equity + losses recovered, or at minimum
-      // use the max notional position as a proxy for capital deployed.
-      const totalPnl = tradesWithFunding.reduce((s, t) => s + t.pnl, 0);
-      const maxNotional = Math.max(
-        ...tradesWithFunding.map((t) => t.notional),
-        0,
-      );
-      const currentValue = accountValueRef.current;
-      // If account has value, use that minus PnL to estimate starting balance.
-      // Otherwise estimate from max position size or total losses.
-      const startBal =
-        currentValue > 0
-          ? currentValue - totalPnl
-          : Math.max(maxNotional, Math.abs(totalPnl) * 2, 1000);
+      // Estimate starting balance from deposits via ledger API
+      let startBal = 1000; // fallback
+      try {
+        const ledgerRes = await fetch(
+          `/api/user/ledger?address=${address}&startTime=0`,
+        );
+        if (ledgerRes.ok) {
+          const ledgerData = await ledgerRes.json();
+          // Sum all deposits and withdrawals to get net deposited
+          let totalDeposited = 0;
+          for (const entry of Array.isArray(ledgerData) ? ledgerData : []) {
+            const delta = parseFloat(String(entry.delta?.usdc ?? entry.delta ?? "0"));
+            const type = String(entry.type ?? "").toLowerCase();
+            // accountClassTransfer, deposit, withdraw, internalTransfer
+            if (type.includes("deposit") || type.includes("transfer")) {
+              totalDeposited += delta;
+            } else if (type.includes("withdraw")) {
+              totalDeposited += delta; // delta is negative for withdrawals
+            }
+          }
+          if (totalDeposited > 0) {
+            startBal = totalDeposited;
+          }
+        }
+      } catch {
+        // Ledger fetch failed — use fallback estimation
+      }
+
+      // If ledger didn't give us a good number, estimate from account value
+      if (startBal <= 1000) {
+        const totalPnl = tradesWithFunding.reduce((s, t) => s + t.pnl, 0);
+        const totalFunding = normalizedFunding.reduce((s, f) => s + f.usdc, 0);
+        const totalFees = tradesWithFunding.reduce((s, t) => s + t.fees, 0);
+        const currentValue = accountValueRef.current;
+        if (currentValue > 0) {
+          // Account equity - all gains = what you started with
+          startBal = Math.max(currentValue - totalPnl - totalFunding + totalFees, 100);
+        } else {
+          const maxNotional = Math.max(
+            ...tradesWithFunding.map((t) => t.notional),
+            0,
+          );
+          startBal = Math.max(maxNotional, Math.abs(totalPnl) * 2, 1000);
+        }
+      }
 
       const portfolioStats = computePortfolioStats(
         tradesWithFunding,
