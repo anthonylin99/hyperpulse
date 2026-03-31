@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, cn } from "@/lib/format";
+import type { RoundTripTrade } from "@/types";
 
 type SortKey = "time" | "pnl" | "pnlPct" | "duration" | "coin";
 type SortDir = "asc" | "desc";
@@ -13,6 +14,35 @@ function formatDuration(ms: number): string {
   const hrs = mins / 60;
   if (hrs < 24) return `${hrs.toFixed(1)}h`;
   return `${(hrs / 24).toFixed(1)}d`;
+}
+
+function exportCSV(trades: RoundTripTrade[]) {
+  const headers = [
+    "Date", "Asset", "Direction", "Entry Price", "Exit Price",
+    "Size (USD)", "P&L", "P&L %", "Duration (min)", "Fees", "Funding"
+  ];
+  const rows = trades.map((t) => [
+    new Date(t.exitTime).toISOString(),
+    t.coin,
+    t.direction,
+    t.entryPx.toString(),
+    t.exitPx.toString(),
+    t.notional.toFixed(2),
+    t.pnl.toFixed(2),
+    t.pnlPct.toFixed(2),
+    (t.duration / 60000).toFixed(1),
+    t.fees.toFixed(4),
+    t.fundingPaid.toFixed(4),
+  ]);
+
+  const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `hyperpulse-trades-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function TradeJournal() {
@@ -86,20 +116,28 @@ export default function TradeJournal() {
         <h3 className="text-sm font-medium text-zinc-300">
           Trade Journal ({sorted.length})
         </h3>
-        <select
-          value={filterCoin}
-          onChange={(e) => {
-            setFilterCoin(e.target.value);
-            setPage(0);
-          }}
-          className="text-xs bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2 py-1"
-        >
-          {coins.map((c) => (
-            <option key={c} value={c}>
-              {c === "all" ? "All Assets" : c}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => exportCSV(sorted)}
+            className="text-xs bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-200 rounded px-2.5 py-1 transition-colors"
+          >
+            Export CSV
+          </button>
+          <select
+            value={filterCoin}
+            onChange={(e) => {
+              setFilterCoin(e.target.value);
+              setPage(0);
+            }}
+            className="text-xs bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2 py-1"
+          >
+            {coins.map((c) => (
+              <option key={c} value={c}>
+                {c === "all" ? "All Assets" : c}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="overflow-x-auto">

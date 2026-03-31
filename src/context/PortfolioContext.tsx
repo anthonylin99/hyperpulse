@@ -63,6 +63,36 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Restore cached data on mount for instant load
+  useEffect(() => {
+    if (!address) return;
+    try {
+      const cached = localStorage.getItem(`hp_cache_${address.toLowerCase()}`);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data.fills?.length > 0) {
+          setFills(data.fills);
+          setFunding(data.funding ?? []);
+          // Recompute analytics from cached data
+          const rawTrades = groupFillsIntoTrades(data.fills);
+          const tradesWithFunding = mergeFundingIntoTrades(rawTrades, data.funding ?? []);
+          setTrades(tradesWithFunding);
+          const startBal = Math.max(...tradesWithFunding.map((t) => t.notional), 1000);
+          const portfolioStats = computePortfolioStats(tradesWithFunding, data.funding ?? [], startBal);
+          setStats(portfolioStats);
+          setEquityCurve(computeEquityCurve(tradesWithFunding, startBal));
+          setByAsset(computeByAsset(tradesWithFunding));
+          setByHour(computeByTimeOfDay(tradesWithFunding));
+          setByDay(computeByDayOfWeek(tradesWithFunding));
+          setInsights(generateInsights(portfolioStats, computeByAsset(tradesWithFunding), computeByTimeOfDay(tradesWithFunding), computeByDayOfWeek(tradesWithFunding)));
+        }
+      }
+    } catch {
+      // Cache miss or corrupt — no problem, will fetch fresh
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
+
   const fetchData = useCallback(async () => {
     if (!address) return;
 
@@ -70,8 +100,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      // Fetch fills from 90 days ago by default to get meaningful history
-      const startTime = Date.now() - 90 * 24 * 60 * 60 * 1000;
+      // Fetch all-time history — Hyperliquid blockchain is the source of truth
+      const startTime = 0;
       const [fillsRes, fundingRes] = await Promise.all([
         fetch(
           `/api/user/fills?address=${address}&startTime=${startTime}&aggregateByTime=true`,
@@ -120,6 +150,16 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
       setFills(normalizedFills);
       setFunding(normalizedFunding);
+
+      // Cache fills + funding for instant load next time
+      try {
+        localStorage.setItem(
+          `hp_cache_${address.toLowerCase()}`,
+          JSON.stringify({ fills: normalizedFills, funding: normalizedFunding, cachedAt: Date.now() }),
+        );
+      } catch {
+        // localStorage full — ignore
+      }
 
       // Compute analytics
       const rawTrades = groupFillsIntoTrades(normalizedFills);
