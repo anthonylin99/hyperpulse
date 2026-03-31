@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { useWallet } from "./WalletContext";
@@ -51,6 +52,12 @@ const PortfolioContext = createContext<PortfolioContextValue | null>(null);
 export function PortfolioProvider({ children }: { children: ReactNode }) {
   const { address, isConnected, accountState } = useWallet();
 
+  // Use ref for accountValue to avoid re-triggering fetchData on every poll
+  const accountValueRef = useRef(0);
+  useEffect(() => {
+    accountValueRef.current = accountState?.accountValue ?? 0;
+  }, [accountState?.accountValue]);
+
   const [fills, setFills] = useState<Fill[]>([]);
   const [funding, setFunding] = useState<FundingEntry[]>([]);
   const [trades, setTrades] = useState<RoundTripTrade[]>([]);
@@ -62,6 +69,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasFetchedRef = useRef(false);
 
   // Restore cached data on mount for instant load
   useEffect(() => {
@@ -96,7 +104,8 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const fetchData = useCallback(async () => {
     if (!address) return;
 
-    setLoading(true);
+    // Only show full loading spinner on first fetch — subsequent refreshes are silent
+    if (!hasFetchedRef.current) setLoading(true);
     setError(null);
 
     try {
@@ -176,7 +185,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         ...tradesWithFunding.map((t) => t.notional),
         0,
       );
-      const currentValue = accountState?.accountValue ?? 0;
+      const currentValue = accountValueRef.current;
       // If account has value, use that minus PnL to estimate starting balance.
       // Otherwise estimate from max position size or total losses.
       const startBal =
@@ -210,6 +219,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         dayData,
       );
       setInsights(tradeInsights);
+      hasFetchedRef.current = true;
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Failed to load portfolio data";
@@ -218,7 +228,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [address, accountState?.accountValue]);
+  }, [address]);
 
   // Fetch on connect
   useEffect(() => {
@@ -240,6 +250,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setByDay([]);
       setInsights([]);
       setError(null);
+      hasFetchedRef.current = false;
     }
   }, [isConnected]);
 

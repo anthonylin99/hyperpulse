@@ -31,7 +31,7 @@ type Tab = "portfolio" | "markets";
 
 export default function Home() {
   const { isConnected } = useWallet();
-  const { loading: portfolioLoading, error: portfolioError } = usePortfolio();
+  const { trades, loading: portfolioLoading, error: portfolioError } = usePortfolio();
   const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
   const [tab, setTab] = useState<Tab>("portfolio");
   const [tradeDrawer, setTradeDrawer] = useState<{
@@ -72,8 +72,8 @@ export default function Home() {
         !isConnected ? (
           <ConnectPrompt />
         ) : (
-          <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-            {portfolioLoading && (
+          <div className="max-w-7xl mx-auto px-4 py-6 space-y-6 pb-20">
+            {portfolioLoading && trades.length === 0 && (
               <div className="flex items-center justify-center py-20">
                 <div className="text-sm text-zinc-500">
                   Loading trade history...
@@ -87,7 +87,7 @@ export default function Home() {
               </div>
             )}
 
-            {!portfolioLoading && !portfolioError && (
+            {trades.length > 0 && (
               <>
                 <DashboardHeader />
                 <StatsGrid />
