@@ -174,9 +174,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const crossAccountValue = parseFloat(state.crossMarginSummary.accountValue);
         const isolatedAccountValue = parseFloat(state.marginSummary.accountValue);
 
-        // Total account value = perps equity + spot USDC balance
-        // When funds are in spot (not deposited to perps), crossAccountValue is 0
-        const totalAccountValue = crossAccountValue + spotUsdcTotal;
+        // marginSummary.accountValue is the total perps equity (cross + isolated).
+        // spotUsdcTotal is USDC sitting in the spot wallet (NOT deposited to perps).
+        // These are separate pools — add them for total account value.
+        // Use marginSummary (not crossMarginSummary) to capture both cross & isolated.
+        const totalAccountValue = isolatedAccountValue + spotUsdcTotal;
 
         setAccountState({
           accountValue: totalAccountValue,

@@ -178,7 +178,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       );
       setTrades(tradesWithFunding);
 
-      // Estimate starting balance from deposits via ledger API
+      // Calculate starting balance from deposit/withdrawal ledger
       let startBal = 1000; // fallback
       try {
         const ledgerRes = await fetch(
@@ -186,20 +186,29 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         );
         if (ledgerRes.ok) {
           const ledgerData = await ledgerRes.json();
-          // Sum all deposits and withdrawals to get net deposited
-          let totalDeposited = 0;
+          // Sum actual deposits minus withdrawals to get net capital injected
+          let netDeposited = 0;
           for (const entry of Array.isArray(ledgerData) ? ledgerData : []) {
-            const delta = parseFloat(String(entry.delta?.usdc ?? entry.delta ?? "0"));
-            const type = String(entry.type ?? "").toLowerCase();
-            // accountClassTransfer, deposit, withdraw, internalTransfer
-            if (type.includes("deposit") || type.includes("transfer")) {
-              totalDeposited += delta;
-            } else if (type.includes("withdraw")) {
-              totalDeposited += delta; // delta is negative for withdrawals
+            const delta = entry.delta;
+            if (!delta || typeof delta !== "object") continue;
+            const type = String(delta.type ?? "");
+            if (type === "deposit") {
+              netDeposited += parseFloat(String(delta.usdc ?? "0"));
+            } else if (type === "withdraw") {
+              netDeposited -= parseFloat(String(delta.usdc ?? "0"));
+            } else if (type === "internalTransfer" || type === "send") {
+              // Incoming transfers = deposits, outgoing = withdrawals
+              const amt = parseFloat(String(delta.usdc ?? delta.usdcValue ?? "0"));
+              const dest = String(delta.destination ?? "").toLowerCase();
+              if (dest === address.toLowerCase()) {
+                netDeposited += amt;
+              } else {
+                netDeposited -= amt;
+              }
             }
           }
-          if (totalDeposited > 0) {
-            startBal = totalDeposited;
+          if (netDeposited > 0) {
+            startBal = netDeposited;
           }
         }
       } catch {
@@ -209,12 +218,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       // If ledger didn't give us a good number, estimate from account value
       if (startBal <= 1000) {
         const totalPnl = tradesWithFunding.reduce((s, t) => s + t.pnl, 0);
-        const totalFunding = normalizedFunding.reduce((s, f) => s + f.usdc, 0);
-        const totalFees = tradesWithFunding.reduce((s, t) => s + t.fees, 0);
         const currentValue = accountValueRef.current;
         if (currentValue > 0) {
-          // Account equity - all gains = what you started with
-          startBal = Math.max(currentValue - totalPnl - totalFunding + totalFees, 100);
+          startBal = Math.max(currentValue - totalPnl, 100);
         } else {
           const maxNotional = Math.max(
             ...tradesWithFunding.map((t) => t.notional),
