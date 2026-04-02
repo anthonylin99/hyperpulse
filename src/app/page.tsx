@@ -20,6 +20,8 @@ import InsightsPanel from "@/components/portfolio/InsightsPanel";
 import PnLWaterfall from "@/components/portfolio/PnLWaterfall";
 import BenchmarkPanel from "@/components/portfolio/BenchmarkPanel";
 import Recommendations from "@/components/portfolio/Recommendations";
+import PerformanceHeatmap from "@/components/portfolio/PerformanceHeatmap";
+import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
 
 // Market components (secondary tab)
 import FundingFlashcards from "@/components/FundingFlashcards";
@@ -133,11 +135,17 @@ export default function Home() {
                 <Recommendations />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <PerformanceHeatmap />
                   <AssetBreakdown />
-                  <FundingAnalysis />
                 </div>
 
-                <InsightsPanel />
+                <MonthlyPnL />
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <FundingAnalysis />
+                  <InsightsPanel />
+                </div>
+
                 <TradeJournal />
               </>
             )}
