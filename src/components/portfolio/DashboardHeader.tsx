@@ -14,8 +14,9 @@ import {
 
 export default function DashboardHeader() {
   const { address, isReadOnly, disconnect, connectReadOnly } = useWallet();
-  const { stats, trades, lastUpdated } = usePortfolio();
+  const { stats, trades, lastUpdated, refresh, loading: portfolioLoading } = usePortfolio();
   const { accountState } = useWallet();
+  const [refreshing, setRefreshing] = useState(false);
 
   const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
   const [showSwitcher, setShowSwitcher] = useState(false);
@@ -231,12 +232,29 @@ export default function DashboardHeader() {
         </div>
       </div>
 
-      <button
-        onClick={disconnect}
-        className="self-start text-xs text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded px-3 py-1.5 transition-colors"
-      >
-        Disconnect
-      </button>
+      <div className="flex items-center gap-2 self-start">
+        <button
+          onClick={async () => {
+            setRefreshing(true);
+            try { await refresh(); } finally { setRefreshing(false); }
+          }}
+          disabled={refreshing || portfolioLoading}
+          className={cn(
+            "text-xs border border-zinc-800 rounded px-3 py-1.5 transition-colors",
+            refreshing || portfolioLoading
+              ? "text-zinc-600 cursor-not-allowed"
+              : "text-teal-400 hover:text-teal-300 hover:border-teal-600/30",
+          )}
+        >
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
+        <button
+          onClick={disconnect}
+          className="text-xs text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded px-3 py-1.5 transition-colors"
+        >
+          Disconnect
+        </button>
+      </div>
     </div>
   );
 }

@@ -20,7 +20,7 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "HyperPulse — Portfolio Analytics for Hyperliquid",
   description:
-    "TradFi-grade portfolio analytics, trade journal, and AI insights for Hyperliquid traders",
+    "Portfolio analytics, trade journal, and performance insights for Hyperliquid traders",
 };
 
 export default function RootLayout({

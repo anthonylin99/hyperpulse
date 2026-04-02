@@ -183,19 +183,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const spotUsdcHold = usdcBalance ? parseFloat(usdcBalance.hold) : 0;
         const crossAccountValue = parseFloat(state.crossMarginSummary.accountValue);
         const isolatedAccountValue = parseFloat(state.marginSummary.accountValue);
+        const crossMarginUsed = parseFloat(state.crossMarginSummary.totalMarginUsed);
+        const totalMarginUsed = parseFloat(state.marginSummary.totalMarginUsed);
 
         // marginSummary.accountValue is the total perps equity (cross + isolated).
         // spotUsdcTotal is USDC sitting in the spot wallet (NOT deposited to perps).
-        // These are separate pools — add them for total account value.
-        // Use marginSummary (not crossMarginSummary) to capture both cross & isolated.
         const totalAccountValue = isolatedAccountValue + spotUsdcTotal;
+
+        // Available for new orders = cross account value - cross margin used
+        // This matches Hyperliquid UI "Available Balance"
+        const availableForTrading = Math.max(crossAccountValue - crossMarginUsed, 0);
 
         setAccountState({
           accountValue: totalAccountValue,
           crossAccountValue,
           isolatedAccountValue,
-          totalMarginUsed: parseFloat(state.crossMarginSummary.totalMarginUsed),
-          withdrawable: parseFloat(state.withdrawable),
+          totalMarginUsed,
+          withdrawable: availableForTrading,
           spotUsdcTotal,
           spotUsdcHold,
           unrealizedPnl: totalUnrealizedPnl,

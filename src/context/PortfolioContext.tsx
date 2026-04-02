@@ -270,10 +270,17 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     }
   }, [address]);
 
-  // Fetch on connect
+  // Fetch on connect + auto-refresh every 12 hours
   useEffect(() => {
     if (isConnected && address) {
       fetchData();
+
+      const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+      const refreshInterval = setInterval(() => {
+        fetchData();
+      }, TWELVE_HOURS);
+
+      return () => clearInterval(refreshInterval);
     }
   }, [isConnected, address, fetchData]);
 

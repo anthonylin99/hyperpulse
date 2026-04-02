@@ -1,16 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, cn } from "@/lib/format";
 
 export default function FundingAnalysis() {
   const { funding, stats, loading, trades } = usePortfolio();
+  const [expanded, setExpanded] = useState(false);
 
   const analysis = useMemo(() => {
     if (funding.length === 0) return null;
 
-    // Group by coin
     const byCoin = new Map<string, { paid: number; earned: number; count: number }>();
     for (const f of funding) {
       const entry = byCoin.get(f.coin) ?? { paid: 0, earned: 0, count: 0 };
@@ -40,29 +40,20 @@ export default function FundingAnalysis() {
           ...data,
           net: data.earned - data.paid,
         }))
-        .sort((a, b) => a.net - b.net), // worst first
+        .sort((a, b) => a.net - b.net),
       count: funding.length,
     };
   }, [funding]);
 
   if (loading && trades.length === 0) {
     return (
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-        <div className="skeleton h-4 w-32 rounded mb-4" />
-        <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+        <div className="skeleton h-4 w-32 rounded mb-3" />
+        <div className="grid grid-cols-3 gap-3">
           {[0, 1, 2].map((i) => (
             <div key={i}>
               <div className="skeleton h-3 w-12 rounded mb-1" />
               <div className="skeleton h-5 w-16 rounded" />
-            </div>
-          ))}
-        </div>
-        <div className="space-y-1.5">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex items-center justify-between">
-              <div className="skeleton h-4 w-16 rounded" />
-              <div className="skeleton h-4 w-20 rounded" />
-              <div className="skeleton h-4 w-16 rounded" />
             </div>
           ))}
         </div>
@@ -73,27 +64,32 @@ export default function FundingAnalysis() {
   if (!analysis) return null;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-      <h3 className="text-sm font-medium text-zinc-400 mb-4">
-        Funding Analysis
-      </h3>
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-zinc-400">Funding Analysis</h3>
+        {stats && stats.totalPnl > 0 && analysis.totalPaid > 0 && (
+          <span className="text-[10px] text-zinc-500">
+            {((analysis.totalPaid / stats.totalPnl) * 100).toFixed(1)}% of profit
+          </span>
+        )}
+      </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      {/* Compact summary row */}
+      <div className="grid grid-cols-3 gap-3">
         <div>
-          <div className="text-xs text-zinc-500">Paid</div>
+          <div className="text-[10px] text-zinc-500">Paid</div>
           <div className="text-sm font-bold text-red-400">
             -{formatUSD(analysis.totalPaid)}
           </div>
         </div>
         <div>
-          <div className="text-xs text-zinc-500">Earned</div>
+          <div className="text-[10px] text-zinc-500">Earned</div>
           <div className="text-sm font-bold text-emerald-400">
             +{formatUSD(analysis.totalEarned)}
           </div>
         </div>
         <div>
-          <div className="text-xs text-zinc-500">Net</div>
+          <div className="text-[10px] text-zinc-500">Net</div>
           <div
             className={cn(
               "text-sm font-bold",
@@ -106,35 +102,39 @@ export default function FundingAnalysis() {
         </div>
       </div>
 
-      {/* Funding as % of profit */}
-      {stats && stats.totalPnl > 0 && analysis.totalPaid > 0 && (
-        <div className="text-xs text-zinc-500 mb-4 bg-zinc-800/50 rounded px-3 py-2">
-          Funding costs = {((analysis.totalPaid / stats.totalPnl) * 100).toFixed(1)}%
-          of realized profit
+      {/* Expandable per-coin breakdown */}
+      {analysis.byCoin.length > 0 && (
+        <div className="mt-2">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-[10px] text-zinc-500 hover:text-zinc-400 transition-colors"
+          >
+            {expanded ? "Hide" : "Show"} per-coin breakdown ({analysis.byCoin.length})
+          </button>
+          {expanded && (
+            <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+              {analysis.byCoin.map((item) => (
+                <div
+                  key={item.coin}
+                  className="flex items-center justify-between text-[11px]"
+                >
+                  <span className="text-zinc-300 font-medium w-14">{item.coin}</span>
+                  <span className="text-zinc-600">{item.count}</span>
+                  <span
+                    className={cn(
+                      "font-mono",
+                      item.net >= 0 ? "text-emerald-400" : "text-red-400",
+                    )}
+                  >
+                    {item.net >= 0 ? "+" : ""}
+                    {formatUSD(item.net)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
-
-      {/* By coin */}
-      <div className="space-y-1.5">
-        {analysis.byCoin.map((item) => (
-          <div
-            key={item.coin}
-            className="flex items-center justify-between text-xs"
-          >
-            <span className="text-zinc-300 font-medium w-16">{item.coin}</span>
-            <span className="text-zinc-500">{item.count} payments</span>
-            <span
-              className={cn(
-                "font-mono",
-                item.net >= 0 ? "text-emerald-400" : "text-red-400",
-              )}
-            >
-              {item.net >= 0 ? "+" : ""}
-              {formatUSD(item.net)}
-            </span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
