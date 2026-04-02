@@ -16,7 +16,7 @@ function PrivyLoginPanel({
   const { ready, authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
   const [connecting, setConnecting] = useState(false);
-  const connectedOnce = useRef(false);
+  const [pendingConnect, setPendingConnect] = useState(false);
 
   const privyAddress = useMemo(() => {
     if (wallets && wallets.length > 0) {
@@ -33,17 +33,18 @@ function PrivyLoginPanel({
   }, [wallets, user]);
 
   useEffect(() => {
+    if (!pendingConnect) return;
     if (!authenticated || !privyAddress) return;
-    if (connectedOnce.current) return;
-    connectedOnce.current = true;
+    setPendingConnect(false);
     onAddress(privyAddress);
-  }, [authenticated, privyAddress, onAddress]);
+  }, [pendingConnect, authenticated, privyAddress, onAddress]);
 
   return (
     <button
       onClick={async () => {
         setConnecting(true);
         try {
+          setPendingConnect(true);
           await login();
         } finally {
           setConnecting(false);
