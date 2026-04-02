@@ -91,10 +91,10 @@ export default function DashboardHeader() {
     }
   };
 
-  const handleRemoveSaved = (wallet: SavedWallet) => {
-    const updated = removeWallet(wallet.address);
+  const handleRemoveSaved = (walletAddress: string) => {
+    const updated = removeWallet(walletAddress);
     setSavedWallets(updated);
-    if (wallet.address.toLowerCase() === address?.toLowerCase()) {
+    if (walletAddress.toLowerCase() === address?.toLowerCase()) {
       disconnect();
     }
   };
@@ -191,15 +191,9 @@ export default function DashboardHeader() {
                       >
                         Copy
                       </button>
-                      {address && (
+                      {address && currentWallet && (
                         <button
-                          onClick={() =>
-                            handleRemoveSaved({
-                              address,
-                              nickname: currentWallet?.nickname || "Unnamed",
-                              lastUsed: Date.now(),
-                            })
-                          }
+                          onClick={() => handleRemoveSaved(address)}
                           className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
                         >
                           Forget
@@ -247,7 +241,7 @@ export default function DashboardHeader() {
                         </div>
                       </button>
                       <button
-                        onClick={() => handleRemoveSaved(wallet)}
+                        onClick={() => handleRemoveSaved(wallet.address)}
                         className="text-xs text-zinc-600 hover:text-red-400 px-2"
                         title="Remove saved wallet"
                       >
