@@ -62,6 +62,12 @@ export default function FundingAnalysis() {
   }
 
   if (!analysis) return null;
+  const meaningful =
+    analysis.count >= 10 ||
+    Math.abs(analysis.net) >= 5 ||
+    analysis.totalPaid >= 5 ||
+    analysis.totalEarned >= 5;
+  if (!meaningful) return null;
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">

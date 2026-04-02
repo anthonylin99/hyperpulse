@@ -13,6 +13,7 @@ import PositionsTable from "@/components/portfolio/PositionsTable";
 import RiskStrip from "@/components/portfolio/RiskStrip";
 import StatsGrid from "@/components/portfolio/StatsGrid";
 import TradeSignals from "@/components/portfolio/TradeSignals";
+import SystemProfile from "@/components/portfolio/SystemProfile";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import TradeJournal from "@/components/portfolio/TradeJournal";
 import AssetBreakdown from "@/components/portfolio/AssetBreakdown";
@@ -38,7 +39,7 @@ type Tab = "portfolio" | "markets";
 export default function Home() {
   const { isConnected, accountState } = useWallet();
   const { trades, loading: portfolioLoading, error: portfolioError } = usePortfolio();
-  const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
+  const { selectedAsset, setSelectedAsset, error: marketError, activityFeed } = useMarket();
   const [tab, setTab] = useState<Tab>("portfolio");
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
@@ -127,6 +128,7 @@ export default function Home() {
             {hasTrades && (
               <>
                 <StatsGrid />
+                <SystemProfile />
                 <TradeSignals />
                 <EquityCurve />
 
@@ -182,12 +184,19 @@ export default function Home() {
             </div>
 
             <div className="zone-sidebar">
-              <div className="flex-1 overflow-hidden border-b border-zinc-800">
+              <div
+                className={cn(
+                  "flex-1 overflow-hidden",
+                  activityFeed.length > 0 && "border-b border-zinc-800",
+                )}
+              >
                 <PortfolioPanel />
               </div>
-              <div className="flex-1 overflow-hidden">
-                <ActivityFeed />
-              </div>
+              {activityFeed.length > 0 && (
+                <div className="flex-1 overflow-hidden">
+                  <ActivityFeed />
+                </div>
+              )}
             </div>
           </div>
 

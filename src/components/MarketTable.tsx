@@ -23,7 +23,6 @@ type PerpSortKey =
   | "markPx"
   | "priceChange24h"
   | "openInterest"
-  | "oiChangePct"
   | "dayVolume"
   | "fundingRate"
   | "fundingAPR"
@@ -42,7 +41,6 @@ const PERP_COLUMNS: { key: PerpSortKey; label: string; align: string }[] = [
   { key: "markPx", label: "Mark Price", align: "text-right" },
   { key: "priceChange24h", label: "24h %", align: "text-right" },
   { key: "openInterest", label: "OI (USD)", align: "text-right" },
-  { key: "oiChangePct", label: "OI Δ", align: "text-right" },
   { key: "dayVolume", label: "Vol 24h", align: "text-right" },
   { key: "fundingRate", label: "Fund/hr", align: "text-right" },
   { key: "fundingAPR", label: "Fund APR", align: "text-right" },
@@ -71,8 +69,6 @@ function getPerpSortValue(asset: MarketAsset, key: PerpSortKey): number | string
       return asset.coin;
     case "signal":
       return asset.signal.label;
-    case "oiChangePct":
-      return asset.oiChangePct ?? 0;
     default:
       return asset[key];
   }

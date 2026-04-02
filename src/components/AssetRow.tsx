@@ -49,23 +49,6 @@ export default function AssetRow({
         ? "text-green-500"
         : "text-zinc-50";
 
-  const oiDeltaColor =
-    asset.oiChangePct != null
-      ? asset.oiChangePct > 0
-        ? "text-green-500"
-        : asset.oiChangePct < 0
-          ? "text-red-500"
-          : "text-zinc-500"
-      : "text-zinc-600";
-
-  const oiDeltaArrow =
-    asset.oiChangePct != null
-      ? asset.oiChangePct > 0
-        ? "↑"
-        : asset.oiChangePct < 0
-          ? "↓"
-          : ""
-      : "";
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const rowBg = index % 2 === 0 ? "bg-zinc-950" : "bg-zinc-900/50";
@@ -103,16 +86,6 @@ export default function AssetRow({
 
         <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
           {formatCompact(asset.openInterest)}
-        </td>
-
-        <td className={`px-2.5 py-0.5 text-right whitespace-nowrap ${oiDeltaColor}`}>
-          {asset.oiChangePct != null ? (
-            <>
-              {oiDeltaArrow} {Math.abs(asset.oiChangePct).toFixed(1)}%
-            </>
-          ) : (
-            <span className="text-zinc-700">—</span>
-          )}
         </td>
 
         <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
