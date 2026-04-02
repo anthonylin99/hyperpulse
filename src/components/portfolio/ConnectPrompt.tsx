@@ -17,6 +17,7 @@ function PrivyLoginPanel({
   const { wallets } = useWallets();
   const [connecting, setConnecting] = useState(false);
   const [pendingConnect, setPendingConnect] = useState(false);
+  const [showSelector, setShowSelector] = useState(false);
 
   const privyAddress = useMemo(() => {
     if (wallets && wallets.length > 0) {
@@ -35,9 +36,50 @@ function PrivyLoginPanel({
   useEffect(() => {
     if (!pendingConnect) return;
     if (!authenticated || !privyAddress) return;
+    // Defer to manual selection so users can pick the correct wallet.
     setPendingConnect(false);
-    onAddress(privyAddress);
+    setShowSelector(true);
   }, [pendingConnect, authenticated, privyAddress, onAddress]);
+
+  if (authenticated && showSelector && wallets.length > 0) {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs text-zinc-400 font-medium text-left">
+          Choose the wallet to view
+        </div>
+        <div className="space-y-2">
+          {wallets.map((wallet) => (
+            <button
+              key={wallet.address}
+              onClick={() => onAddress(wallet.address)}
+              className={cn(
+                "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm transition-all",
+                "bg-zinc-900 border border-zinc-800 hover:border-teal-600/50 hover:bg-zinc-800/80",
+              )}
+            >
+              <div className="text-left min-w-0">
+                <div className="text-zinc-200 font-medium truncate">
+                  {wallet.walletClientType === "privy"
+                    ? "Privy Embedded Wallet"
+                    : "Linked Wallet"}
+                </div>
+                <div className="text-zinc-500 font-mono text-xs">
+                  {wallet.address}
+                </div>
+              </div>
+              <span className="text-xs text-zinc-500">Use</span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowSelector(false)}
+          className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+        >
+          Back
+        </button>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -46,6 +88,9 @@ function PrivyLoginPanel({
         try {
           setPendingConnect(true);
           await login();
+          if (authenticated && wallets.length > 0) {
+            setShowSelector(true);
+          }
         } finally {
           setConnecting(false);
         }
