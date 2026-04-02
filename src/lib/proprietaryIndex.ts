@@ -4,8 +4,21 @@ export interface HyperPulseVixResult {
   score: number; // 0..100 (0 fear, 100 greed)
   label: "Extreme Fear" | "Fear" | "Neutral" | "Greed" | "Extreme Greed";
   trendScore: number; // -100..100 (bearish to bullish)
-  trendLabel: "Bearish" | "Neutral" | "Bullish";
+  trendLabel: "Bearish" | "Bullish";
   trendConfidence: "low" | "medium" | "high";
+  trendInputs: {
+    momentum24h: number;
+    momentum48h: number;
+    oiChange: number;
+    fundingAPR: number;
+  };
+  trendWeights: {
+    momentum24h: number;
+    momentum48h: number;
+    oiChange: number;
+    fundingContrarian: number;
+  };
+  trendWindowHours: number;
   volatilityBreadthPct: number;
   fundingRegimeScore: number;
   breadthScore: number;
@@ -47,9 +60,7 @@ function toGreedBand(
 }
 
 function toTrendLabel(score: number): HyperPulseVixResult["trendLabel"] {
-  if (score <= -15) return "Bearish";
-  if (score >= 15) return "Bullish";
-  return "Neutral";
+  return score >= 0 ? "Bullish" : "Bearish";
 }
 
 function toTrendConfidence(score: number): HyperPulseVixResult["trendConfidence"] {
@@ -82,16 +93,30 @@ function movingAverage(values: number[], window: number): number {
 export function computeHyperPulseVix(args: {
   assets: MarketAsset[];
   fundingHistories: Record<string, { time: number; rate: number }[]>;
+  btcCandles?: Array<{ time: number; close: number }>;
 }): HyperPulseVixResult {
-  const { assets, fundingHistories } = args;
+  const { assets, fundingHistories, btcCandles = [] } = args;
 
   if (assets.length === 0) {
     return {
       score: 50,
       label: "Neutral",
       trendScore: 0,
-      trendLabel: "Neutral",
+      trendLabel: "Bearish",
       trendConfidence: "low",
+      trendInputs: {
+        momentum24h: 0,
+        momentum48h: 0,
+        oiChange: 0,
+        fundingAPR: 0,
+      },
+      trendWeights: {
+        momentum24h: 0.35,
+        momentum48h: 0.25,
+        oiChange: 0.25,
+        fundingContrarian: 0.15,
+      },
+      trendWindowHours: 48,
       volatilityBreadthPct: 0,
       fundingRegimeScore: 50,
       breadthScore: 50,
@@ -171,12 +196,41 @@ export function computeHyperPulseVix(args: {
     fundingRegimeScore * 0.4 + breadthScore * 0.35 + volatilityGreedScore * 0.25
   );
 
-  const avg24hMove = avg(assets.map((a) => a.priceChange24h));
-  const avgOiChange = avg(assets.map((a) => a.oiChangePct ?? 0));
-  const fundingContrarian = clamp(-medFundingApr * 1.2, -30, 30);
-  const momentumScore = clamp(avg24hMove * 4, -40, 40);
-  const oiScore = clamp(avgOiChange * 2, -30, 30);
-  const trendScore = clamp(momentumScore + oiScore + fundingContrarian, -100, 100);
+  const btc = assets.find((a) => a.coin === "BTC");
+  const btcOiChange = btc?.oiChangePct ?? 0;
+  const btcFundingAPR = btc?.fundingAPR ?? 0;
+  const btc24h = btc?.priceChange24h ?? 0;
+
+  let btc48h = btc24h;
+  if (btcCandles.length >= 2) {
+    const sorted = [...btcCandles].sort((a, b) => a.time - b.time);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    if (first?.close && last?.close) {
+      btc48h = ((last.close - first.close) / first.close) * 100;
+    }
+  }
+
+  const fundingContrarian = clamp(-btcFundingAPR * 0.9, -35, 35);
+  const momentum24hScore = clamp(btc24h * 4, -50, 50);
+  const momentum48hScore = clamp(btc48h * 2.5, -40, 40);
+  const oiScore = clamp(btcOiChange * 2, -30, 30);
+
+  const trendWeights = {
+    momentum24h: 0.35,
+    momentum48h: 0.25,
+    oiChange: 0.25,
+    fundingContrarian: 0.15,
+  };
+
+  const trendScore = clamp(
+    momentum24hScore * trendWeights.momentum24h +
+      momentum48hScore * trendWeights.momentum48h +
+      oiScore * trendWeights.oiChange +
+      fundingContrarian * trendWeights.fundingContrarian,
+    -100,
+    100
+  );
 
   return {
     score: Math.round(score),
@@ -184,6 +238,14 @@ export function computeHyperPulseVix(args: {
     trendScore: Math.round(trendScore),
     trendLabel: toTrendLabel(trendScore),
     trendConfidence: toTrendConfidence(trendScore),
+    trendInputs: {
+      momentum24h: Number(btc24h.toFixed(2)),
+      momentum48h: Number(btc48h.toFixed(2)),
+      oiChange: Number(btcOiChange.toFixed(2)),
+      fundingAPR: Number(btcFundingAPR.toFixed(2)),
+    },
+    trendWeights,
+    trendWindowHours: 48,
     volatilityBreadthPct: Math.round(volBreadthPct),
     fundingRegimeScore: Math.round(fundingRegimeScore),
     breadthScore: Math.round(breadthScore),

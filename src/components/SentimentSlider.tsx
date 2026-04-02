@@ -6,12 +6,12 @@ import { useMarket } from "@/context/MarketContext";
 import { computeHyperPulseVix } from "@/lib/proprietaryIndex";
 
 export default function SentimentSlider() {
-  const { assets, fundingHistories } = useMarket();
+  const { assets, fundingHistories, btcCandles } = useMarket();
   const [showInfo, setShowInfo] = useState(false);
 
   const result = useMemo(
-    () => computeHyperPulseVix({ assets, fundingHistories }),
-    [assets, fundingHistories]
+    () => computeHyperPulseVix({ assets, fundingHistories, btcCandles }),
+    [assets, fundingHistories, btcCandles]
   );
 
   const sentimentColor =
@@ -28,22 +28,21 @@ export default function SentimentSlider() {
         : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
 
   const trendColor =
-    result.trendScore < -15
-      ? "text-red-400"
-      : result.trendScore > 15
-        ? "text-emerald-300"
-        : "text-zinc-300";
+    result.trendScore < 0 ? "text-red-400" : "text-emerald-300";
   const trendBadge =
-    result.trendScore < -15
+    result.trendScore < 0
       ? "bg-red-500/15 text-red-300 border-red-500/30"
-      : result.trendScore > 15
-        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-        : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
+      : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
   const trendPos = `${(result.trendScore + 100) / 2}%`;
+  const hoverSummary = `BTC 24h: ${result.trendInputs.momentum24h}% · BTC 48h: ${result.trendInputs.momentum48h}% · BTC OI: ${result.trendInputs.oiChange}% · BTC funding: ${result.trendInputs.fundingAPR}%`;
 
   return (
     <>
-      <div className="flex-shrink-0 min-w-[320px] h-[56px] rounded-md border border-zinc-800 bg-gradient-to-r from-zinc-900/90 via-zinc-900/70 to-zinc-950/80 px-3 py-2">
+      <div
+        className="flex-shrink-0 min-w-[320px] h-[56px] rounded-md border border-zinc-800 bg-gradient-to-r from-zinc-900/90 via-zinc-900/70 to-zinc-950/80 px-3 py-2"
+        title={hoverSummary}
+        onDoubleClick={() => setShowInfo(true)}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div>
@@ -100,7 +99,7 @@ export default function SentimentSlider() {
               <div>
                 <div className="text-sm font-medium">HyperPulse Tomorrow Bias</div>
                 <div className="text-[11px] text-zinc-500">
-                  Predictive bias for the next 24h using funding, breadth, and momentum.
+                  BTC‑anchored bias for the next 24h–48h using momentum, OI, and funding.
                 </div>
               </div>
               <button
@@ -114,6 +113,27 @@ export default function SentimentSlider() {
               <div className="p-2 rounded bg-zinc-950 border border-zinc-800 text-zinc-400">
                 Tomorrow Bias score: <span className="font-mono">{result.trendScore}</span> (
                 {result.trendLabel}, {result.trendConfidence} confidence)
+                <div className="mt-1 text-[11px] text-zinc-500">
+                  Window: {result.trendWindowHours}h · Anchor: BTC
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-zinc-400">
+                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+                  BTC 24h: <span className="font-mono">{result.trendInputs.momentum24h}%</span>
+                  <br />
+                  BTC 48h: <span className="font-mono">{result.trendInputs.momentum48h}%</span>
+                </div>
+                <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
+                  BTC OI: <span className="font-mono">{result.trendInputs.oiChange}%</span>
+                  <br />
+                  BTC funding APR: <span className="font-mono">{result.trendInputs.fundingAPR}%</span>
+                </div>
+              </div>
+              <div className="text-zinc-500">
+                Weights — 24h momentum {Math.round(result.trendWeights.momentum24h * 100)}%, 48h
+                momentum {Math.round(result.trendWeights.momentum48h * 100)}%, OI{" "}
+                {Math.round(result.trendWeights.oiChange * 100)}%, funding contrarian{" "}
+                {Math.round(result.trendWeights.fundingContrarian * 100)}%.
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="p-2 rounded bg-zinc-950 border border-zinc-800">

@@ -32,6 +32,7 @@ interface MarketContextValue {
   setSelectedAsset: (coin: string | null) => void;
   activityFeed: ActivityEntry[];
   fundingHistories: Record<string, FundingHistoryPoint[]>;
+  btcCandles: Array<{ time: number; close: number }>;
 }
 
 const MarketContext = createContext<MarketContextValue | null>(null);
@@ -48,6 +49,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const [fundingHistories, setFundingHistories] = useState<
     Record<string, FundingHistoryPoint[]>
   >({});
+  const [btcCandles, setBtcCandles] = useState<Array<{ time: number; close: number }>>([]);
   const signalFetchRef = useRef(0);
   const prevOIRef = useRef<Record<string, number>>({});
   const wsInitRef = useRef(false);
@@ -189,6 +191,27 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const fetchBtcCandles = useCallback(async () => {
+    try {
+      const now = Date.now();
+      const startTime = now - 48 * 60 * 60 * 1000;
+      const res = await fetch(
+        `/api/market/candles?coin=BTC&interval=1h&startTime=${startTime}&endTime=${now}`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const parsed = (Array.isArray(data) ? data : []).map(
+        (c: Record<string, unknown>) => ({
+          time: Number(c.t ?? c.T ?? c.time ?? 0),
+          close: parseFloat(String(c.c ?? c.close ?? "0")),
+        })
+      );
+      if (parsed.length > 0) setBtcCandles(parsed);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const fetchMarketData = useCallback(async () => {
     try {
       const res = await fetch("/api/market");
@@ -284,13 +307,14 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         .slice(0, 10);
       fetchFundingHistories(top10.map((a) => a.coin));
       fetchSignalData(parsed);
+      fetchBtcCandles();
     } catch (err) {
       console.error("Failed to fetch market data:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
       setLoading(false);
     }
-  }, [addActivity, fetchFundingHistories, fetchSignalData]);
+  }, [addActivity, fetchFundingHistories, fetchSignalData, fetchBtcCandles]);
 
   useEffect(() => {
     fetchMarketData();
@@ -375,6 +399,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         setSelectedAsset,
         activityFeed,
         fundingHistories,
+        btcCandles,
       }}
     >
       {children}

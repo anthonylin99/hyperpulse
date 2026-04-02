@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { X } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
-import { formatUSD, formatFundingRate, formatFundingAPR } from "@/lib/format";
+import { formatUSD } from "@/lib/format";
 import { assertOrderSucceeded } from "@/lib/order";
-import { getFundingRegime } from "@/lib/fundingRegime";
 import toast from "react-hot-toast";
 
 interface TradeDrawerProps {
@@ -15,87 +14,46 @@ interface TradeDrawerProps {
   onClose: () => void;
 }
 
-const LEVERAGE_OPTIONS = [1, 2, 5, 10, 20] as const;
-
-interface OrderBookLevel {
-  px: number;
-  sz: number;
-  n: number;
-}
-
-interface OrderBookSnapshot {
-  coin: string;
-  time: number;
-  bestBid: number | null;
-  bestAsk: number | null;
-  spread: number | null;
-  spreadBps: number | null;
-  bids: OrderBookLevel[];
-  asks: OrderBookLevel[];
-}
+const DEFAULT_LEVERAGE = 10;
+const TP_SL_SUPPORTED = true;
 
 export default function TradeDrawer({
   coin,
   direction: initialDirection,
   onClose,
 }: TradeDrawerProps) {
-  const { assets, fundingHistories } = useMarket();
+  const { assets } = useMarket();
   const { isConnected, exchangeClient, accountState, refreshPortfolio } =
     useWallet();
 
   const asset = assets.find((a) => a.coin === coin);
+  const markPx = asset?.markPx ?? 0;
+  const priceDecimals = markPx < 0.01 ? 6 : markPx < 1 ? 4 : 2;
 
   const [direction, setDirection] = useState<"long" | "short">(
     initialDirection
   );
   const [sizeUSD, setSizeUSD] = useState("");
-  const [leverage, setLeverage] = useState(5);
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [limitPrice, setLimitPrice] = useState("");
+  const [leverage, setLeverage] = useState(DEFAULT_LEVERAGE);
   const [submitting, setSubmitting] = useState(false);
-  const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
-  const [orderBookLoading, setOrderBookLoading] = useState(false);
-  const [orderBookError, setOrderBookError] = useState<string | null>(null);
+  const [confirmValue, setConfirmValue] = useState(0);
 
-  // Auto-fill limit price when switching to limit
-  const markPx = asset?.markPx ?? 0;
-  const priceDecimals = markPx < 0.01 ? 6 : markPx < 1 ? 4 : 2;
-  const fundingRegime = useMemo(
-    () => getFundingRegime(asset?.fundingRate ?? 0, fundingHistories[coin]),
-    [asset?.fundingRate, coin, fundingHistories]
-  );
-  const fundingRegimeColor =
-    fundingRegime.tone === "red"
-      ? "text-red-400"
-      : fundingRegime.tone === "green"
-        ? "text-green-400"
-        : "text-zinc-400";
+  const [tpEnabled, setTpEnabled] = useState(false);
+  const [tpType, setTpType] = useState<"market" | "limit">("market");
+  const [tpTrigger, setTpTrigger] = useState("");
+  const [tpLimit, setTpLimit] = useState("");
 
-  const fetchOrderBook = useCallback(async () => {
-    try {
-      setOrderBookLoading(true);
-      setOrderBookError(null);
-      const res = await fetch(`/api/market/orderbook?coin=${coin}`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `HTTP ${res.status}`);
-      }
-      const data = (await res.json()) as OrderBookSnapshot;
-      setOrderBook(data);
-    } catch (err) {
-      setOrderBookError(
-        err instanceof Error ? err.message : "Failed to load order book"
-      );
-    } finally {
-      setOrderBookLoading(false);
-    }
-  }, [coin]);
+  const [slEnabled, setSlEnabled] = useState(false);
+  const [slType, setSlType] = useState<"market" | "limit">("market");
+  const [slTrigger, setSlTrigger] = useState("");
+  const [slLimit, setSlLimit] = useState("");
 
   useEffect(() => {
-    fetchOrderBook();
-    const interval = setInterval(fetchOrderBook, 5000);
-    return () => clearInterval(interval);
-  }, [fetchOrderBook]);
+    const maxLev = asset?.maxLeverage ?? DEFAULT_LEVERAGE;
+    setLeverage(Math.min(DEFAULT_LEVERAGE, maxLev));
+  }, [asset?.maxLeverage]);
 
   const computed = useMemo(() => {
     const usd = parseFloat(sizeUSD) || 0;
@@ -103,35 +61,31 @@ export default function TradeDrawer({
     const notional = usd * leverage;
     const positionSize = markPx > 0 ? notional / markPx : 0;
 
-    // Simplified liquidation estimate
     const liqPrice =
       direction === "long"
         ? markPx * (1 - (1 / leverage) * 0.9)
         : markPx * (1 + (1 / leverage) * 0.9);
 
-    // Funding cost per day
-    const fundingRate = asset?.fundingRate ?? 0;
-    const fundingCostDay = Math.abs(notional * fundingRate * 24);
-    const fundingEarns =
-      (direction === "long" && fundingRate < 0) ||
-      (direction === "short" && fundingRate > 0);
+    return { marginRequired, notional, positionSize, liqPrice };
+  }, [sizeUSD, leverage, markPx, direction]);
 
-    return {
-      marginRequired,
-      notional,
-      positionSize,
-      liqPrice,
-      fundingCostDay,
-      fundingEarns,
-    };
-  }, [sizeUSD, leverage, markPx, direction, asset]);
   const buyingPower = accountState?.withdrawable ?? 0;
   const insufficientBuyingPower = computed.marginRequired > buyingPower;
 
-  // Check for existing position
-  const existingPosition = accountState?.positions.find(
-    (p) => p.coin === coin
-  );
+  const invalidTp =
+    tpEnabled &&
+    (!tpTrigger || (tpType === "limit" && !tpLimit));
+  const invalidSl =
+    slEnabled &&
+    (!slTrigger || (slType === "limit" && !slLimit));
+
+  const canSubmit =
+    isConnected &&
+    !submitting &&
+    !!sizeUSD &&
+    !insufficientBuyingPower &&
+    !invalidTp &&
+    !invalidSl;
 
   const handleSubmit = async () => {
     if (!exchangeClient || !asset) return;
@@ -156,9 +110,7 @@ export default function TradeDrawer({
           ? limitPrice
           : (markPx * slippage).toFixed(priceDecimals);
 
-      // Size in base currency units (coins)
       const sizeCoin = computed.positionSize;
-      // Round to reasonable precision
       const sizeStr = sizeCoin.toPrecision(6);
 
       const orderResp = await exchangeClient.order({
@@ -178,17 +130,62 @@ export default function TradeDrawer({
         ],
         grouping: "na",
       });
+
       const execution = assertOrderSucceeded(orderResp);
 
+      if (execution === "filled" && TP_SL_SUPPORTED) {
+        const childOrders = [] as Array<Record<string, unknown>>;
+
+        if (tpEnabled && tpTrigger) {
+          childOrders.push({
+            a: asset.assetIndex,
+            b: !isBuy,
+            p: tpType === "limit" ? tpLimit : "0",
+            s: sizeStr,
+            r: true,
+            t: {
+              trigger: {
+                isMarket: tpType === "market",
+                triggerPx: tpTrigger,
+                tpsl: "tp",
+              },
+            },
+          });
+        }
+
+        if (slEnabled && slTrigger) {
+          childOrders.push({
+            a: asset.assetIndex,
+            b: !isBuy,
+            p: slType === "limit" ? slLimit : "0",
+            s: sizeStr,
+            r: true,
+            t: {
+              trigger: {
+                isMarket: slType === "market",
+                triggerPx: slTrigger,
+                tpsl: "sl",
+              },
+            },
+          });
+        }
+
+        if (childOrders.length > 0) {
+          await exchangeClient.order({
+            orders: childOrders as never,
+            grouping: "na",
+          });
+        }
+      }
+
       toast.success(
-        `${direction === "long" ? "Long" : "Short"} ${coin} placed (${execution}) — ${sizeCoin.toFixed(4)} ${coin} @ ${orderType === "market" ? "market" : formatUSD(parseFloat(price), priceDecimals)}`
+        `${direction === "long" ? "Buy" : "Sell"} ${coin} placed — ${sizeCoin.toFixed(4)} ${coin} @ ${orderType === "market" ? "market" : formatUSD(parseFloat(price), priceDecimals)}`
       );
 
-      setTimeout(refreshPortfolio, 2000);
+      setTimeout(refreshPortfolio, 1500);
       onClose();
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Order failed";
+      const msg = err instanceof Error ? err.message : "Order failed";
       toast.error(msg);
     } finally {
       setSubmitting(false);
@@ -197,9 +194,7 @@ export default function TradeDrawer({
 
   return (
     <>
-      {/* Drawer — no backdrop, does not block page interaction */}
-      <div className="fixed top-0 right-0 h-full w-[352px] bg-zinc-900 border-l border-zinc-800 z-50 flex flex-col animate-slide-in">
-        {/* Header */}
+      <div className="fixed top-0 right-0 h-full w-[340px] bg-zinc-900 border-l border-zinc-800 z-50 flex flex-col animate-slide-in">
         <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 flex-shrink-0">
           <div>
             <span className="text-[13px] font-mono font-bold">{coin}</span>
@@ -217,9 +212,7 @@ export default function TradeDrawer({
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
-          {/* Direction toggle */}
           <div className="flex rounded-md overflow-hidden border border-zinc-700">
             <button
               onClick={() => setDirection("long")}
@@ -229,7 +222,7 @@ export default function TradeDrawer({
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              Long
+              Buy / Long
             </button>
             <button
               onClick={() => setDirection("short")}
@@ -239,14 +232,18 @@ export default function TradeDrawer({
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              Short
+              Sell / Short
             </button>
           </div>
 
-          {/* Size input */}
+          <div className="flex items-center justify-between text-[11px] text-zinc-500">
+            <span>Leverage</span>
+            <span className="font-mono text-zinc-300">{leverage}x</span>
+          </div>
+
           <div>
             <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 block">
-              Margin Size (USDC)
+              Size (USDC)
             </label>
             <input
               type="number"
@@ -256,35 +253,8 @@ export default function TradeDrawer({
               onChange={(e) => setSizeUSD(e.target.value)}
               className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded text-xs font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-[#7dd4c4] transition-colors"
             />
-            <p className="text-[9px] text-zinc-600 mt-1">
-              Margin used from buying power. Order notional = margin × leverage.
-            </p>
           </div>
 
-          {/* Leverage selector */}
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 block">
-              Leverage
-            </label>
-            <div className="flex gap-1">
-              {LEVERAGE_OPTIONS.map((lev) => (
-                <button
-                  key={lev}
-                  onClick={() => setLeverage(lev)}
-                  disabled={asset ? lev > asset.maxLeverage : false}
-                  className={`flex-1 py-1 text-[11px] font-mono rounded transition-colors ${
-                    leverage === lev
-                      ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
-                      : "bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600"
-                  } disabled:opacity-30 disabled:cursor-not-allowed`}
-                >
-                  {lev}x
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Order type */}
           <div>
             <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 block">
               Order Type
@@ -303,8 +273,7 @@ export default function TradeDrawer({
               <button
                 onClick={() => {
                   setOrderType("limit");
-                  if (!limitPrice)
-                    setLimitPrice(markPx.toFixed(priceDecimals));
+                  if (!limitPrice) setLimitPrice(markPx.toFixed(priceDecimals));
                 }}
                 className={`flex-1 py-1 text-[11px] font-mono rounded transition-colors ${
                   orderType === "limit"
@@ -317,7 +286,6 @@ export default function TradeDrawer({
             </div>
           </div>
 
-          {/* Limit price input */}
           {orderType === "limit" && (
             <div>
               <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1 block">
@@ -332,7 +300,119 @@ export default function TradeDrawer({
             </div>
           )}
 
-          {/* Computed fields */}
+          {TP_SL_SUPPORTED && (
+            <div className="space-y-2 border-t border-zinc-800 pt-2.5">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500">TP / SL</div>
+              <div className="rounded border border-zinc-800 p-2 space-y-2">
+                <label className="flex items-center gap-2 text-[11px] text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={tpEnabled}
+                    onChange={(e) => setTpEnabled(e.target.checked)}
+                    className="accent-[#7dd4c4]"
+                  />
+                  Take Profit
+                </label>
+                {tpEnabled && (
+                  <div className="space-y-1">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setTpType("market")}
+                        className={`flex-1 py-1 text-[10px] font-mono rounded ${
+                          tpType === "market"
+                            ? "bg-zinc-700 text-white"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}
+                      >
+                        Market
+                      </button>
+                      <button
+                        onClick={() => setTpType("limit")}
+                        className={`flex-1 py-1 text-[10px] font-mono rounded ${
+                          tpType === "limit"
+                            ? "bg-zinc-700 text-white"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}
+                      >
+                        Limit
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      placeholder="Trigger price"
+                      value={tpTrigger}
+                      onChange={(e) => setTpTrigger(e.target.value)}
+                      className="w-full px-2 py-1 bg-zinc-950 border border-zinc-700 rounded text-[11px] font-mono text-zinc-200"
+                    />
+                    {tpType === "limit" && (
+                      <input
+                        type="number"
+                        placeholder="Limit price"
+                        value={tpLimit}
+                        onChange={(e) => setTpLimit(e.target.value)}
+                        className="w-full px-2 py-1 bg-zinc-950 border border-zinc-700 rounded text-[11px] font-mono text-zinc-200"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border border-zinc-800 p-2 space-y-2">
+                <label className="flex items-center gap-2 text-[11px] text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={slEnabled}
+                    onChange={(e) => setSlEnabled(e.target.checked)}
+                    className="accent-[#7dd4c4]"
+                  />
+                  Stop Loss
+                </label>
+                {slEnabled && (
+                  <div className="space-y-1">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setSlType("market")}
+                        className={`flex-1 py-1 text-[10px] font-mono rounded ${
+                          slType === "market"
+                            ? "bg-zinc-700 text-white"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}
+                      >
+                        Market
+                      </button>
+                      <button
+                        onClick={() => setSlType("limit")}
+                        className={`flex-1 py-1 text-[10px] font-mono rounded ${
+                          slType === "limit"
+                            ? "bg-zinc-700 text-white"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}
+                      >
+                        Limit
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      placeholder="Trigger price"
+                      value={slTrigger}
+                      onChange={(e) => setSlTrigger(e.target.value)}
+                      className="w-full px-2 py-1 bg-zinc-950 border border-zinc-700 rounded text-[11px] font-mono text-zinc-200"
+                    />
+                    {slType === "limit" && (
+                      <input
+                        type="number"
+                        placeholder="Limit price"
+                        value={slLimit}
+                        onChange={(e) => setSlLimit(e.target.value)}
+                        className="w-full px-2 py-1 bg-zinc-950 border border-zinc-700 rounded text-[11px] font-mono text-zinc-200"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {parseFloat(sizeUSD) > 0 && (
             <div className="space-y-1 text-[11px] font-mono border-t border-zinc-800 pt-2.5">
               <div className="flex justify-between text-zinc-300">
@@ -341,11 +421,7 @@ export default function TradeDrawer({
               </div>
               <div className="flex justify-between text-zinc-300">
                 <span>Margin Required</span>
-                <span
-                  className={
-                    insufficientBuyingPower ? "text-red-400" : "text-zinc-300"
-                  }
-                >
+                <span className={insufficientBuyingPower ? "text-red-400" : "text-zinc-300"}>
                   {formatUSD(computed.marginRequired)}
                 </span>
               </div>
@@ -356,48 +432,13 @@ export default function TradeDrawer({
                 </span>
               </div>
               <div className="flex justify-between text-zinc-400">
-                <span>Order Value (Notional)</span>
+                <span>Order Value</span>
                 <span>{formatUSD(computed.notional)}</span>
               </div>
               <div className="flex justify-between text-zinc-400">
                 <span>Est. Liquidation</span>
-                <span>
-                  {formatUSD(computed.liqPrice, priceDecimals)}
-                </span>
+                <span>{formatUSD(computed.liqPrice, priceDecimals)}</span>
               </div>
-              <div className="flex justify-between text-zinc-400">
-                <span>Funding/day</span>
-                <span
-                  className={
-                    computed.fundingEarns ? "text-green-500" : "text-red-400"
-                  }
-                >
-                  {computed.fundingEarns ? "earns " : "costs "}
-                  {formatUSD(computed.fundingCostDay)}/day
-                </span>
-              </div>
-              {asset && (
-                <div className="flex justify-between text-zinc-500">
-                  <span>Current Funding/hr</span>
-                  <span>{formatFundingRate(asset.fundingRate)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Funding Regime</span>
-                <span className={fundingRegimeColor}>{fundingRegime.label}</span>
-              </div>
-              {fundingRegime.percentile != null && (
-                <div className="flex justify-between text-zinc-500">
-                  <span>Historical Percentile</span>
-                  <span>{fundingRegime.percentile.toFixed(0)}th</span>
-                </div>
-              )}
-              {fundingRegime.meanAPR != null && (
-                <div className="flex justify-between text-zinc-500">
-                  <span>Historical Mean APR</span>
-                  <span>{formatFundingAPR(fundingRegime.meanAPR)}</span>
-                </div>
-              )}
               {insufficientBuyingPower && (
                 <div className="text-red-400 text-[10px]">
                   Margin exceeds available buying power.
@@ -405,125 +446,40 @@ export default function TradeDrawer({
               )}
             </div>
           )}
-
-          {/* Order book snapshot */}
-          <div className="border-t border-zinc-800 pt-2.5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-                Order Book (Top Levels)
-              </span>
-              <button
-                onClick={fetchOrderBook}
-                className="text-[9px] text-zinc-500 hover:text-zinc-300"
-              >
-                Refresh
-              </button>
-            </div>
-
-            {orderBook && (
-              <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono">
-                <div className="p-1.5 rounded bg-zinc-950 border border-zinc-800">
-                  <div className="text-zinc-500 text-[10px]">Best Bid</div>
-                  <div className="text-green-400">
-                    {orderBook.bestBid != null
-                      ? formatUSD(orderBook.bestBid, priceDecimals)
-                      : "—"}
-                  </div>
-                </div>
-                <div className="p-1.5 rounded bg-zinc-950 border border-zinc-800">
-                  <div className="text-zinc-500 text-[10px]">Best Ask</div>
-                  <div className="text-red-400">
-                    {orderBook.bestAsk != null
-                      ? formatUSD(orderBook.bestAsk, priceDecimals)
-                      : "—"}
-                  </div>
-                </div>
-                <div className="p-1.5 rounded bg-zinc-950 border border-zinc-800">
-                  <div className="text-zinc-500 text-[10px]">Spread</div>
-                  <div className="text-zinc-300">
-                    {orderBook.spreadBps != null
-                      ? `${orderBook.spreadBps.toFixed(2)} bps`
-                      : "—"}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {orderBook && (
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="rounded border border-zinc-800 overflow-hidden">
-                  <div className="px-2 py-1 text-[9px] uppercase text-zinc-500 bg-zinc-950">
-                    Asks
-                  </div>
-                  <div className="max-h-24 overflow-auto">
-                    {orderBook.asks.slice(0, 6).map((lvl, idx) => (
-                      <div
-                        key={`ask-${idx}-${lvl.px}`}
-                        className="px-2 py-0.5 text-[10px] font-mono flex justify-between text-red-300 border-t border-zinc-900"
-                      >
-                        <span>{lvl.px.toFixed(priceDecimals)}</span>
-                        <span>{lvl.sz.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded border border-zinc-800 overflow-hidden">
-                  <div className="px-2 py-1 text-[9px] uppercase text-zinc-500 bg-zinc-950">
-                    Bids
-                  </div>
-                  <div className="max-h-24 overflow-auto">
-                    {orderBook.bids.slice(0, 6).map((lvl, idx) => (
-                      <div
-                        key={`bid-${idx}-${lvl.px}`}
-                        className="px-2 py-0.5 text-[10px] font-mono flex justify-between text-green-300 border-t border-zinc-900"
-                      >
-                        <span>{lvl.px.toFixed(priceDecimals)}</span>
-                        <span>{lvl.sz.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {orderBookLoading && !orderBook && (
-              <div className="text-[10px] text-zinc-600">Loading order book...</div>
-            )}
-            {orderBookError && (
-              <div className="text-[10px] text-zinc-500">
-                Order book unavailable: {orderBookError}
-              </div>
-            )}
-          </div>
-
-          {/* Existing position warning */}
-          {existingPosition && (
-            <div className="px-3 py-2 bg-zinc-800/50 rounded border border-zinc-700 text-xs text-zinc-400 font-sans">
-              You have an existing{" "}
-              <span
-                className={
-                  existingPosition.szi > 0 ? "text-green-500" : "text-red-500"
-                }
-              >
-                {existingPosition.szi > 0 ? "Long" : "Short"}
-              </span>{" "}
-              of {Math.abs(existingPosition.szi).toFixed(4)} {coin}. This will{" "}
-              {(existingPosition.szi > 0 && direction === "long") ||
-              (existingPosition.szi < 0 && direction === "short")
-                ? "add to"
-                : "flip"}{" "}
-              your position.
-            </div>
-          )}
         </div>
 
-        {/* Footer */}
         <div className="flex-shrink-0 px-3 py-3 border-t border-zinc-800 space-y-2">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-500">
+            Slide to confirm
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={confirmValue}
+            onChange={(e) => setConfirmValue(Number(e.target.value))}
+            onMouseUp={() => {
+              if (confirmValue >= 98 && canSubmit) {
+                setConfirmValue(0);
+                handleSubmit();
+              } else {
+                setConfirmValue(0);
+              }
+            }}
+            onTouchEnd={() => {
+              if (confirmValue >= 98 && canSubmit) {
+                setConfirmValue(0);
+                handleSubmit();
+              } else {
+                setConfirmValue(0);
+              }
+            }}
+            disabled={!canSubmit}
+            className="w-full"
+          />
           <button
             onClick={handleSubmit}
-            disabled={
-              !isConnected || submitting || !sizeUSD || insufficientBuyingPower
-            }
+            disabled={!canSubmit}
             className={`w-full py-2 text-xs font-medium rounded transition-colors ${
               direction === "long"
                 ? "bg-green-600 hover:bg-green-500 disabled:bg-zinc-700"
@@ -534,7 +490,7 @@ export default function TradeDrawer({
               ? "Placing..."
               : !isConnected
                 ? "Connect Wallet"
-                : `Place ${direction === "long" ? "Long" : "Short"}`}
+                : `Place ${direction === "long" ? "Buy" : "Sell"}`}
           </button>
           <p className="text-[9px] text-zinc-600 font-sans text-center">
             Not available to US persons. Use at your own risk.
