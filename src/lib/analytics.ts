@@ -26,12 +26,26 @@ export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
   >();
 
   for (const fill of sorted) {
-    const isOpen =
-      fill.dir === "Open Long" || fill.dir === "Open Short";
-    const direction: "long" | "short" =
-      fill.dir === "Open Long" || fill.dir === "Close Long"
-        ? "long"
-        : "short";
+    const normalized = (() => {
+      if (fill.dir === "Open Long" || fill.dir === "Close Long") {
+        return { isOpen: fill.dir === "Open Long", direction: "long" as const };
+      }
+      if (fill.dir === "Open Short" || fill.dir === "Close Short") {
+        return { isOpen: fill.dir === "Open Short", direction: "short" as const };
+      }
+      // Spot fills typically use Buy/Sell. Treat Buy as open/add long, Sell as close/reduce long.
+      if (fill.dir === "Buy") {
+        return { isOpen: true, direction: "long" as const };
+      }
+      if (fill.dir === "Sell") {
+        return { isOpen: false, direction: "long" as const };
+      }
+      // Fallback: assume open long to avoid dropping fills silently
+      return { isOpen: true, direction: "long" as const };
+    })();
+
+    const isOpen = normalized.isOpen;
+    const direction = normalized.direction;
 
     const pos = openPositions.get(fill.coin);
 
