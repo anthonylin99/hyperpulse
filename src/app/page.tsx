@@ -4,11 +4,13 @@ import { useState } from "react";
 import Nav from "@/components/Nav";
 import { useWallet } from "@/context/WalletContext";
 import { usePortfolio } from "@/context/PortfolioContext";
-import { cn } from "@/lib/format";
+import { cn, formatUSD } from "@/lib/format";
 
 // Portfolio components
 import ConnectPrompt from "@/components/portfolio/ConnectPrompt";
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
+import PositionsTable from "@/components/portfolio/PositionsTable";
+import RiskStrip from "@/components/portfolio/RiskStrip";
 import StatsGrid from "@/components/portfolio/StatsGrid";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import TradeJournal from "@/components/portfolio/TradeJournal";
@@ -30,7 +32,7 @@ import { useMarket } from "@/context/MarketContext";
 type Tab = "portfolio" | "markets";
 
 export default function Home() {
-  const { isConnected } = useWallet();
+  const { isConnected, accountState } = useWallet();
   const { trades, loading: portfolioLoading, error: portfolioError } = usePortfolio();
   const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
   const [tab, setTab] = useState<Tab>("portfolio");
@@ -38,6 +40,10 @@ export default function Home() {
     coin: string;
     direction: "long" | "short";
   } | null>(null);
+
+  const hasPositions = (accountState?.positions?.length ?? 0) > 0;
+  const hasTrades = trades.length > 0;
+  const hasContent = hasTrades || hasPositions;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -73,27 +79,52 @@ export default function Home() {
           <ConnectPrompt />
         ) : (
           <div className="max-w-7xl mx-auto px-4 py-6 space-y-6 pb-20">
-            {portfolioLoading && trades.length === 0 && (
-              <div className="flex items-center justify-center py-20">
-                <div className="text-sm text-zinc-500">
-                  Loading trade history...
-                </div>
-              </div>
-            )}
-
             {portfolioError && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
                 {portfolioError}
               </div>
             )}
 
-            {trades.length > 0 && (
+            {/* Empty state: connected, done loading, no trades AND no positions */}
+            {!portfolioLoading && !hasContent && (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="text-zinc-500 text-sm mb-2">
+                  No trades found for this address on Hyperliquid.
+                </div>
+                {accountState && accountState.accountValue > 0 && (
+                  <div className="text-zinc-400 text-sm mb-4">
+                    Account balance: {formatUSD(accountState.accountValue)}
+                  </div>
+                )}
+                <div className="text-zinc-600 text-xs">
+                  Start trading on Hyperliquid to see your analytics here.
+                </div>
+              </div>
+            )}
+
+            {/* Always show header + positions + risk if connected (even without closed trades) */}
+            {(hasContent || portfolioLoading) && (
               <>
                 <DashboardHeader />
+                <PositionsTable />
+                <RiskStrip />
+              </>
+            )}
+
+            {/* Skeleton loading for first fetch */}
+            {portfolioLoading && !hasTrades && (
+              <>
+                <StatsGrid />
+                <EquityCurve />
+              </>
+            )}
+
+            {/* Full analytics — only when we have closed trades */}
+            {hasTrades && (
+              <>
                 <StatsGrid />
                 <EquityCurve />
 
-                {/* The "so what" section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <PnLWaterfall />
                   <BenchmarkPanel />

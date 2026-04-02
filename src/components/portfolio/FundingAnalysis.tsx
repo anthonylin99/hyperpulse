@@ -5,7 +5,7 @@ import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, cn } from "@/lib/format";
 
 export default function FundingAnalysis() {
-  const { funding, stats } = usePortfolio();
+  const { funding, stats, loading, trades } = usePortfolio();
 
   const analysis = useMemo(() => {
     if (funding.length === 0) return null;
@@ -44,6 +44,31 @@ export default function FundingAnalysis() {
       count: funding.length,
     };
   }, [funding]);
+
+  if (loading && trades.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+        <div className="skeleton h-4 w-32 rounded mb-4" />
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i}>
+              <div className="skeleton h-3 w-12 rounded mb-1" />
+              <div className="skeleton h-5 w-16 rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="space-y-1.5">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center justify-between">
+              <div className="skeleton h-4 w-16 rounded" />
+              <div className="skeleton h-4 w-20 rounded" />
+              <div className="skeleton h-4 w-16 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!analysis) return null;
 

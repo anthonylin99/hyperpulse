@@ -6,8 +6,25 @@ import { formatUSD, cn } from "@/lib/format";
 import AssetDetailModal from "./AssetDetailModal";
 
 export default function AssetBreakdown() {
-  const { byAsset } = usePortfolio();
+  const { byAsset, loading, trades } = usePortfolio();
   const [selectedCoin, setSelectedCoin] = useState<string | null>(null);
+
+  if (loading && trades.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+        <div className="skeleton h-4 w-24 rounded mb-4" />
+        <div className="space-y-2">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="skeleton h-4 w-16 rounded shrink-0" />
+              <div className="skeleton h-6 flex-1 rounded" />
+              <div className="skeleton h-4 w-20 rounded shrink-0" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (byAsset.length === 0) return null;
 

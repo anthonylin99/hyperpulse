@@ -41,8 +41,25 @@ function formatDuration(ms: number): string {
   return `${(hours / 24).toFixed(1)}d`;
 }
 
+function StatsGridSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[0, 1, 2].map((row) => (
+        <div key={row} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map((col) => (
+            <div key={col} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+              <div className="skeleton h-3 w-20 rounded mb-2" />
+              <div className="skeleton h-6 w-28 rounded" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function StatsGrid() {
-  const { stats, fills, trades, byAsset, funding } = usePortfolio();
+  const { stats, fills, trades, byAsset, funding, loading } = usePortfolio();
 
   const derived = useMemo(() => {
     if (!stats || stats.totalTrades === 0) return null;
@@ -81,6 +98,8 @@ export default function StatsGrid() {
       fundingEarned, fundingPaid,
     };
   }, [stats, fills, trades, byAsset, funding]);
+
+  if (loading && trades.length === 0) return <StatsGridSkeleton />;
 
   if (!stats || stats.totalTrades === 0 || !derived) return null;
 

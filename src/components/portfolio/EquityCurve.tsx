@@ -22,8 +22,27 @@ const RANGE_MS: Record<TimeRange, number> = {
 };
 
 export default function EquityCurve() {
-  const { equityCurve } = usePortfolio();
+  const { equityCurve, loading, trades } = usePortfolio();
   const [range, setRange] = useState<TimeRange>("all");
+
+  if (loading && trades.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="skeleton h-4 w-24 rounded mb-1" />
+            <div className="skeleton h-6 w-20 rounded" />
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="skeleton h-6 w-10 rounded" />
+            ))}
+          </div>
+        </div>
+        <div className="skeleton w-full rounded" style={{ height: 240 }} />
+      </div>
+    );
+  }
 
   if (equityCurve.length < 2) return null;
 

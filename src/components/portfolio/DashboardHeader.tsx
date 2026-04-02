@@ -14,7 +14,7 @@ import {
 
 export default function DashboardHeader() {
   const { address, isReadOnly, disconnect, connectReadOnly } = useWallet();
-  const { stats, trades } = usePortfolio();
+  const { stats, trades, lastUpdated } = usePortfolio();
   const { accountState } = useWallet();
 
   const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
@@ -196,6 +196,11 @@ export default function DashboardHeader() {
               {formatUSD(accountValue)}
             </span>
             <span className="text-xs text-zinc-600 ml-2">equity</span>
+            {lastUpdated && (
+              <span className="text-[10px] text-zinc-600 ml-2">
+                updated {Math.round((Date.now() - lastUpdated) / 60000)}m ago
+              </span>
+            )}
           </div>
           {trades.length > 0 && (
             <>

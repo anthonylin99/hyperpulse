@@ -116,12 +116,22 @@ function parsePositions(
     .filter((ap) => parseFloat(ap.position.szi) !== 0)
     .map((ap) => {
       const p = ap.position;
+      const szi = parseFloat(p.szi);
+      const entryPx = parseFloat(p.entryPx);
+      const unrealizedPnl = parseFloat(p.unrealizedPnl);
+      const absSzi = Math.abs(szi);
+      const pnlPerUnit = absSzi > 0 ? unrealizedPnl / absSzi : 0;
+      const markPx = szi > 0
+        ? entryPx + pnlPerUnit
+        : szi < 0
+          ? entryPx - pnlPerUnit
+          : entryPx;
       return {
         coin: p.coin,
-        szi: parseFloat(p.szi),
-        entryPx: parseFloat(p.entryPx),
-        markPx: 0,
-        unrealizedPnl: parseFloat(p.unrealizedPnl),
+        szi,
+        entryPx,
+        markPx,
+        unrealizedPnl,
         marginUsed: parseFloat(p.marginUsed),
         leverage: p.leverage.value,
         liquidationPx: p.liquidationPx ? parseFloat(p.liquidationPx) : null,

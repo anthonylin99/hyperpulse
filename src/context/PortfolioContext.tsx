@@ -44,6 +44,7 @@ interface PortfolioContextValue {
   insights: Insight[];
   loading: boolean;
   error: string | null;
+  lastUpdated: number | null;
   refresh: () => Promise<void>;
 }
 
@@ -69,6 +70,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const hasFetchedRef = useRef(false);
 
   // Restore cached data on mount for instant load
@@ -257,6 +259,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       );
       setInsights(tradeInsights);
       hasFetchedRef.current = true;
+      setLastUpdated(Date.now());
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Failed to load portfolio data";
@@ -287,6 +290,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setByDay([]);
       setInsights([]);
       setError(null);
+      setLastUpdated(null);
       hasFetchedRef.current = false;
     }
   }, [isConnected]);
@@ -305,6 +309,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         insights,
         loading,
         error,
+        lastUpdated,
         refresh: fetchData,
       }}
     >

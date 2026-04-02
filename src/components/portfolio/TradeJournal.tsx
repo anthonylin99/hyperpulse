@@ -46,7 +46,7 @@ function exportCSV(trades: RoundTripTrade[]) {
 }
 
 export default function TradeJournal() {
-  const { trades } = usePortfolio();
+  const { trades, loading } = usePortfolio();
   const [sortKey, setSortKey] = useState<SortKey>("time");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterCoin, setFilterCoin] = useState<string>("all");
@@ -101,6 +101,26 @@ export default function TradeJournal() {
     }
     setPage(0);
   };
+
+  if (loading && trades.length === 0) {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+          <div className="skeleton h-4 w-32 rounded" />
+          <div className="flex items-center gap-2">
+            <div className="skeleton h-6 w-20 rounded" />
+            <div className="skeleton h-6 w-24 rounded" />
+          </div>
+        </div>
+        <div className="px-4 py-2">
+          <div className="skeleton h-6 w-full rounded mb-2" />
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="skeleton h-8 w-full rounded mb-1.5" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (trades.length === 0) return null;
 
