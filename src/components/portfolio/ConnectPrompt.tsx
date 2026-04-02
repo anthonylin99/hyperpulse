@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useWallet } from "@/context/WalletContext";
 import { getSavedWallets, removeWallet, type SavedWallet } from "@/lib/savedWallets";
