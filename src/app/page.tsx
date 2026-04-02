@@ -12,6 +12,7 @@ import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import PositionsTable from "@/components/portfolio/PositionsTable";
 import RiskStrip from "@/components/portfolio/RiskStrip";
 import StatsGrid from "@/components/portfolio/StatsGrid";
+import TradeSignals from "@/components/portfolio/TradeSignals";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import TradeJournal from "@/components/portfolio/TradeJournal";
 import AssetBreakdown from "@/components/portfolio/AssetBreakdown";
@@ -22,6 +23,7 @@ import BenchmarkPanel from "@/components/portfolio/BenchmarkPanel";
 import Recommendations from "@/components/portfolio/Recommendations";
 import PerformanceHeatmap from "@/components/portfolio/PerformanceHeatmap";
 import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
+import MoreStats from "@/components/portfolio/MoreStats";
 
 // Market components (secondary tab)
 import FundingFlashcards from "@/components/FundingFlashcards";
@@ -125,6 +127,7 @@ export default function Home() {
             {hasTrades && (
               <>
                 <StatsGrid />
+                <TradeSignals />
                 <EquityCurve />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -146,6 +149,7 @@ export default function Home() {
                   <InsightsPanel />
                 </div>
 
+                <MoreStats />
                 <TradeJournal />
               </>
             )}

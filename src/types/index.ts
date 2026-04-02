@@ -12,6 +12,10 @@ export interface Signal {
   fundingAPR: number;
   oiUSD: number;
   oiChangePct: number;
+  confidence?: "high" | "medium" | "low";
+  correlation?: number | null;
+  fundingPercentile?: number | null;
+  sampleSize?: number;
 }
 
 export interface MarketAsset {

@@ -25,6 +25,8 @@ export default function DashboardHeader() {
   const switcherRef = useRef<HTMLDivElement>(null);
 
   const accountValue = accountState?.accountValue ?? 0;
+  const perpsValue = accountState?.isolatedAccountValue ?? 0;
+  const spotUsdc = accountState?.spotUsdcTotal ?? 0;
   const unrealizedPnl = accountState?.unrealizedPnl ?? 0;
   const totalPnl = stats?.totalPnl ?? 0;
 
@@ -196,12 +198,20 @@ export default function DashboardHeader() {
             <span className="text-3xl font-bold text-zinc-50">
               {formatUSD(accountValue)}
             </span>
-            <span className="text-xs text-zinc-600 ml-2">equity</span>
+            <span className="text-xs text-zinc-600 ml-2" title="Perps equity + spot USDC. Staked HYPE not included.">
+              equity
+            </span>
             {lastUpdated && (
               <span className="text-[10px] text-zinc-600 ml-2">
                 updated {Math.round((Date.now() - lastUpdated) / 60000)}m ago
               </span>
             )}
+            <div
+              className="text-[10px] text-zinc-600 mt-1"
+              title="Perps equity + spot USDC. Staked HYPE not included."
+            >
+              Perps: {formatUSD(perpsValue)} • Spot USDC: {formatUSD(spotUsdc)} • Staked HYPE not included
+            </div>
           </div>
           {trades.length > 0 && (
             <>

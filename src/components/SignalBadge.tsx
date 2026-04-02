@@ -20,6 +20,19 @@ export default function SignalBadge({ signal, oiChangePct }: SignalBadgeProps) {
       : "";
 
   const hex = signalColorHex(signal.color);
+  const confidence = signal.confidence ?? "low";
+
+  const tooltip = [
+    signal.fundingPercentile != null
+      ? `Funding percentile: ${signal.fundingPercentile.toFixed(0)}%`
+      : null,
+    signal.correlation != null
+      ? `Funding↔24h return corr: ${signal.correlation.toFixed(2)}`
+      : null,
+    signal.sampleSize != null ? `Samples: ${signal.sampleSize}` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   return (
     <span
@@ -28,9 +41,15 @@ export default function SignalBadge({ signal, oiChangePct }: SignalBadgeProps) {
         backgroundColor: `${hex}18`,
         color: hex,
       }}
+      title={tooltip}
     >
       {prefix}
       {signal.label}
+      {signal.confidence && (
+        <span className="ml-1.5 px-1.5 py-0.5 rounded bg-zinc-900/60 text-[9px] text-zinc-300 border border-zinc-700/70">
+          {confidence}
+        </span>
+      )}
     </span>
   );
 }

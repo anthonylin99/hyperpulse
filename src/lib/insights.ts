@@ -12,10 +12,11 @@ export function generateInsights(
   byAsset: AssetBreakdown[],
   byHour: HourlyBreakdown[],
   byDay: DailyBreakdown[],
+  fundingCount: number = 0,
 ): Insight[] {
   const insights: Insight[] = [];
 
-  if (stats.totalTrades < 3) return insights;
+  if (stats.totalTrades < 5) return insights;
 
   // ─── Core edge diagnosis ────────────────────────────────────────
   // This is THE most important insight — do they have a positive edge?
@@ -82,7 +83,7 @@ export function generateInsights(
   }
 
   // ─── Best/worst asset ─────────────────────────────────────────
-  const assetsWithTrades = byAsset.filter((a) => a.trades >= 2);
+  const assetsWithTrades = byAsset.filter((a) => a.trades >= 3);
   if (assetsWithTrades.length > 0) {
     const best = assetsWithTrades[0]; // sorted by P&L desc
     if (best.pnl > 0) {
@@ -108,7 +109,7 @@ export function generateInsights(
   }
 
   // ─── Best trading hours ───────────────────────────────────────
-  const activeHours = byHour.filter((h) => h.trades >= 2);
+  const activeHours = byHour.filter((h) => h.trades >= 3);
   if (activeHours.length >= 2) {
     const bestHour = activeHours.reduce((a, b) =>
       a.pnl > b.pnl ? a : b,
@@ -139,7 +140,7 @@ export function generateInsights(
   }
 
   // ─── Best trading day ─────────────────────────────────────────
-  const activeDays = byDay.filter((d) => d.trades >= 2);
+  const activeDays = byDay.filter((d) => d.trades >= 3);
   if (activeDays.length >= 2) {
     const bestDay = activeDays.reduce((a, b) => (a.pnl > b.pnl ? a : b));
     if (bestDay.pnl > 0) {
@@ -184,7 +185,7 @@ export function generateInsights(
   }
 
   // ─── Funding costs ────────────────────────────────────────────
-  if (stats.totalFundingNet < 0 && stats.grossProfit > 0) {
+  if (fundingCount >= 10 && stats.totalFundingNet < 0 && stats.grossProfit > 0) {
     const fundingPct =
       (Math.abs(stats.totalFundingNet) / stats.grossProfit) * 100;
     if (fundingPct > 10) {
@@ -196,7 +197,7 @@ export function generateInsights(
         value: `${fundingPct.toFixed(0)}%`,
       });
     }
-  } else if (stats.totalFundingNet > 0) {
+  } else if (fundingCount >= 10 && stats.totalFundingNet > 0) {
     insights.push({
       type: "positive",
       title: `Earned ${formatUSD(stats.totalFundingNet)} from funding`,

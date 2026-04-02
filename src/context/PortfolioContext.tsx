@@ -94,7 +94,13 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           setByAsset(computeByAsset(tradesWithFunding));
           setByHour(computeByTimeOfDay(tradesWithFunding));
           setByDay(computeByDayOfWeek(tradesWithFunding));
-          setInsights(generateInsights(portfolioStats, computeByAsset(tradesWithFunding), computeByTimeOfDay(tradesWithFunding), computeByDayOfWeek(tradesWithFunding)));
+          setInsights(generateInsights(
+            portfolioStats,
+            computeByAsset(tradesWithFunding),
+            computeByTimeOfDay(tradesWithFunding),
+            computeByDayOfWeek(tradesWithFunding),
+            (data.funding ?? []).length,
+          ));
         }
       }
     } catch {
@@ -256,6 +262,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         assetData,
         hourData,
         dayData,
+        normalizedFunding.length,
       );
       setInsights(tradeInsights);
       hasFetchedRef.current = true;

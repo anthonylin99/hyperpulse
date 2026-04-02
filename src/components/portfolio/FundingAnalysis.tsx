@@ -67,10 +67,13 @@ export default function FundingAnalysis() {
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-zinc-400">Funding Analysis</h3>
-        {stats && stats.totalPnl > 0 && analysis.totalPaid > 0 && (
+        {stats && stats.totalPnl > 0 && analysis.totalPaid > 0 && analysis.count >= 10 && (
           <span className="text-[10px] text-zinc-500">
             {((analysis.totalPaid / stats.totalPnl) * 100).toFixed(1)}% of profit
           </span>
+        )}
+        {analysis.count < 10 && (
+          <span className="text-[10px] text-zinc-600">low sample</span>
         )}
       </div>
 

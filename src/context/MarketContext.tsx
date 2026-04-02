@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { getSubscriptionClient } from "@/lib/hyperliquid";
-import { fundingToSignal } from "@/lib/signals";
+import { fundingToSignal, computeFundingSignal } from "@/lib/signals";
 import {
   POLL_INTERVAL_MARKET,
   WHALE_THRESHOLD_USD,
@@ -48,6 +48,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const [fundingHistories, setFundingHistories] = useState<
     Record<string, FundingHistoryPoint[]>
   >({});
+  const signalFetchRef = useRef(0);
   const prevOIRef = useRef<Record<string, number>>({});
   const wsInitRef = useRef(false);
 
@@ -114,6 +115,78 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     );
 
     setFundingHistories((prev) => ({ ...prev, ...results }));
+  }, []);
+
+  const fetchSignalData = useCallback(async (assets: MarketAsset[]) => {
+    const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
+    if (now - signalFetchRef.current < ONE_HOUR) return;
+    signalFetchRef.current = now;
+
+    const startTime = now - 30 * 24 * 60 * 60 * 1000;
+    const top10 = [...assets]
+      .sort((a, b) => b.openInterest - a.openInterest)
+      .slice(0, 10);
+
+    if (top10.length === 0) return;
+
+    const updates: Record<string, MarketAsset["signal"]> = {};
+
+    await Promise.allSettled(
+      top10.map(async (asset) => {
+        try {
+          const [fundingRes, candleRes] = await Promise.all([
+            fetch(
+              `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`
+            ),
+            fetch(
+              `/api/market/candles?coin=${asset.coin}&interval=1h&startTime=${startTime}&endTime=${now}`
+            ),
+          ]);
+          if (!fundingRes.ok || !candleRes.ok) return;
+          const fundingRaw = await fundingRes.json();
+          const candlesRaw = await candleRes.json();
+
+          const fundingHistory = (Array.isArray(fundingRaw) ? fundingRaw : []).map(
+            (f: { time: number; fundingRate: string }) => ({
+              time: Number(f.time ?? 0),
+              rate: parseFloat(String(f.fundingRate ?? "0")),
+            })
+          );
+
+          const candles = (Array.isArray(candlesRaw) ? candlesRaw : []).map(
+            (c: Record<string, unknown>) => ({
+              time: Number(c.t ?? c.T ?? c.time ?? 0),
+              close: parseFloat(String(c.c ?? c.close ?? "0")),
+            })
+          );
+
+          if (fundingHistory.length === 0 || candles.length === 0) return;
+
+          const signal = computeFundingSignal({
+            coin: asset.coin,
+            currentFundingAPR: asset.fundingAPR,
+            fundingHistory,
+            candles,
+            horizonHours: 24,
+            oiUSD: asset.openInterest,
+            oiChangePct: asset.oiChangePct ?? 0,
+          });
+
+          updates[asset.coin] = signal;
+        } catch {
+          // Ignore per-coin signal failures
+        }
+      })
+    );
+
+    if (Object.keys(updates).length === 0) return;
+
+    setAssets((prev) =>
+      prev.map((asset) =>
+        updates[asset.coin] ? { ...asset, signal: updates[asset.coin] } : asset
+      )
+    );
   }, []);
 
   const fetchMarketData = useCallback(async () => {
@@ -210,13 +283,14 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         .sort((a, b) => b.openInterest - a.openInterest)
         .slice(0, 10);
       fetchFundingHistories(top10.map((a) => a.coin));
+      fetchSignalData(parsed);
     } catch (err) {
       console.error("Failed to fetch market data:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
       setLoading(false);
     }
-  }, [addActivity, fetchFundingHistories]);
+  }, [addActivity, fetchFundingHistories, fetchSignalData]);
 
   useEffect(() => {
     fetchMarketData();
