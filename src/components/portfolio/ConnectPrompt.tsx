@@ -8,9 +8,11 @@ import { truncateAddress, cn } from "@/lib/format";
 
 function PrivyLoginPanel({
   onAddress,
+  onConnectExternal,
   disabled,
 }: {
   onAddress: (address: string) => void;
+  onConnectExternal: () => void;
   disabled: boolean;
 }) {
   const { ready, authenticated, login, user } = usePrivy();
@@ -78,25 +80,42 @@ function PrivyLoginPanel({
           </div>
         )}
 
-        <div className="pt-2 border-t border-zinc-800">
+        <div className="pt-2 border-t border-zinc-800 space-y-2">
           <div className="text-[11px] text-zinc-500 mb-2">
             If your trading wallet is not listed, paste it here:
           </div>
-          <input
-            type="text"
-            placeholder="0x..."
-            className={cn(
-              "w-full py-2.5 px-3 rounded-lg text-xs font-mono",
-              "bg-zinc-900 border border-zinc-700 text-zinc-100",
-              "placeholder:text-zinc-600 focus:outline-none focus:border-teal-600",
-            )}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                const value = (e.target as HTMLInputElement).value;
-                if (value.trim()) onAddress(value.trim());
-              }
-            }}
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="0x..."
+              className={cn(
+                "flex-1 py-2.5 px-3 rounded-lg text-xs font-mono",
+                "bg-zinc-900 border border-zinc-700 text-zinc-100",
+                "placeholder:text-zinc-600 focus:outline-none focus:border-teal-600",
+              )}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const value = (e.target as HTMLInputElement).value;
+                  if (value.trim()) onAddress(value.trim());
+                }
+              }}
+            />
+            <button
+              onClick={(e) => {
+                const input = (e.currentTarget.parentElement?.querySelector("input") as HTMLInputElement | null);
+                if (input?.value?.trim()) onAddress(input.value.trim());
+              }}
+              className="px-3 py-2.5 rounded-lg text-xs bg-teal-600 text-white hover:bg-teal-500"
+            >
+              Use
+            </button>
+          </div>
+          <button
+            onClick={onConnectExternal}
+            className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+          >
+            Connect External Wallet
+          </button>
         </div>
         <button
           onClick={() => setShowSelector(false)}
@@ -250,6 +269,7 @@ export default function ConnectPrompt() {
             {privyEnabled ? (
               <PrivyLoginPanel
                 disabled={loading}
+                onConnectExternal={handleWalletConnect}
                 onAddress={async (addr) => {
                   try {
                     await connectReadOnly(addr);
