@@ -11,6 +11,7 @@ import {
   saveWallet,
   renameWallet,
   touchWallet,
+  removeWallet,
   type SavedWallet,
 } from "@/lib/savedWallets";
 
@@ -87,6 +88,14 @@ export default function DashboardHeader() {
       await connectReadOnly(wallet.address);
     } catch {
       // error handled by WalletContext
+    }
+  };
+
+  const handleRemoveSaved = (wallet: SavedWallet) => {
+    const updated = removeWallet(wallet.address);
+    setSavedWallets(updated);
+    if (wallet.address.toLowerCase() === address?.toLowerCase()) {
+      disconnect();
     }
   };
 
@@ -182,6 +191,20 @@ export default function DashboardHeader() {
                       >
                         Copy
                       </button>
+                      {address && (
+                        <button
+                          onClick={() =>
+                            handleRemoveSaved({
+                              address,
+                              nickname: currentWallet?.nickname || "Unnamed",
+                              lastUsed: Date.now(),
+                            })
+                          }
+                          className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                        >
+                          Forget
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setNicknameInput(currentWallet?.nickname || "");
@@ -203,21 +226,34 @@ export default function DashboardHeader() {
                     Switch to
                   </div>
                   {otherWallets.map((wallet) => (
-                    <button
+                    <div
                       key={wallet.address}
-                      onClick={() => handleSwitchWallet(wallet)}
                       className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-zinc-800 transition-colors text-left"
                     >
-                      <div className="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-sm text-zinc-300 truncate">
-                          {wallet.nickname}
+                      <button
+                        onClick={() => handleSwitchWallet(wallet)}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm text-zinc-300 truncate">
+                              {wallet.nickname}
+                            </div>
+                            <div className="text-xs font-mono text-zinc-600">
+                              {truncateAddress(wallet.address)}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs font-mono text-zinc-600">
-                          {truncateAddress(wallet.address)}
-                        </div>
-                      </div>
-                    </button>
+                      </button>
+                      <button
+                        onClick={() => handleRemoveSaved(wallet)}
+                        className="text-xs text-zinc-600 hover:text-red-400 px-2"
+                        title="Remove saved wallet"
+                      >
+                        ×
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

@@ -41,35 +41,62 @@ function PrivyLoginPanel({
     setShowSelector(true);
   }, [pendingConnect, authenticated, privyAddress, onAddress]);
 
-  if (authenticated && showSelector && wallets.length > 0) {
+  if (authenticated && showSelector) {
     return (
       <div className="space-y-2">
         <div className="text-xs text-zinc-400 font-medium text-left">
           Choose the wallet to view
         </div>
-        <div className="space-y-2">
-          {wallets.map((wallet) => (
-            <button
-              key={wallet.address}
-              onClick={() => onAddress(wallet.address)}
-              className={cn(
-                "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm transition-all",
-                "bg-zinc-900 border border-zinc-800 hover:border-teal-600/50 hover:bg-zinc-800/80",
-              )}
-            >
-              <div className="text-left min-w-0">
-                <div className="text-zinc-200 font-medium truncate">
-                  {wallet.walletClientType === "privy"
-                    ? "Privy Embedded Wallet"
-                    : "Linked Wallet"}
+        {wallets.length > 0 ? (
+          <div className="space-y-2">
+            {wallets.map((wallet) => (
+              <button
+                key={wallet.address}
+                onClick={() => onAddress(wallet.address)}
+                className={cn(
+                  "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm transition-all",
+                  "bg-zinc-900 border border-zinc-800 hover:border-teal-600/50 hover:bg-zinc-800/80",
+                )}
+              >
+                <div className="text-left min-w-0">
+                  <div className="text-zinc-200 font-medium truncate">
+                    {wallet.walletClientType === "privy"
+                      ? "Privy Embedded Wallet"
+                      : "Linked Wallet"}
+                  </div>
+                  <div className="text-zinc-500 font-mono text-xs">
+                    {wallet.address}
+                  </div>
                 </div>
-                <div className="text-zinc-500 font-mono text-xs">
-                  {wallet.address}
-                </div>
-              </div>
-              <span className="text-xs text-zinc-500">Use</span>
-            </button>
-          ))}
+                <span className="text-xs text-zinc-500">Use</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-zinc-500">
+            No wallets detected from Privy. Paste your address below.
+          </div>
+        )}
+
+        <div className="pt-2 border-t border-zinc-800">
+          <div className="text-[11px] text-zinc-500 mb-2">
+            If your trading wallet is not listed, paste it here:
+          </div>
+          <input
+            type="text"
+            placeholder="0x..."
+            className={cn(
+              "w-full py-2.5 px-3 rounded-lg text-xs font-mono",
+              "bg-zinc-900 border border-zinc-700 text-zinc-100",
+              "placeholder:text-zinc-600 focus:outline-none focus:border-teal-600",
+            )}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const value = (e.target as HTMLInputElement).value;
+                if (value.trim()) onAddress(value.trim());
+              }
+            }}
+          />
         </div>
         <button
           onClick={() => setShowSelector(false)}
