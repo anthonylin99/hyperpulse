@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { Toaster } from "react-hot-toast";
-import { MarketProvider } from "@/context/MarketContext";
-import { WalletProvider } from "@/context/WalletContext";
-import { PortfolioProvider } from "@/context/PortfolioContext";
+import Providers from "./providers";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -33,24 +30,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <MarketProvider>
-          <WalletProvider>
-            <PortfolioProvider>
-            {children}
-            </PortfolioProvider>
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                style: {
-                  background: "#18181b",
-                  color: "#fafafa",
-                  border: "1px solid #27272a",
-                  fontSize: "13px",
-                },
-              }}
-            />
-          </WalletProvider>
-        </MarketProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
