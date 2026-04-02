@@ -20,6 +20,9 @@ function PrivyLoginPanel({
 
   const privyAddress = useMemo(() => {
     if (wallets && wallets.length > 0) {
+      // Prefer a linked external wallet over the embedded Privy wallet
+      const external = wallets.find((w) => w.walletClientType !== "privy");
+      if (external) return external.address;
       const embedded = wallets.find((w) => w.walletClientType === "privy");
       return (embedded ?? wallets[0]).address;
     }
@@ -194,6 +197,12 @@ export default function ConnectPrompt() {
               >
                 {loading ? "Connecting..." : "Connect Wallet (optional)"}
               </button>
+            )}
+
+            {privyEnabled && (
+              <div className="text-[11px] text-zinc-500">
+                Uses your linked external wallet if available. Otherwise a new embedded wallet is created.
+              </div>
             )}
 
             <button
