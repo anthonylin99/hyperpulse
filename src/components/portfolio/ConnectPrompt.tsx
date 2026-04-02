@@ -61,7 +61,7 @@ export default function ConnectPrompt() {
           <p className="text-zinc-400 text-sm leading-relaxed">
             Portfolio analytics and trade insights for Hyperliquid.
             <br />
-            Connect your wallet or paste any address to get started.
+            Paste any address to get started — no wallet required.
           </p>
         </div>
 
@@ -111,6 +111,12 @@ export default function ConnectPrompt() {
 
         {mode === "main" ? (
           <div className="space-y-3">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-left">
+              <div className="text-xs text-zinc-400 font-medium mb-1">Read-only by default</div>
+              <div className="text-xs text-zinc-500">
+                Viewing analytics never asks for private keys. Wallet connect is optional and only used if you want to trade.
+              </div>
+            </div>
             {/* Connect Wallet Button */}
             <button
               onClick={handleWalletConnect}
@@ -121,7 +127,7 @@ export default function ConnectPrompt() {
                 "disabled:opacity-50 disabled:cursor-not-allowed",
               )}
             >
-              {loading ? "Connecting..." : "Connect Wallet"}
+              {loading ? "Connecting..." : "Connect Wallet (optional)"}
             </button>
 
             {/* Divider */}
@@ -141,7 +147,7 @@ export default function ConnectPrompt() {
                 "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700",
               )}
             >
-              Paste Wallet Address
+              View Any Wallet Address
             </button>
           </div>
         ) : (
@@ -189,7 +195,7 @@ export default function ConnectPrompt() {
         )}
 
         <p className="text-zinc-600 text-xs">
-          Read-only. We never access your private keys.
+          Read-only by default. We never access your private keys.
         </p>
       </div>
     </div>
