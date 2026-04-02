@@ -12,6 +12,7 @@ import {
   renameWallet,
   touchWallet,
   removeWallet,
+  clearSavedWallets,
   type SavedWallet,
 } from "@/lib/savedWallets";
 
@@ -97,6 +98,12 @@ export default function DashboardHeader() {
     if (walletAddress.toLowerCase() === address?.toLowerCase()) {
       disconnect();
     }
+  };
+
+  const handleClearAll = () => {
+    clearSavedWallets();
+    setSavedWallets([]);
+    disconnect();
   };
 
   const otherWallets = savedWallets.filter(
@@ -249,6 +256,12 @@ export default function DashboardHeader() {
                       </button>
                     </div>
                   ))}
+                  <button
+                    onClick={handleClearAll}
+                    className="mt-2 w-full py-2 rounded text-xs text-zinc-500 border border-zinc-800 hover:text-red-400 hover:border-red-500/40 transition-colors"
+                  >
+                    Forget All Saved Wallets
+                  </button>
                 </div>
               )}
             </div>

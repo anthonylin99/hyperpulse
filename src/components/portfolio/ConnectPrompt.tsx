@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useWallet } from "@/context/WalletContext";
-import { getSavedWallets, removeWallet, type SavedWallet } from "@/lib/savedWallets";
+import { getSavedWallets, removeWallet, clearSavedWallets, type SavedWallet } from "@/lib/savedWallets";
 import { truncateAddress, cn } from "@/lib/format";
 
 function PrivyLoginPanel({
@@ -199,6 +199,11 @@ export default function ConnectPrompt() {
     setSavedWallets(updated);
   };
 
+  const handleClearSaved = () => {
+    clearSavedWallets();
+    setSavedWallets([]);
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
       <div className="max-w-md w-full space-y-8 text-center">
@@ -255,6 +260,12 @@ export default function ConnectPrompt() {
                   </button>
                 ))}
             </div>
+            <button
+              onClick={handleClearSaved}
+              className="w-full py-2 px-3 rounded-lg text-xs bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-400 hover:border-red-500/40 transition-colors"
+            >
+              Forget All Saved Wallets
+            </button>
           </div>
         )}
 

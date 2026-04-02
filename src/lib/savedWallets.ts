@@ -66,3 +66,8 @@ export function touchWallet(address: string): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(wallets));
   }
 }
+
+export function clearSavedWallets(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_KEY);
+}
