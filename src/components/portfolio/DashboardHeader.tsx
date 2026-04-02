@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/context/WalletContext";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, truncateAddress, cn } from "@/lib/format";
+import toast from "react-hot-toast";
 import {
   getSavedWallets,
   saveWallet,
@@ -64,6 +65,16 @@ export default function DashboardHeader() {
       const updated = renameWallet(address, nicknameInput.trim());
       setSavedWallets(updated);
       setEditing(false);
+    }
+  };
+
+  const handleCopyAddress = async () => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      toast.success("Wallet address copied");
+    } catch {
+      toast.error("Failed to copy address");
     }
   };
 
@@ -151,15 +162,23 @@ export default function DashboardHeader() {
                         {address ? truncateAddress(address) : ""}
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setNicknameInput(currentWallet?.nickname || "");
-                        setEditing(true);
-                      }}
-                      className="text-xs text-zinc-500 hover:text-teal-400 transition-colors"
-                    >
-                      Rename
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleCopyAddress}
+                        className="text-xs text-zinc-500 hover:text-teal-400 transition-colors"
+                      >
+                        Copy
+                      </button>
+                      <button
+                        onClick={() => {
+                          setNicknameInput(currentWallet?.nickname || "");
+                          setEditing(true);
+                        }}
+                        className="text-xs text-zinc-500 hover:text-teal-400 transition-colors"
+                      >
+                        Rename
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
