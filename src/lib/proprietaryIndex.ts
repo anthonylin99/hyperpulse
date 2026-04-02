@@ -3,6 +3,9 @@ import type { MarketAsset } from "@/types";
 export interface HyperPulseVixResult {
   score: number; // 0..100 (0 fear, 100 greed)
   label: "Extreme Fear" | "Fear" | "Neutral" | "Greed" | "Extreme Greed";
+  trendScore: number; // -100..100 (bearish to bullish)
+  trendLabel: "Bearish" | "Neutral" | "Bullish";
+  trendConfidence: "low" | "medium" | "high";
   volatilityBreadthPct: number;
   fundingRegimeScore: number;
   breadthScore: number;
@@ -43,6 +46,19 @@ function toGreedBand(
   return "Extreme Greed";
 }
 
+function toTrendLabel(score: number): HyperPulseVixResult["trendLabel"] {
+  if (score <= -15) return "Bearish";
+  if (score >= 15) return "Bullish";
+  return "Neutral";
+}
+
+function toTrendConfidence(score: number): HyperPulseVixResult["trendConfidence"] {
+  const abs = Math.abs(score);
+  if (abs >= 45) return "high";
+  if (abs >= 25) return "medium";
+  return "low";
+}
+
 function avg(values: number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((s, v) => s + v, 0) / values.length;
@@ -73,6 +89,9 @@ export function computeHyperPulseVix(args: {
     return {
       score: 50,
       label: "Neutral",
+      trendScore: 0,
+      trendLabel: "Neutral",
+      trendConfidence: "low",
       volatilityBreadthPct: 0,
       fundingRegimeScore: 50,
       breadthScore: 50,
@@ -152,9 +171,19 @@ export function computeHyperPulseVix(args: {
     fundingRegimeScore * 0.4 + breadthScore * 0.35 + volatilityGreedScore * 0.25
   );
 
+  const avg24hMove = avg(assets.map((a) => a.priceChange24h));
+  const avgOiChange = avg(assets.map((a) => a.oiChangePct ?? 0));
+  const fundingContrarian = clamp(-medFundingApr * 1.2, -30, 30);
+  const momentumScore = clamp(avg24hMove * 4, -40, 40);
+  const oiScore = clamp(avgOiChange * 2, -30, 30);
+  const trendScore = clamp(momentumScore + oiScore + fundingContrarian, -100, 100);
+
   return {
     score: Math.round(score),
     label: toGreedBand(score),
+    trendScore: Math.round(trendScore),
+    trendLabel: toTrendLabel(trendScore),
+    trendConfidence: toTrendConfidence(trendScore),
     volatilityBreadthPct: Math.round(volBreadthPct),
     fundingRegimeScore: Math.round(fundingRegimeScore),
     breadthScore: Math.round(breadthScore),

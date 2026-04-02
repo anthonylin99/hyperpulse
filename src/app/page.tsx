@@ -29,8 +29,7 @@ import MoreStats from "@/components/portfolio/MoreStats";
 // Market components (secondary tab)
 import FundingFlashcards from "@/components/FundingFlashcards";
 import MarketTable from "@/components/MarketTable";
-import ActivityFeed from "@/components/ActivityFeed";
-import PortfolioPanel from "@/components/PortfolioPanel";
+// Sidebar removed from Markets tab
 import TradeDrawer from "@/components/TradeDrawer";
 import { useMarket } from "@/context/MarketContext";
 
@@ -39,7 +38,7 @@ type Tab = "portfolio" | "markets";
 export default function Home() {
   const { isConnected, accountState } = useWallet();
   const { trades, loading: portfolioLoading, error: portfolioError } = usePortfolio();
-  const { selectedAsset, setSelectedAsset, error: marketError, activityFeed } = useMarket();
+  const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
   const [tab, setTab] = useState<Tab>("portfolio");
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
@@ -183,21 +182,6 @@ export default function Home() {
               />
             </div>
 
-            <div className="zone-sidebar">
-              <div
-                className={cn(
-                  "flex-1 overflow-hidden",
-                  activityFeed.length > 0 && "border-b border-zinc-800",
-                )}
-              >
-                <PortfolioPanel />
-              </div>
-              {activityFeed.length > 0 && (
-                <div className="flex-1 overflow-hidden">
-                  <ActivityFeed />
-                </div>
-              )}
-            </div>
           </div>
 
           {tradeDrawer && (

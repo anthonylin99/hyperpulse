@@ -14,67 +14,79 @@ export default function SentimentSlider() {
     [assets, fundingHistories]
   );
 
-  const colorClass =
+  const sentimentColor =
     result.score < 40
       ? "text-red-400"
       : result.score > 60
         ? "text-[#7dd4c4]"
         : "text-zinc-300";
-  const scoreBadgeClass =
+  const sentimentBadge =
     result.score < 40
       ? "bg-red-500/15 text-red-300 border-red-500/30"
       : result.score > 60
         ? "bg-[#7dd4c4]/20 text-[#b9ece2] border-[#7dd4c4]/40"
         : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
 
+  const trendColor =
+    result.trendScore < -15
+      ? "text-red-400"
+      : result.trendScore > 15
+        ? "text-emerald-300"
+        : "text-zinc-300";
+  const trendBadge =
+    result.trendScore < -15
+      ? "bg-red-500/15 text-red-300 border-red-500/30"
+      : result.trendScore > 15
+        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+        : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
+  const trendPos = `${(result.trendScore + 100) / 2}%`;
+
   return (
     <>
-      <div className="flex-shrink-0 min-w-[272px] h-[46px] rounded-md border border-zinc-800 bg-zinc-900/70 px-2.5 py-1.5">
+      <div className="flex-shrink-0 min-w-[320px] h-[56px] rounded-md border border-zinc-800 bg-gradient-to-r from-zinc-900/90 via-zinc-900/70 to-zinc-950/80 px-3 py-2">
         <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-zinc-500">
+                Tomorrow Bias
+              </div>
+              <div className={`text-[12px] font-semibold ${trendColor}`}>
+                {result.trendLabel}
+              </div>
+            </div>
+            <span className={`inline-flex h-5 items-center justify-center rounded border px-1.5 text-[10px] font-mono font-semibold ${trendBadge}`}>
+              {result.trendScore}
+            </span>
+            <span className="rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider text-zinc-400">
+              {result.trendConfidence} confidence
+            </span>
+          </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] uppercase tracking-wider text-zinc-500">
-              HyperPulse VIX Sentiment
+            <span className={`inline-flex h-5 min-w-[30px] items-center justify-center rounded border px-1.5 text-[10px] font-mono font-semibold ${sentimentBadge}`}>
+              {result.score}
+            </span>
+            <span className={`text-[10px] font-semibold ${sentimentColor}`}>
+              {result.label}
             </span>
             <button
               onClick={() => setShowInfo(true)}
               className="text-zinc-500 hover:text-zinc-300 transition-colors"
               aria-label="Sentiment methodology"
-              title="View composition and weights"
+              title="View model details"
             >
               <Info className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="flex items-center gap-1">
-            <span
-              className={`inline-flex h-5 min-w-[30px] items-center justify-center rounded border px-1.5 text-[11px] font-mono font-semibold ${scoreBadgeClass}`}
-            >
-              {result.score}
-            </span>
-            <span className={`text-[11px] font-semibold ${colorClass}`}>
-              {result.label}
-            </span>
-            <span
-              className="rounded border border-zinc-700 bg-zinc-950 px-1 py-0.5 text-[8px] font-mono uppercase tracking-wider text-zinc-400"
-              title="Hyperliquid-native scope"
-            >
-              HL-native
-            </span>
-          </div>
         </div>
-        <div className="mt-1 relative h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+        <div className="mt-1.5 relative h-1.5 rounded-full bg-zinc-800 overflow-hidden">
           <div
-            className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 via-zinc-500 to-green-500"
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 via-zinc-500 to-emerald-500"
             style={{ width: "100%" }}
           />
           <div
             className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white border border-zinc-900"
-            style={{ left: `calc(${result.score}% - 4px)` }}
+            style={{ left: `calc(${trendPos} - 4px)` }}
           />
-        </div>
-        <div className="mt-0.5 flex justify-between text-[8px] text-zinc-500 font-mono">
-          <span>Fear</span>
-          <span>Neutral</span>
-          <span>Greed</span>
         </div>
       </div>
       {showInfo && (
@@ -86,9 +98,9 @@ export default function SentimentSlider() {
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[540px] max-w-[92vw] bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl">
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
               <div>
-                <div className="text-sm font-medium">HyperPulse Sentiment Method</div>
+                <div className="text-sm font-medium">HyperPulse Tomorrow Bias</div>
                 <div className="text-[11px] text-zinc-500">
-                  Public composition and weights (0-100 fear to greed)
+                  Predictive bias for the next 24h using funding, breadth, and momentum.
                 </div>
               </div>
               <button
@@ -99,6 +111,10 @@ export default function SentimentSlider() {
               </button>
             </div>
             <div className="px-4 py-3 text-xs space-y-3">
+              <div className="p-2 rounded bg-zinc-950 border border-zinc-800 text-zinc-400">
+                Tomorrow Bias score: <span className="font-mono">{result.trendScore}</span> (
+                {result.trendLabel}, {result.trendConfidence} confidence)
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
                   <div className="text-zinc-500">Funding Regime</div>

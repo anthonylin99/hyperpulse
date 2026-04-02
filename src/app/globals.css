@@ -38,7 +38,7 @@ body {
 /* Dashboard 6-zone grid */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: 1fr;
   grid-template-rows: 44px 54px 1fr;
   height: 100vh;
   width: 100vw;
@@ -70,23 +70,12 @@ body:has(.dashboard-grid) {
 }
 
 .zone-table {
-  grid-column: 1 / 2;
+  grid-column: 1 / -1;
   grid-row: 3 / 4;
   background:
     radial-gradient(circle at top left, rgba(125, 212, 196, 0.06), transparent 24%),
     var(--bg);
   overflow: hidden;
-}
-
-.zone-sidebar {
-  grid-column: 2 / 3;
-  grid-row: 3 / 4;
-  background:
-    radial-gradient(circle at top right, rgba(36, 120, 109, 0.08), transparent 28%),
-    var(--bg);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 /* Custom scrollbar */
