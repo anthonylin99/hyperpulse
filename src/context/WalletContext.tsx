@@ -385,6 +385,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   );
 
   const disconnect = useCallback(() => {
+    if (address) {
+      try {
+        localStorage.removeItem(`hp_cache_${address.toLowerCase()}`);
+      } catch {
+        // ignore
+      }
+    }
     setAddress(null);
     setApiAddress(null);
     setIsReadOnly(false);

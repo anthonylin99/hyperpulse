@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/context/WalletContext";
+import { usePrivy } from "@privy-io/react-auth";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, truncateAddress, cn } from "@/lib/format";
 import toast from "react-hot-toast";
@@ -15,6 +16,7 @@ import {
 
 export default function DashboardHeader() {
   const { address, isReadOnly, disconnect, connectReadOnly } = useWallet();
+  const { logout, authenticated } = usePrivy();
   const { stats, trades, lastUpdated, refresh, loading: portfolioLoading } = usePortfolio();
   const { accountState } = useWallet();
   const [refreshing, setRefreshing] = useState(false);
@@ -91,6 +93,17 @@ export default function DashboardHeader() {
   const otherWallets = savedWallets.filter(
     (w) => w.address.toLowerCase() !== address?.toLowerCase()
   );
+
+  const handleDisconnect = async () => {
+    disconnect();
+    if (authenticated) {
+      try {
+        await logout();
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -278,7 +291,7 @@ export default function DashboardHeader() {
           {refreshing ? "Refreshing..." : "Refresh"}
         </button>
         <button
-          onClick={disconnect}
+          onClick={handleDisconnect}
           className="text-xs text-zinc-500 hover:text-zinc-300 border border-zinc-800 rounded px-3 py-1.5 transition-colors"
         >
           Disconnect
