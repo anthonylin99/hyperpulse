@@ -26,6 +26,24 @@ export async function GET(req: NextRequest) {
         startTime: Number(startTime),
         aggregateByTime,
       });
+
+      // Fallback: if historical query returns empty, try recent fills.
+      if (Array.isArray(fills) && fills.length === 0) {
+        const recent = await info.userFills({
+          user: address as `0x${string}`,
+          aggregateByTime,
+        });
+        if (Array.isArray(recent) && recent.length > 0) {
+          fills = recent;
+        } else if (aggregateByTime) {
+          // Last fallback: disable aggregation in case of API mismatch.
+          const raw = await info.userFills({
+            user: address as `0x${string}`,
+            aggregateByTime: false,
+          });
+          fills = raw;
+        }
+      }
     } else {
       fills = await info.userFills({
         user: address as `0x${string}`,
