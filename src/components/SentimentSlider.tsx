@@ -83,16 +83,6 @@ export default function SentimentSlider() {
             style={{ width: "100%" }}
           />
           <div
-            className="absolute top-0 bottom-0 w-[1px] bg-red-500/80"
-            style={{ left: "40%" }}
-          />
-          <div
-            className="absolute -top-4 text-[8px] font-mono text-red-400"
-            style={{ left: "40%", transform: "translateX(-50%)" }}
-          >
-            PANIC THRESHOLD
-          </div>
-          <div
             className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white border border-zinc-900"
             style={{ left: `calc(${trendPos} - 4px)` }}
           />

@@ -230,19 +230,12 @@ export default function AssetDetail({
                       width={45}
                     />
                     <Tooltip
-                      position={{ x: 0, y: 0 }}
                       contentStyle={{
                         background: "#18181b",
                         border: "1px solid #27272a",
                         borderRadius: "6px",
                         fontSize: "10px",
                         fontFamily: "monospace",
-                      }}
-                      wrapperStyle={{
-                        top: 8,
-                        right: 8,
-                        left: "auto",
-                        pointerEvents: "none",
                       }}
                       labelFormatter={(t) =>
                         new Date(t).toLocaleDateString("en-US", {

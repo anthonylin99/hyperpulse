@@ -480,13 +480,17 @@ export default function TradeDrawer({
           <button
             onClick={handleSubmit}
             disabled={!canSubmit}
-            className="w-full py-2 rounded transition-colors gold-action disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-mono font-bold tracking-[0.2em] uppercase"
+            className={`w-full py-2 text-xs font-medium rounded transition-colors ${
+              direction === "long"
+                ? "bg-green-600 hover:bg-green-500 disabled:bg-zinc-700"
+                : "bg-red-600 hover:bg-red-500 disabled:bg-zinc-700"
+            } text-white disabled:text-zinc-500`}
           >
             {submitting
-              ? "EXECUTING..."
+              ? "Placing..."
               : !isConnected
-                ? "CONNECT"
-                : "EXECUTE"}
+                ? "Connect Wallet"
+                : `Place ${direction === "long" ? "Buy" : "Sell"}`}
           </button>
           <p className="text-[9px] text-zinc-600 font-sans text-center">
             Not available to US persons. Use at your own risk.

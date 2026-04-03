@@ -259,19 +259,12 @@ export default function ChartPanel({ coin, onClose }: ChartPanelProps) {
                 width={80}
               />
               <Tooltip
-                position={{ x: 0, y: 0 }}
                 contentStyle={{
                   background: "#18181b",
                   border: "1px solid #27272a",
                   borderRadius: "6px",
                   fontSize: "11px",
                   fontFamily: "monospace",
-                }}
-                wrapperStyle={{
-                  top: 8,
-                  right: 8,
-                  left: "auto",
-                  pointerEvents: "none",
                 }}
                 labelFormatter={(t) => new Date(t).toLocaleString()}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -342,19 +335,12 @@ export default function ChartPanel({ coin, onClose }: ChartPanelProps) {
               <XAxis dataKey="time" hide />
               <YAxis hide />
               <Tooltip
-                position={{ x: 0, y: 0 }}
                 contentStyle={{
                   background: "#18181b",
                   border: "1px solid #27272a",
                   borderRadius: "6px",
                   fontSize: "10px",
                   fontFamily: "monospace",
-                }}
-                wrapperStyle={{
-                  top: 8,
-                  right: 8,
-                  left: "auto",
-                  pointerEvents: "none",
                 }}
                 labelFormatter={(t) =>
                   new Date(t).toLocaleDateString("en-US", {
