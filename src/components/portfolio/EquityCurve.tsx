@@ -129,11 +129,18 @@ export default function EquityCurve() {
               domain={["auto", "auto"]}
             />
             <Tooltip
+              position={{ x: 0, y: 0 }}
               contentStyle={{
                 backgroundColor: "#18181b",
                 border: "1px solid #27272a",
                 borderRadius: "8px",
                 fontSize: "12px",
+              }}
+              wrapperStyle={{
+                top: 8,
+                right: 8,
+                left: "auto",
+                pointerEvents: "none",
               }}
               labelFormatter={(t) => new Date(t).toLocaleDateString()}
               formatter={(value) => [formatUSD(Number(value)), "Equity"]}

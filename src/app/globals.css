@@ -182,6 +182,92 @@ body:has(.dashboard-grid) {
   border-radius: 4px;
 }
 
+/* Gundlach Glassphore polish */
+.gold-action {
+  position: relative;
+  overflow: hidden;
+  background: #c5a059;
+  color: #0b0b0b;
+  box-shadow: 0 6px 18px rgba(197, 160, 89, 0.25);
+}
+
+.gold-action::after {
+  content: "";
+  position: absolute;
+  top: -120%;
+  left: -60%;
+  width: 40%;
+  height: 260%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.28),
+    transparent
+  );
+  transform: rotate(10deg);
+  animation: gold-shine 5s ease-in-out infinite;
+}
+
+@keyframes gold-shine {
+  0% {
+    transform: translateX(-120%) rotate(10deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  30% {
+    transform: translateX(220%) rotate(10deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(220%) rotate(10deg);
+    opacity: 0;
+  }
+}
+
+.ghost-chip {
+  border: 1px solid #c5a059;
+  color: #c5a059;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.ghost-chip:hover {
+  background: #c5a059;
+  color: #0b0b0b;
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 12px;
+  background: #c5a059;
+  margin-left: 6px;
+  animation: terminal-blink 1s steps(2, end) infinite;
+}
+
+@keyframes terminal-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Card bevel + depth */
+.bg-zinc-900.border.border-zinc-800.rounded-lg {
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(15, 17, 18, 0.98), rgba(15, 17, 18, 0.98))
+      padding-box,
+    linear-gradient(135deg, #333, #111) border-box;
+}
+
 @keyframes skeleton-shimmer {
   0% {
     background-position: 200% 0;

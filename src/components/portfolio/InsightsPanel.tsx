@@ -26,6 +26,11 @@ const TYPE_STYLES = {
 
 export default function InsightsPanel() {
   const { insights } = usePortfolio();
+  const suggestions = [
+    "Breakdown my edge",
+    "Funding regime risk",
+    "Best hours to trade",
+  ];
 
   if (insights.length === 0) return null;
 
@@ -34,9 +39,25 @@ export default function InsightsPanel() {
       <h3 className="text-sm font-medium text-zinc-400 mb-4">
         AI Insights ({insights.length})
       </h3>
+      <div className="mb-4">
+        <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
+          Ask Gundlach
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {suggestions.map((text) => (
+            <button
+              key={text}
+              className="ghost-chip px-2 py-1 text-[10px] font-mono font-semibold rounded"
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="space-y-2">
         {insights.map((insight, i) => {
           const style = TYPE_STYLES[insight.type];
+          const isLast = i === insights.length - 1;
           return (
             <div
               key={i}
@@ -71,6 +92,7 @@ export default function InsightsPanel() {
                   </div>
                   <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
                     {insight.detail}
+                    {isLast && <span className="terminal-cursor" />}
                   </p>
                 </div>
               </div>
