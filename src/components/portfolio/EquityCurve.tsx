@@ -50,11 +50,9 @@ export default function EquityCurve() {
   const hasRangeData = filtered.length >= 2;
   if (equityCurve.length < 2) return null;
 
-  const startEquity = hasRangeData ? filtered[0].equity : equityCurve[0].equity;
-  const endEquity = hasRangeData
-    ? filtered[filtered.length - 1].equity
-    : equityCurve[equityCurve.length - 1].equity;
-  const pnl = hasRangeData ? endEquity - startEquity : 0;
+  const pnl = trades
+    .filter((t) => t.exitTime >= cutoff)
+    .reduce((sum, t) => sum + t.pnl, 0);
   const isPositive = pnl >= 0;
 
   return (
