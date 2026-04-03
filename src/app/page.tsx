@@ -25,6 +25,7 @@ import Recommendations from "@/components/portfolio/Recommendations";
 import PerformanceHeatmap from "@/components/portfolio/PerformanceHeatmap";
 import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
 import MoreStats from "@/components/portfolio/MoreStats";
+import DocsPage from "@/components/docs/DocsPage";
 
 // Market components (secondary tab)
 import FundingFlashcards from "@/components/FundingFlashcards";
@@ -33,7 +34,7 @@ import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useMarket } from "@/context/MarketContext";
 
-type Tab = "portfolio" | "markets";
+type Tab = "portfolio" | "markets" | "docs";
 
 export default function Home() {
   const { isConnected, accountState } = useWallet();
@@ -57,7 +58,7 @@ export default function Home() {
       {/* Tab bar */}
       <div className="border-b border-zinc-800 px-4">
         <div className="max-w-7xl mx-auto flex gap-1">
-          {(["portfolio", "markets"] as Tab[]).map((t) => (
+          {(["portfolio", "markets", "docs"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -68,7 +69,7 @@ export default function Home() {
                   : "text-zinc-500 hover:text-zinc-300",
               )}
             >
-              {t === "portfolio" ? "Portfolio" : "Markets"}
+              {t === "portfolio" ? "Portfolio" : t === "markets" ? "Markets" : "Docs"}
               {tab === t && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500" />
               )}
@@ -156,7 +157,7 @@ export default function Home() {
             )}
           </div>
         )
-      ) : (
+      ) : tab === "markets" ? (
         /* Markets tab — existing dashboard */
         <>
           <div className="dashboard-grid">
@@ -192,6 +193,8 @@ export default function Home() {
             />
           )}
         </>
+      ) : (
+        <DocsPage />
       )}
     </div>
   );
