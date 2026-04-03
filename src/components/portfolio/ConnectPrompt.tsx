@@ -160,6 +160,7 @@ export default function ConnectPrompt() {
   const [error, setError] = useState<string | null>(null);
   const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
   const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
+  const privyAllowEmbedded = process.env.NEXT_PUBLIC_PRIVY_ALLOW_EMBEDDED === "true";
 
   useEffect(() => {
     setSavedWallets(getSavedWallets());
@@ -277,7 +278,7 @@ export default function ConnectPrompt() {
                 Viewing analytics never asks for private keys. Email login uses a Privy wallet to match your Hyperliquid account.
               </div>
             </div>
-            {privyEnabled ? (
+            {privyEnabled && privyAllowEmbedded ? (
               <PrivyLoginPanel
                 disabled={loading}
                 onConnectExternal={handleWalletConnect}
@@ -301,6 +302,13 @@ export default function ConnectPrompt() {
               >
                 {loading ? "Connecting..." : "Connect Wallet (optional)"}
               </button>
+            )}
+
+            {privyEnabled && !privyAllowEmbedded && (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-left text-xs text-zinc-500">
+                Email login is disabled because Privy keeps creating a new embedded wallet.
+                Use external wallet connect or paste your trading address below.
+              </div>
             )}
 
             {privyEnabled && (
