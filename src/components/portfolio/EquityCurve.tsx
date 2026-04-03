@@ -22,7 +22,7 @@ const RANGE_MS: Record<TimeRange, number> = {
 };
 
 export default function EquityCurve() {
-  const { equityCurve, loading, trades } = usePortfolio();
+  const { loading, trades } = usePortfolio();
   const [range, setRange] = useState<TimeRange>("all");
 
   if (loading && trades.length === 0) {
@@ -46,14 +46,21 @@ export default function EquityCurve() {
 
   const now = Date.now();
   const cutoff = range === "all" ? 0 : now - RANGE_MS[range];
-  const filtered = equityCurve.filter((p) => p.time >= cutoff);
-  const hasRangeData = filtered.length >= 2;
-  if (equityCurve.length < 2) return null;
-
-  const pnl = trades
+  const filteredTrades = trades
     .filter((t) => t.exitTime >= cutoff)
-    .reduce((sum, t) => sum + t.pnl, 0);
+    .sort((a, b) => a.exitTime - b.exitTime);
+
+  if (trades.length === 0) return null;
+
+  const pnl = filteredTrades.reduce((sum, t) => sum + t.pnl, 0);
   const isPositive = pnl >= 0;
+
+  let running = 0;
+  const pnlCurve = filteredTrades.map((t) => {
+    running += t.pnl;
+    return { time: t.exitTime, pnl: running };
+  });
+  const hasRangeData = pnlCurve.length >= 2;
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
@@ -90,7 +97,7 @@ export default function EquityCurve() {
 
       {hasRangeData ? (
         <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={filtered}>
+          <AreaChart data={pnlCurve}>
             <defs>
               <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop
@@ -119,7 +126,7 @@ export default function EquityCurve() {
               minTickGap={40}
             />
             <YAxis
-              tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`}
+              tickFormatter={(v) => formatUSD(v, Math.abs(v) >= 1000 ? 1 : 2)}
               tick={{ fontSize: 10, fill: "#71717a" }}
               axisLine={false}
               tickLine={false}
@@ -134,11 +141,11 @@ export default function EquityCurve() {
                 fontSize: "12px",
               }}
               labelFormatter={(t) => new Date(t).toLocaleDateString()}
-              formatter={(value) => [formatUSD(Number(value)), "Equity"]}
+              formatter={(value) => [formatUSD(Number(value)), "P&L"]}
             />
             <Area
               type="monotone"
-              dataKey="equity"
+              dataKey="pnl"
               stroke={isPositive ? "#10b981" : "#ef4444"}
               strokeWidth={2}
               fill="url(#equityGrad)"
