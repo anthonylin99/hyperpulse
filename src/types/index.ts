@@ -294,3 +294,18 @@ export interface LiveFactorState {
   tradeCandidates: FactorTradeCandidate[];
   constituents: FactorConstituentPerformance[];
 }
+
+export interface FactorAiInsight {
+  title: string;
+  body: string;
+  tone: "bullish" | "cautious" | "neutral";
+  tickers: string[];
+}
+
+export interface FactorAiBrief {
+  headline: string;
+  summary: string;
+  insights: FactorAiInsight[];
+  disclaimer?: string;
+  generatedAt: string;
+}

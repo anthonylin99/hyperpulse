@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFactors } from "@/context/FactorContext";
 import { formatPct, formatUSD } from "@/lib/format";
 import { cn } from "@/lib/format";
 import type {
+  FactorAiBrief,
   FactorConstituentPerformance,
   FactorHolding,
   FactorTradeCandidate,
@@ -31,6 +32,83 @@ function WindowPill({ label, value }: { label: string; value: number | null }) {
 export default function FactorsPage() {
   const { factors, loading, error, warning, lastUpdated } = useFactors();
   const [expandedFactor, setExpandedFactor] = useState<string | null>(null);
+  const [brief, setBrief] = useState<FactorAiBrief | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+
+  const insightPayload = useMemo(
+    () => ({
+      warning,
+      factors: factors.slice(0, 5).map((factor) => ({
+        name: factor.snapshot.name,
+        shortLabel: factor.snapshot.shortLabel,
+        reportDate: factor.snapshot.reportDate,
+        confidence: factor.confidence,
+        stalenessDays: factor.stalenessDays,
+        basketCoverage: factor.basketCoverage,
+        hyperliquidCoverage: factor.hyperliquidCoverage,
+        spread7d: factor.windows.find((window) => window.days === 7)?.spreadReturn ?? null,
+        spread30d: factor.windows.find((window) => window.days === 30)?.spreadReturn ?? null,
+        narrativeTags: factor.snapshot.narrativeTags,
+        tradeCandidates: factor.tradeCandidates.slice(0, 4).map((candidate) => ({
+          symbol: candidate.symbol,
+          role: candidate.role,
+          liveChange24h: candidate.liveChange24h,
+          fundingAPR: candidate.fundingAPR,
+          signalLabel: candidate.signalLabel,
+          trendStatus: candidate.trendStatus,
+        })),
+      })),
+    }),
+    [factors, warning],
+  );
+
+  useEffect(() => {
+    if (insightPayload.factors.length === 0) {
+      setBrief(null);
+      setBriefError(null);
+      setBriefLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setBriefLoading(true);
+    setBriefError(null);
+
+    void fetch("/api/factors/insights", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(insightPayload),
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof body.error === "string" ? body.error : "Unable to load AI factor brief.",
+          );
+        }
+        return body as FactorAiBrief;
+      })
+      .then((body) => {
+        setBrief(body);
+        setBriefError(null);
+      })
+      .catch((err) => {
+        if ((err as Error).name === "AbortError") return;
+        setBrief(null);
+        setBriefError(err instanceof Error ? err.message : "Unable to load AI factor brief.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setBriefLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [insightPayload]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-6">
@@ -64,6 +142,74 @@ export default function FactorsPage() {
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           {warning}
         </div>
+      )}
+
+      {(briefLoading || brief || briefError) && (
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">
+                OpenAI Factor Brief
+              </div>
+              <h2 className="mt-2 text-xl font-semibold text-zinc-100">
+                {brief?.headline ?? "Generating a trader-facing factor read..."}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
+                {brief?.summary ??
+                  "This narrative layer translates the deterministic factor rankings into a quick morning brief. The rankings themselves still come from Artemis snapshots plus live Hyperliquid data."}
+              </p>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-4 py-3 text-xs text-zinc-500">
+              <div>Model</div>
+              <div className="mt-1 font-mono text-zinc-200">OpenAI</div>
+            </div>
+          </div>
+
+          {briefError ? (
+            <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              {briefError}
+            </div>
+          ) : briefLoading && !brief ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="h-28 rounded-xl border border-zinc-800 skeleton" />
+              ))}
+            </div>
+          ) : brief ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {brief.insights.map((insight) => (
+                <article
+                  key={`${insight.title}-${insight.tickers.join("-")}`}
+                  className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em]",
+                        insight.tone === "bullish"
+                          ? "bg-emerald-500/15 text-emerald-300"
+                          : insight.tone === "cautious"
+                            ? "bg-amber-500/15 text-amber-300"
+                            : "bg-zinc-800 text-zinc-400",
+                      )}
+                    >
+                      {insight.tone}
+                    </span>
+                    {insight.tickers.length > 0 && (
+                      <span className="text-[11px] text-zinc-500">{insight.tickers.join(" • ")}</span>
+                    )}
+                  </div>
+                  <h3 className="mt-3 text-sm font-semibold text-zinc-100">{insight.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-zinc-400">{insight.body}</p>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          {brief?.disclaimer && (
+            <div className="mt-4 text-xs text-zinc-500">{brief.disclaimer}</div>
+          )}
+        </section>
       )}
 
       {loading && factors.length === 0 ? (
