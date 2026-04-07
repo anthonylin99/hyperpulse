@@ -1,4 +1,5 @@
 import type {
+  FactorConstituentPerformance,
   FactorContributor,
   FactorHolding,
   FactorPerformanceWindow,
@@ -193,6 +194,38 @@ function computeTradeCandidates(
   return candidates.sort((a, b) => b.score - a.score).slice(0, 4);
 }
 
+function computeConstituentPerformance(
+  snapshot: FactorSnapshot,
+  prices: ArtemisPriceMap,
+  marketMap: Map<string, MarketAsset>,
+): FactorConstituentPerformance[] {
+  const collect = (holdings: FactorHolding[], role: "long" | "short") =>
+    holdings.map((holding) => {
+      const asset = marketMap.get(holding.symbol);
+      const series = getSeries(prices, holding.symbol);
+      return {
+        symbol: holding.symbol,
+        role,
+        mappedToHyperliquid: Boolean(asset),
+        latestPrice: getLatestValue(series),
+        return1d: computeReturn(series, 1),
+        return7d: computeReturn(series, 7),
+        return30d: computeReturn(series, 30),
+        liveChange24h: asset?.priceChange24h ?? null,
+        fundingAPR: asset?.fundingAPR ?? null,
+        signalLabel: asset?.signal.label ?? null,
+      };
+    });
+
+  return [...collect(snapshot.longs, "long"), ...collect(snapshot.shorts, "short")].sort(
+    (a, b) => {
+      const aScore = (a.return7d ?? -Infinity) * (a.role === "long" ? 1 : -1);
+      const bScore = (b.return7d ?? -Infinity) * (b.role === "long" ? 1 : -1);
+      return bScore - aScore;
+    },
+  );
+}
+
 export function normalizeArtemisPriceResponse(payload: ArtemisPriceResponse): ArtemisPriceMap {
   const symbols = payload?.data?.symbols ?? {};
   const normalized: ArtemisPriceMap = {};
@@ -239,6 +272,7 @@ export function buildFactorStates(
       const coverage = computeCoverage(snapshot, prices, marketMap);
       const contributors = computeContributors(snapshot, prices, marketMap);
       const tradeCandidates = computeTradeCandidates(snapshot, marketMap);
+      const constituents = computeConstituentPerformance(snapshot, prices, marketMap);
       const today = windows[0];
 
       return {
@@ -256,6 +290,7 @@ export function buildFactorStates(
         topContributors: contributors.topContributors,
         topDetractors: contributors.topDetractors,
         tradeCandidates,
+        constituents,
       };
     })
     .sort(

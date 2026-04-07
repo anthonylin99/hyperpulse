@@ -264,6 +264,19 @@ export interface FactorTradeCandidate {
   trendStatus: "trend-confirmed" | "watchlist-only";
 }
 
+export interface FactorConstituentPerformance {
+  symbol: string;
+  role: "long" | "short";
+  mappedToHyperliquid: boolean;
+  latestPrice: number | null;
+  return1d: number | null;
+  return7d: number | null;
+  return30d: number | null;
+  liveChange24h: number | null;
+  fundingAPR: number | null;
+  signalLabel: string | null;
+}
+
 export interface LiveFactorState {
   snapshot: FactorSnapshot;
   windows: FactorPerformanceWindow[];
@@ -279,4 +292,5 @@ export interface LiveFactorState {
   topContributors: FactorContributor[];
   topDetractors: FactorContributor[];
   tradeCandidates: FactorTradeCandidate[];
+  constituents: FactorConstituentPerformance[];
 }
