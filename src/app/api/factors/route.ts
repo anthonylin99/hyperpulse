@@ -51,12 +51,17 @@ export async function GET(request: Request) {
   try {
     const response = await fetch(`${ARTEMIS_PRICE_URL}?${params.toString()}`, {
       headers: {
-        "User-Agent": "HyperPulse/1.0",
+        "User-Agent": "Mozilla/5.0 (compatible; HyperPulse/1.0; +https://hyperpulse-gold.vercel.app)",
+        Accept: "application/json",
       },
-      next: { revalidate: 900 },
+      cache: "no-store",
     });
 
     if (!response.ok) {
+      console.error("[api/factors] Artemis upstream rejected request", {
+        status: response.status,
+        statusText: response.statusText,
+      });
       return jsonError("Unable to fetch Artemis factor prices right now.", {
         status: 502,
         cache: "public-market",
