@@ -21,6 +21,8 @@ import PerformanceHeatmap from "@/components/portfolio/PerformanceHeatmap";
 import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
 import MoreStats from "@/components/portfolio/MoreStats";
 import DocsPage from "@/components/docs/DocsPage";
+import FactorsPage from "@/components/factors/FactorsPage";
+import FactorLeaderStrip from "@/components/factors/FactorLeaderStrip";
 import FundingFlashcards from "@/components/FundingFlashcards";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
@@ -30,7 +32,7 @@ import { useMarket } from "@/context/MarketContext";
 import { ENABLE_TRADING } from "@/lib/appConfig";
 import { cn, formatUSD } from "@/lib/format";
 
-type Tab = "portfolio" | "markets" | "docs";
+type Tab = "portfolio" | "markets" | "factors" | "docs";
 
 export default function Home() {
   const { isConnected, accountState } = useWallet();
@@ -52,7 +54,7 @@ export default function Home() {
 
       <div className="border-b border-zinc-800 px-4">
         <div className="max-w-7xl mx-auto flex gap-1">
-          {(["portfolio", "markets", "docs"] as Tab[]).map((t) => (
+          {(["portfolio", "markets", "factors", "docs"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -61,7 +63,13 @@ export default function Home() {
                 tab === t ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300",
               )}
             >
-              {t === "portfolio" ? "Portfolio" : t === "markets" ? "Markets" : "Docs"}
+              {t === "portfolio"
+                ? "Portfolio"
+                : t === "markets"
+                  ? "Markets"
+                  : t === "factors"
+                    ? "Factors"
+                    : "Docs"}
               {tab === t && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500" />
               )}
@@ -100,6 +108,7 @@ export default function Home() {
             {(hasContent || portfolioLoading) && (
               <>
                 <DashboardHeader />
+                <FactorLeaderStrip />
                 <PositionsTable />
                 <RiskStrip />
               </>
@@ -160,6 +169,9 @@ export default function Home() {
             </div>
 
             <div className="zone-table">
+              <div className="border-b border-zinc-800 bg-zinc-950/80 px-3 py-3">
+                <FactorLeaderStrip />
+              </div>
               <MarketTable
                 selectedAsset={selectedAsset}
                 onSelectAsset={setSelectedAsset}
@@ -178,6 +190,8 @@ export default function Home() {
             />
           )}
         </>
+      ) : tab === "factors" ? (
+        <FactorsPage />
       ) : (
         <DocsPage />
       )}

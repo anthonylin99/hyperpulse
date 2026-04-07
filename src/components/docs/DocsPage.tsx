@@ -5,6 +5,7 @@ const quickLinks = [
   { href: "#data-sources", label: "Data Sources" },
   { href: "#portfolio", label: "Portfolio Analytics" },
   { href: "#signals", label: "Market Signals" },
+  { href: "#factors", label: "Factors" },
   { href: "#sentiment", label: "Tomorrow Bias" },
   { href: "#wallets", label: "Wallet Modes" },
   { href: "#limits", label: "Limitations" },
@@ -274,6 +275,35 @@ export default function DocsPage() {
             </p>
           </Section>
 
+          <Section id="factors" eyebrow="Factors" title="How the Factors tab is calculated">
+            <p>
+              HyperPulse uses Artemis as the canonical research layer for factor definitions and monthly basket
+              commentary. The app then combines those factor snapshots with live Hyperliquid market state so traders can
+              see which regimes are actually tradable right now.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Historical factor performance</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  Computed from Artemis daily <code>price</code> data across the tracked long and short baskets. Long
+                  legs and short legs are equal-weighted unless the public report publishes explicit weights.
+                </div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Hyperliquid trade view</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  Built from live Hyperliquid prices, funding, open interest, and existing signal confidence. This is
+                  the layer that turns factor research into actual trade candidates such as TAO or NEAR.
+                </div>
+              </div>
+            </div>
+            <p>
+              Factor cards are intentionally labeled as HyperPulse-tracked Artemis baskets. HyperPulse does not claim
+              to reproduce private rebalance files; it shows the public factor logic, public report holdings, and the
+              live Hyperliquid overlay built on top.
+            </p>
+          </Section>
+
           <Section id="sentiment" eyebrow="Sentiment" title="How HyperPulse estimates tomorrow&apos;s bias">
             <p>
               The HyperPulse sentiment model is a composite regime indicator with a short-horizon directional overlay.
@@ -308,7 +338,7 @@ export default function DocsPage() {
               simplest path for analytics because it only needs a wallet address. No private key is required to view a
               public account.
             </p>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
                 <div className="text-sm font-medium text-zinc-100">Read-only</div>
                 <div className="mt-2 text-sm text-zinc-400">
@@ -321,13 +351,6 @@ export default function DocsPage() {
                 <div className="mt-2 text-sm text-zinc-400">
                   Requests a connected wallet, then approves a local Hyperliquid agent key for order execution. Trading
                   permissions stay scoped to the approved agent.
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-sm font-medium text-zinc-100">API wallet</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Advanced users can connect an existing Hyperliquid API wallet and specify the main wallet address it
-                  controls.
                 </div>
               </div>
             </div>

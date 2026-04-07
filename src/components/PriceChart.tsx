@@ -17,12 +17,12 @@ interface PriceChartProps {
 const INTERVALS = ["5m", "15m", "1h", "4h", "1d"] as const;
 type Interval = (typeof INTERVALS)[number];
 
-const INTERVAL_MS: Record<Interval, number> = {
-  "5m": 300_000,
-  "15m": 900_000,
-  "1h": 3_600_000,
-  "4h": 14_400_000,
-  "1d": 86_400_000,
+const LOOKBACK_MS: Record<Interval, number> = {
+  "5m": 2 * 24 * 60 * 60 * 1000,
+  "15m": 5 * 24 * 60 * 60 * 1000,
+  "1h": 14 * 24 * 60 * 60 * 1000,
+  "4h": 45 * 24 * 60 * 60 * 1000,
+  "1d": 120 * 24 * 60 * 60 * 1000,
 };
 
 export default function PriceChart({ coin }: PriceChartProps) {
@@ -34,6 +34,7 @@ export default function PriceChart({ coin }: PriceChartProps) {
   const volumeRef = useRef<ISeriesApi<any> | null>(null);
   const [interval, setInterval_] = useState<Interval>("1h");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -109,15 +110,18 @@ export default function PriceChart({ coin }: PriceChartProps) {
 
     const fetchCandles = async () => {
       setLoading(true);
+      setError(null);
       try {
         const now = Date.now();
-        const barsMs = INTERVAL_MS[interval] * 200;
-        const startTime = now - barsMs;
+        const lookbackMs = LOOKBACK_MS[interval];
+        const startTime = now - lookbackMs;
 
         const res = await fetch(
           `/api/market/candles?coin=${coin}&interval=${interval}&startTime=${startTime}&endTime=${now}`
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          throw new Error(`Failed to fetch ${interval} candles`);
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const candles: any[] = await res.json();
 
@@ -142,7 +146,9 @@ export default function PriceChart({ coin }: PriceChartProps) {
         volumeRef.current?.setData(vol);
         chartRef.current?.timeScale().fitContent();
       } catch {
-        // silently fail
+        seriesRef.current?.setData([]);
+        volumeRef.current?.setData([]);
+        setError("Unable to load this timeframe");
       } finally {
         setLoading(false);
       }
@@ -169,6 +175,9 @@ export default function PriceChart({ coin }: PriceChartProps) {
         ))}
         {loading && (
           <span className="text-[10px] text-zinc-600 ml-2">Loading...</span>
+        )}
+        {error && !loading && (
+          <span className="text-[10px] text-red-400 ml-2">{error}</span>
         )}
       </div>
       <div ref={containerRef} className="flex-1 min-h-0" />

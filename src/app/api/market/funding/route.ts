@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     !enforceTimeRange({
       startTime,
       endTime,
-      maxLookbackMs: 30 * 24 * 60 * 60 * 1000,
+      maxLookbackMs: 90 * 24 * 60 * 60 * 1000,
     })
   ) {
     return jsonError("Requested funding range is not allowed.", {

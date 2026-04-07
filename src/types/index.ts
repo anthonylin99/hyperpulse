@@ -210,3 +210,73 @@ export interface ActivityEntry {
   notional?: number;
   count?: number;
 }
+
+// ─── Factor Types ───────────────────────────────────────────────
+
+export interface FactorHolding {
+  symbol: string;
+  weight?: number;
+  note?: string;
+}
+
+export interface FactorSnapshot {
+  id: string;
+  name: string;
+  shortLabel: string;
+  description: string;
+  methodology: string;
+  reportDate: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  narrativeTags: string[];
+  constructionType: "long-only" | "long-short";
+  coverageNote: string;
+  longs: FactorHolding[];
+  shorts: FactorHolding[];
+}
+
+export interface FactorPerformanceWindow {
+  days: number;
+  longReturn: number | null;
+  shortReturn: number | null;
+  spreadReturn: number | null;
+}
+
+export interface FactorContributor {
+  symbol: string;
+  role: "long" | "short";
+  returnPct: number;
+  contributionPct: number;
+  livePrice: number | null;
+  liveChange24h: number | null;
+  signalLabel?: string;
+}
+
+export interface FactorTradeCandidate {
+  symbol: string;
+  role: "long" | "short";
+  thesis: string;
+  score: number;
+  liveChange24h: number | null;
+  fundingAPR: number | null;
+  signalLabel: string | null;
+  confidence: "high" | "medium" | "low";
+  trendStatus: "trend-confirmed" | "watchlist-only";
+}
+
+export interface LiveFactorState {
+  snapshot: FactorSnapshot;
+  windows: FactorPerformanceWindow[];
+  longsReturnToday: number | null;
+  shortsReturnToday: number | null;
+  spreadToday: number | null;
+  mappedHyperliquidAssets: string[];
+  unmappedAssets: string[];
+  basketCoverage: number;
+  hyperliquidCoverage: number;
+  confidence: "high" | "medium" | "low";
+  stalenessDays: number;
+  topContributors: FactorContributor[];
+  topDetractors: FactorContributor[];
+  tradeCandidates: FactorTradeCandidate[];
+}
