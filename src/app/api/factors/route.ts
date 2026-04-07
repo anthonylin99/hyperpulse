@@ -1,4 +1,5 @@
 import https from "node:https";
+import fallbackPrices from "@/lib/factors/fallbackPrices.json";
 import { FACTOR_SNAPSHOTS } from "@/lib/factors/snapshots";
 import {
   enforceRateLimit,
@@ -92,7 +93,6 @@ export async function GET(request: Request) {
     endDate: new Date().toISOString().slice(0, 10),
     APIKey: apiKey,
   });
-  const emptyPrices = { data: { symbols: {} } };
 
   try {
     const prices = await requestArtemisPrices(`${ARTEMIS_PRICE_URL}?${params.toString()}`);
@@ -108,8 +108,9 @@ export async function GET(request: Request) {
     return jsonSuccess(
       {
         snapshots: FACTOR_SNAPSHOTS,
-        prices: emptyPrices,
-        warning: "Artemis price history is temporarily unavailable, so factor returns may be incomplete.",
+        prices: fallbackPrices,
+        warning:
+          "Live Artemis history is temporarily unavailable, so HyperPulse is using a cached Artemis snapshot while still ranking tradable names from live Hyperliquid data.",
       },
       { cache: "public-market" },
     );
