@@ -1,5 +1,11 @@
-import { NextResponse } from "next/server";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import {
+  enforceRateLimit,
+  jsonError,
+  jsonSuccess,
+  logServerError,
+  validateCoin,
+} from "@/lib/security";
 
 const transport = new HttpTransport({ isTestnet: false });
 const info = new InfoClient({ transport });
@@ -7,17 +13,30 @@ const info = new InfoClient({ transport });
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const limited = enforceRateLimit(request, {
+    key: "api-market-orderbook",
+    limit: 120,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   const { searchParams } = new URL(request.url);
-  const coin = searchParams.get("coin");
+  const coin = validateCoin(searchParams.get("coin"));
 
   if (!coin) {
-    return NextResponse.json({ error: "Missing coin" }, { status: 400 });
+    return jsonError("A valid coin is required.", {
+      status: 400,
+      cache: "public-market",
+    });
   }
 
   try {
     const data = await info.l2Book({ coin });
     if (!data) {
-      return NextResponse.json({ error: "Market not found" }, { status: 404 });
+      return jsonError("Market not found.", {
+        status: 404,
+        cache: "public-market",
+      });
     }
 
     const bids = data.levels[0].map((level) => ({
@@ -39,7 +58,7 @@ export async function GET(request: Request) {
         ? (spread / ((bestAsk + bestBid) / 2)) * 10_000
         : null;
 
-    return NextResponse.json({
+    return jsonSuccess({
       coin: data.coin,
       time: data.time,
       bestBid,
@@ -48,11 +67,12 @@ export async function GET(request: Request) {
       spreadBps,
       bids: bids.slice(0, 8),
       asks: asks.slice(0, 8),
-    });
+    }, { cache: "public-market" });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch order book" },
-      { status: 500 }
-    );
+    logServerError("api/market/orderbook", err);
+    return jsonError("Unable to fetch order book right now.", {
+      status: 502,
+      cache: "public-market",
+    });
   }
 }

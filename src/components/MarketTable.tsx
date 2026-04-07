@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { Search } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
+import { ENABLE_TRADING } from "@/lib/appConfig";
 import AssetRow from "./AssetRow";
 import AssetDetail from "./AssetDetail";
 import type { MarketAsset, SpotAsset, SpotCategory } from "@/types";
@@ -85,6 +86,7 @@ export default function MarketTable({
 }: MarketTableProps) {
   const { assets, loading, fundingHistories } = useMarket();
   const { isConnected } = useWallet();
+  const tradingEnabled = ENABLE_TRADING && isConnected;
 
   const [mode, setMode] = useState<Mode>("perps");
   const [search, setSearch] = useState("");
@@ -199,7 +201,7 @@ export default function MarketTable({
     );
   }
 
-  const perpsTotalColumns = PERP_COLUMNS.length + 1 + (isConnected ? 1 : 0);
+  const perpsTotalColumns = PERP_COLUMNS.length + 1 + (tradingEnabled ? 1 : 0);
 
   return (
     <>
@@ -327,7 +329,7 @@ export default function MarketTable({
                     </th>
                   ))}
                   <th className="px-2.5 py-1.5 text-left whitespace-nowrap">7d Chart</th>
-                  {isConnected && (
+                  {tradingEnabled && (
                     <th className="px-2.5 py-1.5 text-left whitespace-nowrap">Trade</th>
                   )}
                 </tr>
@@ -341,7 +343,7 @@ export default function MarketTable({
                     isExpanded={selectedAsset === asset.coin}
                     onSelect={() => onSelectAsset(selectedAsset === asset.coin ? null : asset.coin)}
                     onTrade={(direction) => onTrade(asset.coin, direction)}
-                    walletConnected={isConnected}
+                    tradingEnabled={tradingEnabled}
                     fundingHistory={fundingHistories[asset.coin]}
                     detailNode={
                       selectedAsset === asset.coin ? (

@@ -1,5 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import {
+  enforceRateLimit,
+  enforceTimeRange,
+  jsonError,
+  jsonSuccess,
+  logServerError,
+  parseTimestamp,
+  validateAddress,
+} from "@/lib/security";
 
 const transport = new HttpTransport({ isTestnet: false });
 const info = new InfoClient({ transport });
@@ -7,29 +16,57 @@ const info = new InfoClient({ transport });
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const address = req.nextUrl.searchParams.get("address");
+  const limited = enforceRateLimit(req, {
+    key: "api-user-ledger",
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
+  const address = validateAddress(req.nextUrl.searchParams.get("address"));
   if (!address) {
-    return NextResponse.json({ error: "address required" }, { status: 400 });
+    return jsonError("A valid wallet address is required.", { status: 400 });
   }
 
-  const startTime = Number(req.nextUrl.searchParams.get("startTime") || Date.now() - 90 * 24 * 60 * 60 * 1000);
-  const endTime = req.nextUrl.searchParams.get("endTime");
+  const now = Date.now();
+  const defaultStart = now - 90 * 24 * 60 * 60 * 1000;
+  const startTime = parseTimestamp(req.nextUrl.searchParams.get("startTime"), {
+    fallback: defaultStart,
+    min: 1,
+    max: now,
+  });
+  const endTime = parseTimestamp(req.nextUrl.searchParams.get("endTime"), {
+    min: 1,
+    max: now,
+    fallback: now,
+  });
+
+  if (startTime == null || endTime == null) {
+    return jsonError("A valid time range is required.", { status: 400 });
+  }
+
+  const valid = enforceTimeRange({
+    startTime,
+    endTime,
+    maxLookbackMs: 90 * 24 * 60 * 60 * 1000,
+  });
+  if (!valid) {
+    return jsonError("Requested history window is not allowed.", { status: 400 });
+  }
 
   try {
     const params: Record<string, unknown> = {
       user: address as `0x${string}`,
       startTime,
     };
-    if (endTime) params.endTime = Number(endTime);
+    params.endTime = endTime;
 
     const ledger = await info.userNonFundingLedgerUpdates(
       params as Parameters<typeof info.userNonFundingLedgerUpdates>[0],
     );
-    return NextResponse.json(ledger);
+    return jsonSuccess(ledger);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch ledger" },
-      { status: 500 },
-    );
+    logServerError("api/user/ledger", err);
+    return jsonError("Unable to fetch wallet ledger right now.", { status: 502 });
   }
 }

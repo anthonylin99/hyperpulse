@@ -35,7 +35,6 @@ export default function DashboardHeader() {
   const unrealizedPnl = accountState?.unrealizedPnl ?? 0;
   const totalPnl = stats?.totalPnl ?? 0;
 
-  // Auto-save wallet on connect
   useEffect(() => {
     if (address) {
       const updated = saveWallet(address);
@@ -44,12 +43,10 @@ export default function DashboardHeader() {
     }
   }, [address]);
 
-  // Load saved wallets
   useEffect(() => {
     setSavedWallets(getSavedWallets());
   }, []);
 
-  // Close switcher on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
@@ -127,7 +124,6 @@ export default function DashboardHeader() {
         <div className="flex items-center gap-2 relative" ref={switcherRef}>
           <h1 className="text-2xl font-bold text-zinc-50">Portfolio</h1>
 
-          {/* Wallet badge — click to open switcher */}
           {address && (
             <button
               onClick={() => setShowSwitcher(!showSwitcher)}
@@ -140,19 +136,13 @@ export default function DashboardHeader() {
               <span className="text-zinc-400">
                 {currentWallet?.nickname || truncateAddress(address)}
               </span>
-              {isReadOnly && (
-                <span className="text-zinc-600">(read-only)</span>
-              )}
-              {otherWallets.length > 0 && (
-                <span className="text-zinc-600 ml-0.5">▾</span>
-              )}
+              {isReadOnly && <span className="text-zinc-600">(read-only)</span>}
+              {otherWallets.length > 0 && <span className="text-zinc-600 ml-0.5">▾</span>}
             </button>
           )}
 
-          {/* Wallet switcher dropdown */}
           {showSwitcher && (
             <div className="absolute top-full left-0 mt-1 z-50 w-72 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
-              {/* Current wallet */}
               <div className="px-3 py-2.5 border-b border-zinc-800">
                 <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">
                   Current
@@ -220,7 +210,6 @@ export default function DashboardHeader() {
                 )}
               </div>
 
-              {/* Other saved wallets */}
               {otherWallets.length > 0 && (
                 <div className="px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">
@@ -238,9 +227,7 @@ export default function DashboardHeader() {
                         <div className="flex items-center gap-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
                           <div className="min-w-0">
-                            <div className="text-sm text-zinc-300 truncate">
-                              {wallet.nickname}
-                            </div>
+                            <div className="text-sm text-zinc-300 truncate">{wallet.nickname}</div>
                             <div className="text-xs font-mono text-zinc-600">
                               {truncateAddress(wallet.address)}
                             </div>
@@ -268,12 +255,19 @@ export default function DashboardHeader() {
           )}
         </div>
 
+        {isReadOnly && (
+          <div className="text-xs text-zinc-500">
+            Public-address session only. HyperPulse does not store a reusable execution key in this deployment.
+          </div>
+        )}
+
         <div className="flex items-baseline gap-4">
           <div>
-            <span className="text-3xl font-bold text-zinc-50">
-              {formatUSD(accountValue)}
-            </span>
-            <span className="text-xs text-zinc-600 ml-2" title="Perps equity + spot USDC. Staked HYPE not included.">
+            <span className="text-3xl font-bold text-zinc-50">{formatUSD(accountValue)}</span>
+            <span
+              className="text-xs text-zinc-600 ml-2"
+              title="Perps equity + spot USDC. Staked HYPE not included."
+            >
               equity
             </span>
             {lastUpdated && (
@@ -303,9 +297,7 @@ export default function DashboardHeader() {
                 <span
                   className={cn(
                     "text-sm",
-                    unrealizedPnl >= 0
-                      ? "text-emerald-400/70"
-                      : "text-red-400/70",
+                    unrealizedPnl >= 0 ? "text-emerald-400/70" : "text-red-400/70",
                   )}
                 >
                   {unrealizedPnl >= 0 ? "+" : ""}
@@ -321,7 +313,11 @@ export default function DashboardHeader() {
         <button
           onClick={async () => {
             setRefreshing(true);
-            try { await refresh(); } finally { setRefreshing(false); }
+            try {
+              await refresh();
+            } finally {
+              setRefreshing(false);
+            }
           }}
           disabled={refreshing || portfolioLoading}
           className={cn(

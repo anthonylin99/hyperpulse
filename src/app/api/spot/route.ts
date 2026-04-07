@@ -1,5 +1,10 @@
-import { NextResponse } from "next/server";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import {
+  enforceRateLimit,
+  jsonError,
+  jsonSuccess,
+  logServerError,
+} from "@/lib/security";
 
 const transport = new HttpTransport({ isTestnet: false });
 const info = new InfoClient({ transport });
@@ -21,7 +26,14 @@ function classifySpot(symbol: string): SpotCategory {
   return "Other";
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const limited = enforceRateLimit(request, {
+    key: "api-spot",
+    limit: 120,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   try {
     const [meta, assetCtxs] = await info.spotMetaAndAssetCtxs();
     const tokenByIndex = new Map(meta.tokens.map((token) => [token.index, token]));
@@ -77,11 +89,12 @@ export async function GET() {
       .filter((a): a is NonNullable<typeof a> => a != null)
       .sort((a, b) => b.dayVolume - a.dayVolume);
 
-    return NextResponse.json({ assets, updatedAt: Date.now() });
+    return jsonSuccess({ assets, updatedAt: Date.now() }, { cache: "public-market" });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch spot data" },
-      { status: 500 }
-    );
+    logServerError("api/spot", err);
+    return jsonError("Unable to fetch spot market data right now.", {
+      status: 502,
+      cache: "public-market",
+    });
   }
 }

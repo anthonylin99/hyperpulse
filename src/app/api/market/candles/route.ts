@@ -1,5 +1,14 @@
-import { NextResponse } from "next/server";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import {
+  enforceRateLimit,
+  enforceTimeRange,
+  jsonError,
+  jsonSuccess,
+  logServerError,
+  parseInterval,
+  parseTimestamp,
+  validateCoin,
+} from "@/lib/security";
 
 const transport = new HttpTransport({ isTestnet: false });
 const info = new InfoClient({ transport });
@@ -7,31 +16,60 @@ const info = new InfoClient({ transport });
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const coin = searchParams.get("coin");
-  const interval = (searchParams.get("interval") || "1h") as "1m" | "3m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "8h" | "12h" | "1d" | "3d" | "1w" | "1M";
-  const startTime = searchParams.get("startTime");
-  const endTime = searchParams.get("endTime");
+  const limited = enforceRateLimit(request, {
+    key: "api-market-candles",
+    limit: 120,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
 
-  if (!coin || !startTime) {
-    return NextResponse.json(
-      { error: "Missing coin or startTime" },
-      { status: 400 }
-    );
+  const { searchParams } = new URL(request.url);
+  const coin = validateCoin(searchParams.get("coin"));
+  const interval = parseInterval(searchParams.get("interval"), "1h");
+  const now = Date.now();
+  const startTime = parseTimestamp(searchParams.get("startTime"), {
+    min: 1,
+    max: now,
+  });
+  const endTime = parseTimestamp(searchParams.get("endTime"), {
+    min: 1,
+    max: now,
+    fallback: now,
+  });
+
+  if (!coin || startTime == null || endTime == null) {
+    return jsonError("Valid coin and time range are required.", {
+      status: 400,
+      cache: "public-market",
+    });
+  }
+
+  if (
+    !enforceTimeRange({
+      startTime,
+      endTime,
+      maxLookbackMs: 30 * 24 * 60 * 60 * 1000,
+    })
+  ) {
+    return jsonError("Requested candle range is not allowed.", {
+      status: 400,
+      cache: "public-market",
+    });
   }
 
   try {
     const data = await info.candleSnapshot({
       coin,
       interval,
-      startTime: Number(startTime),
-      endTime: endTime ? Number(endTime) : Date.now(),
+      startTime,
+      endTime,
     });
-    return NextResponse.json(data);
+    return jsonSuccess(data, { cache: "public-market" });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch candles" },
-      { status: 500 }
-    );
+    logServerError("api/market/candles", err);
+    return jsonError("Unable to fetch market candles right now.", {
+      status: 502,
+      cache: "public-market",
+    });
   }
 }

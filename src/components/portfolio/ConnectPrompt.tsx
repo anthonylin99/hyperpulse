@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useWallet } from "@/context/WalletContext";
 import { getSavedWallets, removeWallet, clearSavedWallets, type SavedWallet } from "@/lib/savedWallets";
+import { ENABLE_TRADING } from "@/lib/appConfig";
 import { truncateAddress, cn } from "@/lib/format";
 
 function PrivyLoginPanel({
@@ -23,13 +24,11 @@ function PrivyLoginPanel({
 
   const privyAddress = useMemo(() => {
     if (wallets && wallets.length > 0) {
-      // Prefer a linked external wallet over the embedded Privy wallet
       const external = wallets.find((w) => w.walletClientType !== "privy");
       if (external) return external.address;
       const embedded = wallets.find((w) => w.walletClientType === "privy");
       return (embedded ?? wallets[0]).address;
     }
-    // Fallback: older user shape
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const maybeWallet = (user as any)?.wallet;
     return maybeWallet?.address ?? null;
@@ -38,10 +37,9 @@ function PrivyLoginPanel({
   useEffect(() => {
     if (!pendingConnect) return;
     if (!authenticated || !privyAddress) return;
-    // Defer to manual selection so users can pick the correct wallet.
     setPendingConnect(false);
     setShowSelector(true);
-  }, [pendingConnect, authenticated, privyAddress, onAddress]);
+  }, [pendingConnect, authenticated, privyAddress]);
 
   if (authenticated && showSelector) {
     return (
@@ -62,13 +60,9 @@ function PrivyLoginPanel({
               >
                 <div className="text-left min-w-0">
                   <div className="text-zinc-200 font-medium truncate">
-                    {wallet.walletClientType === "privy"
-                      ? "Privy Embedded Wallet"
-                      : "Linked Wallet"}
+                    {wallet.walletClientType === "privy" ? "Privy Embedded Wallet" : "Linked Wallet"}
                   </div>
-                  <div className="text-zinc-500 font-mono text-xs">
-                    {wallet.address}
-                  </div>
+                  <div className="text-zinc-500 font-mono text-xs">{wallet.address}</div>
                 </div>
                 <span className="text-xs text-zinc-500">Use</span>
               </button>
@@ -102,7 +96,7 @@ function PrivyLoginPanel({
             />
             <button
               onClick={(e) => {
-                const input = (e.currentTarget.parentElement?.querySelector("input") as HTMLInputElement | null);
+                const input = e.currentTarget.parentElement?.querySelector("input") as HTMLInputElement | null;
                 if (input?.value?.trim()) onAddress(input.value.trim());
               }}
               className="px-3 py-2.5 rounded-lg text-xs bg-teal-600 text-white hover:bg-teal-500"
@@ -110,12 +104,14 @@ function PrivyLoginPanel({
               Use
             </button>
           </div>
-          <button
-            onClick={onConnectExternal}
-            className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
-          >
-            Connect External Wallet
-          </button>
+          {ENABLE_TRADING && (
+            <button
+              onClick={onConnectExternal}
+              className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+            >
+              Connect External Wallet
+            </button>
+          )}
         </div>
         <button
           onClick={() => setShowSelector(false)}
@@ -208,24 +204,18 @@ export default function ConnectPrompt() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
       <div className="max-w-md w-full space-y-8 text-center">
-        {/* Logo / Brand */}
         <div className="space-y-3">
-          <div className="text-4xl font-bold tracking-tight text-zinc-50">
-            HyperPulse
-          </div>
+          <div className="text-4xl font-bold tracking-tight text-zinc-50">HyperPulse</div>
           <p className="text-zinc-400 text-sm leading-relaxed">
             Portfolio analytics and trade insights for Hyperliquid.
             <br />
-            Paste any address to get started — no wallet required.
+            Paste any address to get started. Browser-wallet execution is optional and disabled in the public deployment by default.
           </p>
         </div>
 
-        {/* Saved Wallets */}
         {savedWallets.length > 0 && mode === "main" && (
           <div className="space-y-2">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider">
-              Saved Wallets
-            </div>
+            <div className="text-xs text-zinc-500 uppercase tracking-wider">Saved Wallets</div>
             <div className="space-y-1.5">
               {savedWallets
                 .sort((a, b) => b.lastUsed - a.lastUsed)
@@ -243,12 +233,8 @@ export default function ConnectPrompt() {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0" />
                       <div className="text-left min-w-0">
-                        <div className="text-zinc-200 font-medium truncate">
-                          {wallet.nickname}
-                        </div>
-                        <div className="text-zinc-500 font-mono text-xs">
-                          {truncateAddress(wallet.address)}
-                        </div>
+                        <div className="text-zinc-200 font-medium truncate">{wallet.nickname}</div>
+                        <div className="text-zinc-500 font-mono text-xs">{truncateAddress(wallet.address)}</div>
                       </div>
                     </div>
                     <button
@@ -275,9 +261,10 @@ export default function ConnectPrompt() {
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-left">
               <div className="text-xs text-zinc-400 font-medium mb-1">Read-only by default</div>
               <div className="text-xs text-zinc-500">
-                Viewing analytics never asks for private keys. Email login uses a Privy wallet to match your Hyperliquid account.
+                Viewing analytics never asks for private keys. Use a public wallet address first; browser-wallet access is optional and deployment-gated.
               </div>
             </div>
+
             {privyEnabled && privyAllowEmbedded ? (
               <PrivyLoginPanel
                 disabled={loading}
@@ -290,7 +277,21 @@ export default function ConnectPrompt() {
                   }
                 }}
               />
-            ) : (
+            ) : null}
+
+            {privyEnabled && !privyAllowEmbedded && (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-left text-xs text-zinc-500">
+                Email login is disabled because Privy can create a fresh embedded wallet. Use external wallet connect or paste your trading address below.
+              </div>
+            )}
+
+            {privyEnabled && (
+              <div className="text-[11px] text-zinc-500">
+                Uses your linked external wallet if available. Otherwise a new embedded wallet may be created.
+              </div>
+            )}
+
+            {ENABLE_TRADING && (
               <button
                 onClick={handleWalletConnect}
                 disabled={loading}
@@ -300,53 +301,28 @@ export default function ConnectPrompt() {
                   "disabled:opacity-50 disabled:cursor-not-allowed",
                 )}
               >
-                {loading ? "Connecting..." : "Connect Wallet (optional)"}
+                {loading ? "Connecting..." : "Connect Browser Wallet"}
               </button>
             )}
 
-            {privyEnabled && !privyAllowEmbedded && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-left text-xs text-zinc-500">
-                Email login is disabled because Privy keeps creating a new embedded wallet.
-                Use external wallet connect or paste your trading address below.
+            {ENABLE_TRADING && (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-zinc-800" />
+                <span className="text-xs text-zinc-500 uppercase tracking-wider">or</span>
+                <div className="flex-1 h-px bg-zinc-800" />
               </div>
             )}
 
-            {privyEnabled && (
-              <div className="text-[11px] text-zinc-500">
-                Uses your linked external wallet if available. Otherwise a new embedded wallet is created.
-              </div>
-            )}
-
-            <button
-              onClick={handleWalletConnect}
-              disabled={loading}
-              className={cn(
-                "w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all",
-                "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
-              )}
-            >
-              Use external wallet (MetaMask/Rabby)
-            </button>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-zinc-800" />
-              <span className="text-xs text-zinc-500 uppercase tracking-wider">
-                or
-              </span>
-              <div className="flex-1 h-px bg-zinc-800" />
-            </div>
-
-            {/* Paste Address Button */}
             <button
               onClick={() => setMode("paste")}
               className={cn(
                 "w-full py-3 px-4 rounded-lg font-medium text-sm transition-all",
-                "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700",
+                ENABLE_TRADING
+                  ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+                  : "bg-teal-600 hover:bg-teal-500 text-white",
               )}
             >
-              View Any Wallet Address
+              {ENABLE_TRADING ? "View Any Wallet Address" : "View Wallet Address"}
             </button>
           </div>
         ) : (
@@ -389,12 +365,10 @@ export default function ConnectPrompt() {
           </div>
         )}
 
-        {error && (
-          <p className="text-red-400 text-xs">{error}</p>
-        )}
+        {error && <p className="text-red-400 text-xs">{error}</p>}
 
         <p className="text-zinc-600 text-xs">
-          Read-only by default. We never access your private keys.
+          Read-only by default. We never ask for your seed phrase or manual private key in the public deployment.
         </p>
       </div>
     </div>

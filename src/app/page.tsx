@@ -2,11 +2,6 @@
 
 import { useState } from "react";
 import Nav from "@/components/Nav";
-import { useWallet } from "@/context/WalletContext";
-import { usePortfolio } from "@/context/PortfolioContext";
-import { cn, formatUSD } from "@/lib/format";
-
-// Portfolio components
 import ConnectPrompt from "@/components/portfolio/ConnectPrompt";
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import PositionsTable from "@/components/portfolio/PositionsTable";
@@ -26,13 +21,14 @@ import PerformanceHeatmap from "@/components/portfolio/PerformanceHeatmap";
 import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
 import MoreStats from "@/components/portfolio/MoreStats";
 import DocsPage from "@/components/docs/DocsPage";
-
-// Market components (secondary tab)
 import FundingFlashcards from "@/components/FundingFlashcards";
 import MarketTable from "@/components/MarketTable";
-// Sidebar removed from Markets tab
 import TradeDrawer from "@/components/TradeDrawer";
+import { useWallet } from "@/context/WalletContext";
+import { usePortfolio } from "@/context/PortfolioContext";
 import { useMarket } from "@/context/MarketContext";
+import { ENABLE_TRADING } from "@/lib/appConfig";
+import { cn, formatUSD } from "@/lib/format";
 
 type Tab = "portfolio" | "markets" | "docs";
 
@@ -52,10 +48,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      {/* Nav */}
       <Nav />
 
-      {/* Tab bar */}
       <div className="border-b border-zinc-800 px-4">
         <div className="max-w-7xl mx-auto flex gap-1">
           {(["portfolio", "markets", "docs"] as Tab[]).map((t) => (
@@ -64,9 +58,7 @@ export default function Home() {
               onClick={() => setTab(t)}
               className={cn(
                 "px-4 py-2.5 text-sm font-medium transition-colors relative",
-                tab === t
-                  ? "text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-300",
+                tab === t ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300",
               )}
             >
               {t === "portfolio" ? "Portfolio" : t === "markets" ? "Markets" : "Docs"}
@@ -78,7 +70,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Content */}
       {tab === "portfolio" ? (
         !isConnected ? (
           <ConnectPrompt />
@@ -90,7 +81,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Empty state: connected, done loading, no trades AND no positions */}
             {!portfolioLoading && !hasContent && (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <div className="text-zinc-500 text-sm mb-2">
@@ -107,7 +97,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Always show header + positions + risk if connected (even without closed trades) */}
             {(hasContent || portfolioLoading) && (
               <>
                 <DashboardHeader />
@@ -116,7 +105,6 @@ export default function Home() {
               </>
             )}
 
-            {/* Skeleton loading for first fetch */}
             {portfolioLoading && !hasTrades && (
               <>
                 <StatsGrid />
@@ -124,7 +112,6 @@ export default function Home() {
               </>
             )}
 
-            {/* Full analytics — only when we have closed trades */}
             {hasTrades && (
               <>
                 <StatsGrid />
@@ -158,7 +145,6 @@ export default function Home() {
           </div>
         )
       ) : tab === "markets" ? (
-        /* Markets tab — existing dashboard */
         <>
           <div className="dashboard-grid">
             {marketError && (
@@ -178,14 +164,13 @@ export default function Home() {
                 selectedAsset={selectedAsset}
                 onSelectAsset={setSelectedAsset}
                 onTrade={(coin, direction) =>
-                  setTradeDrawer({ coin, direction })
+                  ENABLE_TRADING ? setTradeDrawer({ coin, direction }) : null
                 }
               />
             </div>
-
           </div>
 
-          {tradeDrawer && (
+          {tradeDrawer && ENABLE_TRADING && (
             <TradeDrawer
               coin={tradeDrawer.coin}
               direction={tradeDrawer.direction}

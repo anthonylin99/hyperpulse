@@ -1,5 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import {
+  enforceRateLimit,
+  enforceTimeRange,
+  jsonError,
+  jsonSuccess,
+  logServerError,
+  parseInterval,
+  parseTimestamp,
+  validateCoin,
+} from "@/lib/security";
 
 const transport = new HttpTransport({ isTestnet: false });
 const info = new InfoClient({ transport });
@@ -7,19 +17,44 @@ const info = new InfoClient({ transport });
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const coin = req.nextUrl.searchParams.get("coin");
+  const limited = enforceRateLimit(req, {
+    key: "api-user-candles",
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
+  const coin = validateCoin(req.nextUrl.searchParams.get("coin"));
   if (!coin) {
-    return NextResponse.json({ error: "coin required" }, { status: 400 });
+    return jsonError("A valid coin is required.", { status: 400 });
   }
 
-  const VALID_INTERVALS = ["1m","3m","5m","15m","30m","1h","2h","4h","8h","12h","1d","3d","1w","1M"] as const;
-  type Interval = typeof VALID_INTERVALS[number];
-  const rawInterval = req.nextUrl.searchParams.get("interval") || "1h";
-  const interval: Interval = VALID_INTERVALS.includes(rawInterval as Interval)
-    ? (rawInterval as Interval)
-    : "1h";
-  const startTime = Number(req.nextUrl.searchParams.get("startTime") || Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const endTime = Number(req.nextUrl.searchParams.get("endTime") || Date.now());
+  const now = Date.now();
+  const interval = parseInterval(req.nextUrl.searchParams.get("interval"), "1h");
+  const startTime = parseTimestamp(req.nextUrl.searchParams.get("startTime"), {
+    fallback: now - 7 * 24 * 60 * 60 * 1000,
+    min: 1,
+    max: now,
+  });
+  const endTime = parseTimestamp(req.nextUrl.searchParams.get("endTime"), {
+    fallback: now,
+    min: 1,
+    max: now,
+  });
+
+  if (startTime == null || endTime == null) {
+    return jsonError("A valid time range is required.", { status: 400 });
+  }
+
+  if (
+    !enforceTimeRange({
+      startTime,
+      endTime,
+      maxLookbackMs: 30 * 24 * 60 * 60 * 1000,
+    })
+  ) {
+    return jsonError("Requested candle range is not allowed.", { status: 400 });
+  }
 
   try {
     const candles = await info.candleSnapshot({
@@ -28,11 +63,9 @@ export async function GET(req: NextRequest) {
       startTime,
       endTime,
     });
-    return NextResponse.json(candles);
+    return jsonSuccess(candles);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch candles" },
-      { status: 500 },
-    );
+    logServerError("api/user/candles", err);
+    return jsonError("Unable to fetch historical candles right now.", { status: 502 });
   }
 }

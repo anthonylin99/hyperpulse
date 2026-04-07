@@ -14,13 +14,12 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HttpTransport, InfoClient, ExchangeClient } from "@nktkas/hyperliquid";
 import { POLL_INTERVAL_PORTFOLIO } from "@/lib/constants";
 import { IS_TESTNET } from "@/lib/hyperliquid";
+import { ENABLE_TRADING } from "@/lib/appConfig";
 import type { AccountState, Position } from "@/types";
 import toast from "react-hot-toast";
 
-const SESSION_API_KEY = "hp_api_key";
 const SESSION_MAIN_ADDR = "hp_main_address";
 const MAIN_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
-const PRIVATE_KEY_REGEX = /^0x[a-fA-F0-9]{64}$/;
 
 export type BrowserWalletPreference =
   | "auto"
@@ -36,7 +35,6 @@ interface WalletContextValue {
   accountState: AccountState | null;
   exchangeClient: ExchangeClient | null;
   loading: boolean;
-  connect: (apiPrivateKey: string, mainWalletAddress: string) => Promise<void>;
   connectWithBrowserWallet: (
     preference?: BrowserWalletPreference
   ) => Promise<void>;
@@ -215,63 +213,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [getInfo]
   );
 
-  const connect = useCallback(
-    async (apiPrivateKey: string, mainWalletAddress: string) => {
-      setLoading(true);
-      try {
-        const rawKey = apiPrivateKey.trim();
-        const normalizedKey = rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`;
-        const normalizedAddress = mainWalletAddress.trim();
-
-        if (!PRIVATE_KEY_REGEX.test(normalizedKey)) {
-          throw new Error(
-            "Invalid API wallet private key. Expected 64-byte hex (0x...)."
-          );
-        }
-        if (!MAIN_ADDRESS_REGEX.test(normalizedAddress)) {
-          throw new Error(
-            "Invalid main wallet address. Expected 42-char 0x address."
-          );
-        }
-
-        const key = normalizedKey as `0x${string}`;
-        const mainAddr = normalizedAddress as `0x${string}`;
-
-        const apiWallet = privateKeyToAccount(key);
-        const transport = new HttpTransport({ isTestnet: IS_TESTNET });
-        const exchange = new ExchangeClient({ transport, wallet: apiWallet });
-
-        // Connectivity verification: open orders + account state for main wallet
-        const info = getInfo();
-        await info.openOrders({ user: mainAddr });
-        await fetchPortfolio(mainAddr, true);
-
-        setAddress(mainAddr);
-        setApiAddress(apiWallet.address);
-        setExchangeClient(exchange);
-
-        sessionStorage.setItem(SESSION_API_KEY, normalizedKey);
-        sessionStorage.setItem(SESSION_MAIN_ADDR, mainAddr);
-
-        toast.success(
-          `Connected: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`
-        );
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Failed to connect wallet";
-        toast.error(msg);
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchPortfolio, getInfo]
-  );
-
   const connectWithBrowserWallet = useCallback(
     async (preference: BrowserWalletPreference = "auto") => {
       setLoading(true);
       try {
+        if (!ENABLE_TRADING) {
+          throw new Error(
+            "Trading connections are disabled in the public deployment. Use read-only wallet analytics instead."
+          );
+        }
         if (typeof window === "undefined") {
           throw new Error("Browser wallet is unavailable in this environment.");
         }
@@ -331,9 +281,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setAddress(mainAddr);
         setApiAddress(agentWallet.address);
         setExchangeClient(exchange);
-
-        sessionStorage.setItem(SESSION_API_KEY, agentPrivateKey);
-        sessionStorage.setItem(SESSION_MAIN_ADDR, mainAddr);
+        setIsReadOnly(false);
 
         toast.success(`Connected: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`);
       } catch (err) {
@@ -362,12 +310,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         await fetchPortfolio(normalized, true);
 
         setAddress(normalized);
-        setApiAddress(null);
-        setExchangeClient(null);
-        setIsReadOnly(true);
+    setApiAddress(null);
+    setExchangeClient(null);
+    setIsReadOnly(true);
 
         sessionStorage.setItem(SESSION_MAIN_ADDR, normalized);
-        sessionStorage.removeItem(SESSION_API_KEY);
 
         toast.success(
           `Viewing: ${normalized.slice(0, 6)}...${normalized.slice(-4)} (read-only)`
@@ -397,7 +344,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setIsReadOnly(false);
     setAccountState(null);
     setExchangeClient(null);
-    sessionStorage.removeItem(SESSION_API_KEY);
     sessionStorage.removeItem(SESSION_MAIN_ADDR);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -413,14 +359,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [address, fetchPortfolio]);
 
   useEffect(() => {
-    const storedKey = sessionStorage.getItem(SESSION_API_KEY);
     const storedAddr = sessionStorage.getItem(SESSION_MAIN_ADDR);
-    if (storedKey && storedAddr) {
-      connect(storedKey, storedAddr).catch(() => {
-        sessionStorage.removeItem(SESSION_API_KEY);
-        sessionStorage.removeItem(SESSION_MAIN_ADDR);
-      });
-    } else if (storedAddr && !storedKey) {
+    if (storedAddr) {
       // Restore read-only session
       connectReadOnly(storedAddr).catch(() => {
         sessionStorage.removeItem(SESSION_MAIN_ADDR);
@@ -454,7 +394,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         accountState,
         exchangeClient,
         loading,
-        connect,
         connectWithBrowserWallet,
         connectReadOnly,
         disconnect,

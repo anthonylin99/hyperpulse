@@ -1,5 +1,13 @@
-import { NextResponse } from "next/server";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import {
+  enforceRateLimit,
+  enforceTimeRange,
+  jsonError,
+  jsonSuccess,
+  logServerError,
+  parseTimestamp,
+  validateCoin,
+} from "@/lib/security";
 
 const transport = new HttpTransport({ isTestnet: false });
 const info = new InfoClient({ transport });
@@ -7,29 +15,58 @@ const info = new InfoClient({ transport });
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const coin = searchParams.get("coin");
-  const startTime = searchParams.get("startTime");
-  const endTime = searchParams.get("endTime");
+  const limited = enforceRateLimit(request, {
+    key: "api-market-funding",
+    limit: 120,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
 
-  if (!coin || !startTime || !endTime) {
-    return NextResponse.json(
-      { error: "Missing coin, startTime, or endTime" },
-      { status: 400 }
-    );
+  const { searchParams } = new URL(request.url);
+  const coin = validateCoin(searchParams.get("coin"));
+  const now = Date.now();
+  const startTime = parseTimestamp(searchParams.get("startTime"), {
+    min: 1,
+    max: now,
+  });
+  const endTime = parseTimestamp(searchParams.get("endTime"), {
+    min: 1,
+    max: now,
+    fallback: now,
+  });
+
+  if (!coin || startTime == null || endTime == null) {
+    return jsonError("Valid coin, startTime, and endTime are required.", {
+      status: 400,
+      cache: "public-market",
+    });
+  }
+
+  if (
+    !enforceTimeRange({
+      startTime,
+      endTime,
+      maxLookbackMs: 30 * 24 * 60 * 60 * 1000,
+    })
+  ) {
+    return jsonError("Requested funding range is not allowed.", {
+      status: 400,
+      cache: "public-market",
+    });
   }
 
   try {
     const data = await info.fundingHistory({
       coin,
-      startTime: Number(startTime),
-      endTime: Number(endTime),
+      startTime,
+      endTime,
     });
-    return NextResponse.json(data);
+    return jsonSuccess(data, { cache: "public-market" });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch" },
-      { status: 500 }
-    );
+    logServerError("api/market/funding", err);
+    return jsonError("Unable to fetch funding history right now.", {
+      status: 502,
+      cache: "public-market",
+    });
   }
 }

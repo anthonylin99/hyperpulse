@@ -1,5 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import {
+  enforceRateLimit,
+  enforceTimeRange,
+  jsonError,
+  jsonSuccess,
+  logServerError,
+  parseBoolean,
+  parseTimestamp,
+  validateAddress,
+} from "@/lib/security";
 
 const transport = new HttpTransport({ isTestnet: false });
 const info = new InfoClient({ transport });
@@ -7,18 +17,39 @@ const info = new InfoClient({ transport });
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const address = req.nextUrl.searchParams.get("address");
+  const limited = enforceRateLimit(req, {
+    key: "api-user-fills",
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
+  const address = validateAddress(req.nextUrl.searchParams.get("address"));
   if (!address) {
-    return NextResponse.json({ error: "address required" }, { status: 400 });
+    return jsonError("A valid wallet address is required.", { status: 400 });
   }
 
-  const startTime = req.nextUrl.searchParams.get("startTime");
-  const aggregateByTime =
-    req.nextUrl.searchParams.get("aggregateByTime") === "true";
+  const now = Date.now();
+  const startTime = parseTimestamp(req.nextUrl.searchParams.get("startTime"), {
+    min: 1,
+    max: now,
+  });
+  const aggregateByTime = parseBoolean(
+    req.nextUrl.searchParams.get("aggregateByTime"),
+  );
+
+  if (
+    startTime != null &&
+    !enforceTimeRange({
+      startTime,
+      endTime: now,
+      maxLookbackMs: 90 * 24 * 60 * 60 * 1000,
+    })
+  ) {
+    return jsonError("Requested history window is not allowed.", { status: 400 });
+  }
 
   try {
-    // Use userFillsByTime if startTime provided (for historical data)
-    // Otherwise use userFills (returns recent fills)
     let fills;
     if (startTime) {
       fills = await info.userFillsByTime({
@@ -50,11 +81,9 @@ export async function GET(req: NextRequest) {
         aggregateByTime,
       });
     }
-    return NextResponse.json(fills);
+    return jsonSuccess(fills);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch fills" },
-      { status: 500 },
-    );
+    logServerError("api/user/fills", err);
+    return jsonError("Unable to fetch wallet fills right now.", { status: 502 });
   }
 }
