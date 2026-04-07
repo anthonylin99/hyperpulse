@@ -312,19 +312,25 @@ export default function FactorsPage() {
                   </div>
 
                   <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Best Tradable Names Now</div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      Hyperliquid-Mapped Names
+                    </div>
                     <div className="mt-3 space-y-2">
                       {factor.tradeCandidates.length > 0 ? factor.tradeCandidates.map((candidate: FactorTradeCandidate) => (
                         <div key={candidate.symbol} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 px-3 py-2">
                           <div>
                             <div className="text-sm font-medium text-zinc-100">{candidate.symbol}</div>
-                            <div className="text-xs text-zinc-500">{candidate.trendStatus === "trend-confirmed" ? "Trend confirmed" : "Watchlist only"}</div>
+                            <div className="text-xs text-zinc-500">
+                              {candidate.role === "long" ? "Long basket" : "Short basket"}
+                            </div>
                           </div>
                           <div className="text-right">
                             <div className={cn("text-sm font-semibold", (candidate.liveChange24h ?? 0) >= 0 ? "text-emerald-400" : "text-red-400")}>
                               {candidate.liveChange24h == null ? "n/a" : formatPct(candidate.liveChange24h)}
                             </div>
-                            <div className="text-[11px] text-zinc-500">{candidate.signalLabel ?? "Neutral"}</div>
+                            <div className="text-[11px] text-zinc-500">
+                              {candidate.signalLabel ?? "Neutral"}
+                            </div>
                           </div>
                         </div>
                       )) : (
