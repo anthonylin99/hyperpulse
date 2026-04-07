@@ -115,8 +115,14 @@ function confidenceFrom(
   hyperliquidCoverage: number,
 ): "high" | "medium" | "low" {
   const age = daysBetween(snapshot.reportDate);
-  if (basketCoverage >= 0.8 && hyperliquidCoverage >= 0.45 && age <= 45) return "high";
-  if (basketCoverage >= 0.6 && age <= 75) return "medium";
+  const subsetTracked =
+    snapshot.coverageNote.toLowerCase().includes("tracked subset") ||
+    snapshot.coverageNote.toLowerCase().includes("not the full");
+
+  if (!subsetTracked && basketCoverage >= 0.9 && hyperliquidCoverage >= 0.7 && age <= 30) {
+    return "high";
+  }
+  if (basketCoverage >= 0.65 && hyperliquidCoverage >= 0.35 && age <= 60) return "medium";
   return "low";
 }
 

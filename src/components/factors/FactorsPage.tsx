@@ -29,6 +29,26 @@ function WindowPill({ label, value }: { label: string; value: number | null }) {
   );
 }
 
+function downgradeConfidence(
+  confidence: LiveFactorState["confidence"],
+  hasCachedWarning: boolean,
+): LiveFactorState["confidence"] {
+  if (!hasCachedWarning) return confidence;
+  if (confidence === "high") return "medium";
+  if (confidence === "medium") return "low";
+  return confidence;
+}
+
+function confidenceClasses(confidence: LiveFactorState["confidence"]) {
+  if (confidence === "high") {
+    return "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20";
+  }
+  if (confidence === "medium") {
+    return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
+  }
+  return "bg-zinc-800 text-zinc-400 border border-zinc-700";
+}
+
 export default function FactorsPage() {
   const { factors, loading, error, warning, lastUpdated } = useFactors();
   const [expandedFactor, setExpandedFactor] = useState<string | null>(null);
@@ -113,7 +133,7 @@ export default function FactorsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-6">
       <section className="rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-teal-950/20 p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">Factors</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100">
@@ -123,10 +143,24 @@ export default function FactorsPage() {
               HyperPulse uses Artemis as the canonical factor research layer, then overlays live Hyperliquid market state so you can see which narratives are working and which names are tradable right now.
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-400">
-            <div>Latest factor refresh</div>
-            <div className="mt-1 font-mono text-zinc-100">
-              {lastUpdated ? lastUpdated.toLocaleTimeString() : "--:--:--"}
+          <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px]">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                Last Refresh
+              </div>
+              <div className="mt-2 text-sm font-medium text-zinc-100">
+                {lastUpdated
+                  ? lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                  : "--:--"}
+              </div>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                Data Mode
+              </div>
+              <div className="mt-2 text-sm font-medium text-zinc-100">
+                {warning ? "Cached Artemis + live HL" : "Live Artemis + live HL"}
+              </div>
             </div>
           </div>
         </div>
@@ -225,33 +259,33 @@ export default function FactorsPage() {
               factor.windows.map((window: FactorPerformanceWindow) => [window.days, window]),
             ) as Record<number, FactorPerformanceWindow>;
             const isExpanded = expandedFactor === factor.snapshot.id;
+            const displayConfidence = downgradeConfidence(factor.confidence, Boolean(warning));
             return (
               <article key={factor.snapshot.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-xl font-semibold text-zinc-100">{factor.snapshot.name}</h2>
                       <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] font-mono text-zinc-400">
                         {factor.snapshot.shortLabel}
                       </span>
                       <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-medium",
-                          factor.confidence === "high"
-                            ? "bg-emerald-500/15 text-emerald-300"
-                            : factor.confidence === "medium"
-                              ? "bg-amber-500/15 text-amber-300"
-                              : "bg-zinc-800 text-zinc-400",
-                        )}
+                        className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", confidenceClasses(displayConfidence))}
                       >
-                        {factor.confidence} confidence
+                        {displayConfidence} confidence
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-zinc-400">{factor.snapshot.description}</p>
                   </div>
-                  <div className="text-right text-xs text-zinc-500">
-                    <div>{factor.snapshot.reportDate}</div>
-                    <div>{factor.stalenessDays}d old</div>
+                  <div className="grid grid-cols-2 gap-2 sm:w-full sm:max-w-[260px] xl:w-[260px]">
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Report Date</div>
+                      <div className="mt-1 text-sm font-medium text-zinc-100">{factor.snapshot.reportDate}</div>
+                    </div>
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Snapshot Age</div>
+                      <div className="mt-1 text-sm font-medium text-zinc-100">{factor.stalenessDays}d old</div>
+                    </div>
                   </div>
                 </div>
 
