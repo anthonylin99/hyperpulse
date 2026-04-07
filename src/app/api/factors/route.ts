@@ -1,3 +1,4 @@
+import https from "node:https";
 import { FACTOR_SNAPSHOTS } from "@/lib/factors/snapshots";
 import {
   enforceRateLimit,
@@ -9,6 +10,50 @@ import {
 export const dynamic = "force-dynamic";
 
 const ARTEMIS_PRICE_URL = "https://data-svc.artemisxyz.com/data/api/price";
+
+function requestArtemisPrices(url: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; HyperPulse/1.0; +https://hyperpulse-gold.vercel.app)",
+          Accept: "application/json",
+        },
+        family: 4,
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          if ((res.statusCode ?? 500) < 200 || (res.statusCode ?? 500) >= 300) {
+            reject(
+              new Error(
+                `Artemis upstream responded ${res.statusCode ?? 500}: ${res.statusMessage ?? "unknown"}`,
+              ),
+            );
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+
+    req.on("error", reject);
+    req.setTimeout(20_000, () => {
+      req.destroy(new Error("Artemis upstream request timed out"));
+    });
+    req.end();
+  });
+}
 
 function uniqueSymbols() {
   return [...new Set(
@@ -50,30 +95,7 @@ export async function GET(request: Request) {
   const emptyPrices = { data: { symbols: {} } };
 
   try {
-    const response = await fetch(`${ARTEMIS_PRICE_URL}?${params.toString()}`, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; HyperPulse/1.0; +https://hyperpulse-gold.vercel.app)",
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      console.error("[api/factors] Artemis upstream rejected request", {
-        status: response.status,
-        statusText: response.statusText,
-      });
-      return jsonSuccess(
-        {
-          snapshots: FACTOR_SNAPSHOTS,
-          prices: emptyPrices,
-          warning: "Artemis price history is temporarily unavailable, so factor returns may be incomplete.",
-        },
-        { cache: "public-market" },
-      );
-    }
-
-    const prices = await response.json();
+    const prices = await requestArtemisPrices(`${ARTEMIS_PRICE_URL}?${params.toString()}`);
     return jsonSuccess(
       {
         snapshots: FACTOR_SNAPSHOTS,
