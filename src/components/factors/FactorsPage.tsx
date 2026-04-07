@@ -27,7 +27,7 @@ function WindowPill({ label, value }: { label: string; value: number | null }) {
 }
 
 export default function FactorsPage() {
-  const { factors, loading, error, lastUpdated } = useFactors();
+  const { factors, loading, error, warning, lastUpdated } = useFactors();
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-6">
@@ -54,6 +54,12 @@ export default function FactorsPage() {
       {error && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           {error}
+        </div>
+      )}
+
+      {warning && !error && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          {warning}
         </div>
       )}
 

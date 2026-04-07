@@ -22,6 +22,7 @@ interface FactorContextValue {
   factors: LiveFactorState[];
   loading: boolean;
   error: string | null;
+  warning: string | null;
   lastUpdated: Date | null;
   leader: LiveFactorState | null;
   leaderText: string;
@@ -36,6 +37,7 @@ export function FactorProvider({ children }: { children: ReactNode }) {
   const [pricePayload, setPricePayload] = useState<ArtemisPriceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const refresh = useCallback(async () => {
@@ -48,6 +50,7 @@ export function FactorProvider({ children }: { children: ReactNode }) {
       }
       setSnapshots(Array.isArray(body.snapshots) ? body.snapshots : []);
       setPricePayload(body.prices ?? null);
+      setWarning(typeof body.warning === "string" ? body.warning : null);
       setError(null);
       setLastUpdated(new Date());
     } catch (err) {
@@ -76,12 +79,13 @@ export function FactorProvider({ children }: { children: ReactNode }) {
       factors,
       loading,
       error,
+      warning,
       lastUpdated,
       leader,
       leaderText: factorLeaderText(leader ?? undefined),
       refresh,
     }),
-    [factors, loading, error, lastUpdated, leader, refresh],
+    [factors, loading, error, warning, lastUpdated, leader, refresh],
   );
 
   return <FactorContext.Provider value={value}>{children}</FactorContext.Provider>;

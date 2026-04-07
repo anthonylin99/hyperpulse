@@ -47,6 +47,7 @@ export async function GET(request: Request) {
     endDate: new Date().toISOString().slice(0, 10),
     APIKey: apiKey,
   });
+  const emptyPrices = { data: { symbols: {} } };
 
   try {
     const response = await fetch(`${ARTEMIS_PRICE_URL}?${params.toString()}`, {
@@ -62,10 +63,14 @@ export async function GET(request: Request) {
         status: response.status,
         statusText: response.statusText,
       });
-      return jsonError("Unable to fetch Artemis factor prices right now.", {
-        status: 502,
-        cache: "public-market",
-      });
+      return jsonSuccess(
+        {
+          snapshots: FACTOR_SNAPSHOTS,
+          prices: emptyPrices,
+          warning: "Artemis price history is temporarily unavailable, so factor returns may be incomplete.",
+        },
+        { cache: "public-market" },
+      );
     }
 
     const prices = await response.json();
@@ -78,9 +83,13 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     logServerError("api/factors", error);
-    return jsonError("Unable to fetch factor data right now.", {
-      status: 502,
-      cache: "public-market",
-    });
+    return jsonSuccess(
+      {
+        snapshots: FACTOR_SNAPSHOTS,
+        prices: emptyPrices,
+        warning: "Artemis price history is temporarily unavailable, so factor returns may be incomplete.",
+      },
+      { cache: "public-market" },
+    );
   }
 }
