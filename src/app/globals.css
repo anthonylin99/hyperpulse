@@ -35,49 +35,6 @@ body {
   color: var(--text);
 }
 
-/* Dashboard 6-zone grid */
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 44px 54px 1fr;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden;
-}
-
-/* Markets tab needs fixed viewport — lock scroll on body */
-body:has(.dashboard-grid) {
-  overflow: hidden;
-  gap: 1px;
-  background:
-    linear-gradient(180deg, rgba(125, 212, 196, 0.1), transparent 22%),
-    var(--border);
-}
-
-.zone-nav {
-  grid-column: 1 / -1;
-  background:
-    linear-gradient(180deg, rgba(125, 212, 196, 0.08), rgba(10, 14, 16, 0.98)),
-    var(--bg-card);
-  border-bottom: 1px solid rgba(125, 212, 196, 0.12);
-}
-
-.zone-flashcards {
-  grid-column: 1 / -1;
-  background:
-    linear-gradient(180deg, rgba(125, 212, 196, 0.04), transparent 72%),
-    var(--bg);
-}
-
-.zone-table {
-  grid-column: 1 / -1;
-  grid-row: 3 / 4;
-  background:
-    radial-gradient(circle at top left, rgba(125, 212, 196, 0.06), transparent 24%),
-    var(--bg);
-  overflow: hidden;
-}
-
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

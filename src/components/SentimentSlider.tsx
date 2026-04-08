@@ -5,7 +5,7 @@ import { Info, X } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { computeHyperPulseVix } from "@/lib/proprietaryIndex";
 
-export default function SentimentSlider() {
+export default function SentimentSlider({ variant = "compact" }: { variant?: "compact" | "hero" }) {
   const { assets, fundingHistories, btcCandles } = useMarket();
   const [showInfo, setShowInfo] = useState(false);
 
@@ -35,36 +35,41 @@ export default function SentimentSlider() {
       : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
   const trendPos = `${(result.trendScore + 100) / 2}%`;
   const hoverSummary = `BTC 24h: ${result.trendInputs.momentum24h}% · BTC 48h: ${result.trendInputs.momentum48h}% · BTC OI: ${result.trendInputs.oiChange}% · BTC funding: ${result.trendInputs.fundingAPR}%`;
+  const isHero = variant === "hero";
 
   return (
     <>
       <div
-        className="flex-shrink-0 min-w-[320px] h-[56px] rounded-md border border-zinc-800 bg-gradient-to-r from-zinc-900/90 via-zinc-900/70 to-zinc-950/80 px-3 py-2"
+        className={
+          isHero
+            ? "rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4"
+            : "flex-shrink-0 min-w-[320px] h-[56px] rounded-md border border-zinc-800 bg-gradient-to-r from-zinc-900/90 via-zinc-900/70 to-zinc-950/80 px-3 py-2"
+        }
         title={hoverSummary}
         onDoubleClick={() => setShowInfo(true)}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div>
-              <div className="text-[9px] uppercase tracking-wider text-zinc-500">
+              <div className={isHero ? "text-[11px] uppercase tracking-[0.18em] text-zinc-500" : "text-[9px] uppercase tracking-wider text-zinc-500"}>
                 Tomorrow Bias
               </div>
-              <div className={`text-[12px] font-semibold ${trendColor}`}>
+              <div className={`${isHero ? "text-base" : "text-[12px]"} font-semibold ${trendColor}`}>
                 {result.trendLabel}
               </div>
             </div>
-            <span className={`inline-flex h-5 items-center justify-center rounded border px-1.5 text-[10px] font-mono font-semibold ${trendBadge}`}>
+            <span className={`inline-flex ${isHero ? "h-7 min-w-[38px] text-xs" : "h-5 text-[10px]"} items-center justify-center rounded border px-1.5 font-mono font-semibold ${trendBadge}`}>
               {result.trendScore}
             </span>
-            <span className="rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider text-zinc-400">
+            <span className={`rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 font-mono uppercase tracking-wider text-zinc-400 ${isHero ? "text-[10px]" : "text-[8px]"}`}>
               {result.trendConfidence} confidence
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className={`inline-flex h-5 min-w-[30px] items-center justify-center rounded border px-1.5 text-[10px] font-mono font-semibold ${sentimentBadge}`}>
+            <span className={`inline-flex ${isHero ? "h-7 min-w-[42px] text-xs" : "h-5 min-w-[30px] text-[10px]"} items-center justify-center rounded border px-1.5 font-mono font-semibold ${sentimentBadge}`}>
               {result.score}
             </span>
-            <span className={`text-[10px] font-semibold ${sentimentColor}`}>
+            <span className={`${isHero ? "text-sm" : "text-[10px]"} font-semibold ${sentimentColor}`}>
               {result.label}
             </span>
             <button
@@ -77,16 +82,32 @@ export default function SentimentSlider() {
             </button>
           </div>
         </div>
-        <div className="mt-1.5 relative h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+        <div className={`${isHero ? "mt-4" : "mt-1.5"} relative ${isHero ? "h-2" : "h-1.5"} rounded-full bg-zinc-800 overflow-hidden`}>
           <div
             className="absolute inset-y-0 left-0 bg-gradient-to-r from-red-500 via-zinc-500 to-emerald-500"
             style={{ width: "100%" }}
           />
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white border border-zinc-900"
-            style={{ left: `calc(${trendPos} - 4px)` }}
+            className={`absolute top-1/2 -translate-y-1/2 ${isHero ? "w-3 h-3" : "w-2 h-2"} rounded-full bg-white border border-zinc-900`}
+            style={{ left: `calc(${trendPos} - ${isHero ? 6 : 4}px)` }}
           />
         </div>
+        {isHero && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 text-xs text-zinc-500">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-2">
+              <div className="uppercase tracking-[0.14em] text-zinc-600">BTC 24h</div>
+              <div className="mt-1 text-sm text-zinc-200">{result.trendInputs.momentum24h}%</div>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-2">
+              <div className="uppercase tracking-[0.14em] text-zinc-600">BTC OI</div>
+              <div className="mt-1 text-sm text-zinc-200">{result.trendInputs.oiChange}%</div>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-2">
+              <div className="uppercase tracking-[0.14em] text-zinc-600">BTC Funding APR</div>
+              <div className="mt-1 text-sm text-zinc-200">{result.trendInputs.fundingAPR}%</div>
+            </div>
+          </div>
+        )}
       </div>
       {showInfo && (
         <>
