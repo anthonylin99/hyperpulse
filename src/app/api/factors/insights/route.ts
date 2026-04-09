@@ -173,7 +173,7 @@ function coerceBrief(raw: unknown): FactorAiBrief | null {
 export async function POST(request: Request) {
   const limited = enforceRateLimit(request, {
     key: "api-factors-insights",
-    limit: 8,
+    limit: 20,
     windowMs: 60_000,
   });
   if (limited) return limited;

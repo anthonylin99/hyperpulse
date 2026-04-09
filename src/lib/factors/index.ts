@@ -47,6 +47,17 @@ function getLatestValue(series: ArtemisPricePoint[]): number | null {
   return series.length > 0 ? series[series.length - 1].val : null;
 }
 
+function getPreviousDistinctValue(series: ArtemisPricePoint[]): number | null {
+  if (series.length < 2) return null;
+  const latest = series[series.length - 1];
+  for (let index = series.length - 2; index >= 0; index -= 1) {
+    if (series[index].date < latest.date) {
+      return series[index].val;
+    }
+  }
+  return null;
+}
+
 function getValueAtOrBefore(series: ArtemisPricePoint[], targetDate: string): number | null {
   for (let index = series.length - 1; index >= 0; index -= 1) {
     if (series[index].date <= targetDate) {
@@ -64,7 +75,14 @@ function isoDaysAgo(days: number): string {
 
 function computeReturn(series: ArtemisPricePoint[], days: number): number | null {
   const end = getLatestValue(series);
-  const start = getValueAtOrBefore(series, isoDaysAgo(days));
+  const latestDate = series.length > 0 ? series[series.length - 1].date : null;
+  let start = getValueAtOrBefore(series, isoDaysAgo(days));
+  if (days === 1 && latestDate && start != null) {
+    const latest = getLatestValue(series);
+    if (latest != null && start === latest) {
+      start = getPreviousDistinctValue(series);
+    }
+  }
   if (start == null || end == null || start <= 0) return null;
   return ((end - start) / start) * 100;
 }

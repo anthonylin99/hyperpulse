@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFactors } from "@/context/FactorContext";
 import { formatPct, formatUSD } from "@/lib/format";
 import { cn } from "@/lib/format";
@@ -51,10 +51,10 @@ function confidenceClasses(confidence: LiveFactorState["confidence"]) {
 
 export default function FactorsPage() {
   const { factors, loading, error, warning, lastUpdated } = useFactors();
-  const [expandedFactor, setExpandedFactor] = useState<string | null>(null);
   const [brief, setBrief] = useState<FactorAiBrief | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
+  const lastInsightFetchRef = useRef<{ key: string; at: number } | null>(null);
 
   const insightPayload = useMemo(
     () => ({
@@ -83,6 +83,27 @@ export default function FactorsPage() {
     [factors, warning],
   );
 
+  const insightPayloadKey = useMemo(
+    () =>
+      JSON.stringify({
+        warning: Boolean(warning),
+        factors: insightPayload.factors.map((factor) => ({
+          name: factor.name,
+          confidence: factor.confidence,
+          spread7d: factor.spread7d == null ? null : Number(factor.spread7d.toFixed(2)),
+          spread30d: factor.spread30d == null ? null : Number(factor.spread30d.toFixed(2)),
+          tradeCandidates: factor.tradeCandidates.map((candidate) => ({
+            symbol: candidate.symbol,
+            liveChange24h:
+              candidate.liveChange24h == null ? null : Number(candidate.liveChange24h.toFixed(2)),
+            fundingAPR:
+              candidate.fundingAPR == null ? null : Number(candidate.fundingAPR.toFixed(2)),
+          })),
+        })),
+      }),
+    [insightPayload, warning],
+  );
+
   useEffect(() => {
     if (insightPayload.factors.length === 0) {
       setBrief(null);
@@ -91,9 +112,16 @@ export default function FactorsPage() {
       return;
     }
 
+    const now = Date.now();
+    const lastFetch = lastInsightFetchRef.current;
+    if (lastFetch && lastFetch.key === insightPayloadKey && now - lastFetch.at < 5 * 60 * 1000) {
+      return;
+    }
+
     const controller = new AbortController();
     setBriefLoading(true);
     setBriefError(null);
+    lastInsightFetchRef.current = { key: insightPayloadKey, at: now };
 
     void fetch("/api/factors/insights", {
       method: "POST",
@@ -118,7 +146,6 @@ export default function FactorsPage() {
       })
       .catch((err) => {
         if ((err as Error).name === "AbortError") return;
-        setBrief(null);
         setBriefError(err instanceof Error ? err.message : "Unable to load AI factor brief.");
       })
       .finally(() => {
@@ -128,7 +155,7 @@ export default function FactorsPage() {
       });
 
     return () => controller.abort();
-  }, [insightPayload]);
+  }, [insightPayload, insightPayloadKey]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-6">
@@ -159,7 +186,7 @@ export default function FactorsPage() {
                 Data Mode
               </div>
               <div className="mt-2 text-sm font-medium text-zinc-100">
-                {warning ? "Cached Artemis + live HL" : "Live Artemis + live HL"}
+                {warning ? "Artemis snapshot + live HL" : "Live Artemis + live HL"}
               </div>
             </div>
           </div>
@@ -169,12 +196,6 @@ export default function FactorsPage() {
       {error && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           {error}
-        </div>
-      )}
-
-      {warning && !error && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          {warning}
         </div>
       )}
 
@@ -258,7 +279,6 @@ export default function FactorsPage() {
             const windows = Object.fromEntries(
               factor.windows.map((window: FactorPerformanceWindow) => [window.days, window]),
             ) as Record<number, FactorPerformanceWindow>;
-            const isExpanded = expandedFactor === factor.snapshot.id;
             const displayConfidence = downgradeConfidence(factor.confidence, Boolean(warning));
             return (
               <article key={factor.snapshot.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
@@ -370,96 +390,80 @@ export default function FactorsPage() {
                   <div>{factor.unmappedAssets.length > 0 ? `Unmapped: ${factor.unmappedAssets.join(", ")}` : "All displayed names mapped or covered"}</div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-zinc-100">Asset Performance Overlay</div>
-                    <div className="text-xs text-zinc-500">
-                      {isExpanded
-                        ? "Shows each tracked factor constituent with recent performance and live Hyperliquid context."
-                        : "Open the constituent table to see which names are actually driving this factor."}
-                    </div>
+                <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
+                  <div className="text-sm font-medium text-zinc-100">Asset Performance Overlay</div>
+                  <div className="text-xs text-zinc-500">
+                    Live constituent table showing recent factor performance alongside Hyperliquid context.
                   </div>
-                  <button
-                    onClick={() =>
-                      setExpandedFactor((current) =>
-                        current === factor.snapshot.id ? null : factor.snapshot.id,
-                      )
-                    }
-                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-teal-500/40 hover:text-zinc-100"
-                  >
-                    {isExpanded ? "Hide Table" : "View Asset Table"}
-                  </button>
                 </div>
 
-                {isExpanded && (
-                  <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800">
-                    <table className="w-full text-xs">
-                      <thead className="bg-zinc-950/80 text-zinc-500">
-                        <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left">
-                          <th>Asset</th>
-                          <th>Role</th>
-                          <th>Latest</th>
-                          <th>1d</th>
-                          <th>7d</th>
-                          <th>30d</th>
-                          <th>Live 24h</th>
-                          <th>Funding APR</th>
-                          <th>Signal</th>
+                <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800">
+                  <table className="w-full text-xs">
+                    <thead className="bg-zinc-950/80 text-zinc-500">
+                      <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left">
+                        <th>Asset</th>
+                        <th>Role</th>
+                        <th>Latest</th>
+                        <th>1d</th>
+                        <th>7d</th>
+                        <th>30d</th>
+                        <th>Live 24h</th>
+                        <th>Funding APR</th>
+                        <th>Signal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {factor.constituents.map((row: FactorConstituentPerformance) => (
+                        <tr
+                          key={`${factor.snapshot.id}-${row.symbol}-${row.role}`}
+                          className="border-t border-zinc-800 bg-zinc-950/40 [&>td]:px-3 [&>td]:py-2"
+                        >
+                          <td className="font-medium text-zinc-100">
+                            <div className="flex items-center gap-2">
+                              <span>{row.symbol}</span>
+                              {!row.mappedToHyperliquid && (
+                                <span className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                                  no HL
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-[10px]",
+                                row.role === "long"
+                                  ? "bg-emerald-500/10 text-emerald-300"
+                                  : "bg-red-500/10 text-red-300",
+                              )}
+                            >
+                              {row.role}
+                            </span>
+                          </td>
+                          <td className="text-zinc-300">
+                            {row.latestPrice == null ? "n/a" : formatUSD(row.latestPrice, row.latestPrice < 1 ? 4 : 2)}
+                          </td>
+                          <td className={cn(row.return1d == null ? "text-zinc-500" : row.return1d >= 0 ? "text-emerald-400" : "text-red-400")}>
+                            {row.return1d == null ? "n/a" : formatPct(row.return1d)}
+                          </td>
+                          <td className={cn(row.return7d == null ? "text-zinc-500" : row.return7d >= 0 ? "text-emerald-400" : "text-red-400")}>
+                            {row.return7d == null ? "n/a" : formatPct(row.return7d)}
+                          </td>
+                          <td className={cn(row.return30d == null ? "text-zinc-500" : row.return30d >= 0 ? "text-emerald-400" : "text-red-400")}>
+                            {row.return30d == null ? "n/a" : formatPct(row.return30d)}
+                          </td>
+                          <td className={cn(row.liveChange24h == null ? "text-zinc-500" : row.liveChange24h >= 0 ? "text-emerald-400" : "text-red-400")}>
+                            {row.liveChange24h == null ? "n/a" : formatPct(row.liveChange24h)}
+                          </td>
+                          <td className={cn(row.fundingAPR == null ? "text-zinc-500" : row.fundingAPR >= 0 ? "text-amber-300" : "text-sky-300")}>
+                            {row.fundingAPR == null ? "n/a" : formatPct(row.fundingAPR)}
+                          </td>
+                          <td className="text-zinc-400">{row.signalLabel ?? "n/a"}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {factor.constituents.map((row: FactorConstituentPerformance) => (
-                          <tr
-                            key={`${factor.snapshot.id}-${row.symbol}-${row.role}`}
-                            className="border-t border-zinc-800 bg-zinc-950/40 [&>td]:px-3 [&>td]:py-2"
-                          >
-                            <td className="font-medium text-zinc-100">
-                              <div className="flex items-center gap-2">
-                                <span>{row.symbol}</span>
-                                {!row.mappedToHyperliquid && (
-                                  <span className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-500">
-                                    no HL
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <span
-                                className={cn(
-                                  "rounded-full px-2 py-0.5 text-[10px]",
-                                  row.role === "long"
-                                    ? "bg-emerald-500/10 text-emerald-300"
-                                    : "bg-red-500/10 text-red-300",
-                                )}
-                              >
-                                {row.role}
-                              </span>
-                            </td>
-                            <td className="text-zinc-300">
-                              {row.latestPrice == null ? "n/a" : formatUSD(row.latestPrice, row.latestPrice < 1 ? 4 : 2)}
-                            </td>
-                            <td className={cn(row.return1d == null ? "text-zinc-500" : row.return1d >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {row.return1d == null ? "n/a" : formatPct(row.return1d)}
-                            </td>
-                            <td className={cn(row.return7d == null ? "text-zinc-500" : row.return7d >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {row.return7d == null ? "n/a" : formatPct(row.return7d)}
-                            </td>
-                            <td className={cn(row.return30d == null ? "text-zinc-500" : row.return30d >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {row.return30d == null ? "n/a" : formatPct(row.return30d)}
-                            </td>
-                            <td className={cn(row.liveChange24h == null ? "text-zinc-500" : row.liveChange24h >= 0 ? "text-emerald-400" : "text-red-400")}>
-                              {row.liveChange24h == null ? "n/a" : formatPct(row.liveChange24h)}
-                            </td>
-                            <td className={cn(row.fundingAPR == null ? "text-zinc-500" : row.fundingAPR >= 0 ? "text-amber-300" : "text-sky-300")}>
-                              {row.fundingAPR == null ? "n/a" : formatPct(row.fundingAPR)}
-                            </td>
-                            <td className="text-zinc-400">{row.signalLabel ?? "n/a"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </article>
             );
           })}
