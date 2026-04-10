@@ -100,6 +100,7 @@ export async function GET(request: Request) {
       {
         snapshots: FACTOR_SNAPSHOTS,
         prices,
+        sourceMode: "live",
       },
       { cache: "public-market" },
     );
@@ -109,8 +110,7 @@ export async function GET(request: Request) {
       {
         snapshots: FACTOR_SNAPSHOTS,
         prices: fallbackPrices,
-        warning:
-          "Live Artemis history is temporarily unavailable, so HyperPulse is using a cached Artemis snapshot while still ranking tradable names from live Hyperliquid data.",
+        sourceMode: "snapshot",
       },
       { cache: "public-market" },
     );

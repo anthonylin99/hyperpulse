@@ -50,7 +50,7 @@ function confidenceClasses(confidence: LiveFactorState["confidence"]) {
 }
 
 export default function FactorsPage() {
-  const { factors, loading, error, warning, lastUpdated } = useFactors();
+  const { factors, loading, error, sourceMode, lastUpdated } = useFactors();
   const [brief, setBrief] = useState<FactorAiBrief | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export default function FactorsPage() {
 
   const insightPayload = useMemo(
     () => ({
-      warning,
+      sourceMode,
       factors: factors.slice(0, 5).map((factor) => ({
         name: factor.snapshot.name,
         shortLabel: factor.snapshot.shortLabel,
@@ -80,13 +80,13 @@ export default function FactorsPage() {
         })),
       })),
     }),
-    [factors, warning],
+    [factors, sourceMode],
   );
 
   const insightPayloadKey = useMemo(
     () =>
       JSON.stringify({
-        warning: Boolean(warning),
+        sourceMode,
         factors: insightPayload.factors.map((factor) => ({
           name: factor.name,
           confidence: factor.confidence,
@@ -101,7 +101,7 @@ export default function FactorsPage() {
           })),
         })),
       }),
-    [insightPayload, warning],
+    [insightPayload, sourceMode],
   );
 
   useEffect(() => {
@@ -186,7 +186,7 @@ export default function FactorsPage() {
                 Data Mode
               </div>
               <div className="mt-2 text-sm font-medium text-zinc-100">
-                {warning ? "Artemis snapshot + live HL" : "Live Artemis + live HL"}
+                {sourceMode === "snapshot" ? "Artemis snapshot + live HL" : "Live Artemis + live HL"}
               </div>
             </div>
           </div>
@@ -279,7 +279,10 @@ export default function FactorsPage() {
             const windows = Object.fromEntries(
               factor.windows.map((window: FactorPerformanceWindow) => [window.days, window]),
             ) as Record<number, FactorPerformanceWindow>;
-            const displayConfidence = downgradeConfidence(factor.confidence, Boolean(warning));
+            const displayConfidence = downgradeConfidence(
+              factor.confidence,
+              sourceMode === "snapshot",
+            );
             return (
               <article key={factor.snapshot.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">

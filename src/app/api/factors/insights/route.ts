@@ -34,7 +34,7 @@ type FactorInsightInput = {
 
 type RequestPayload = {
   factors: FactorInsightInput[];
-  warning?: string | null;
+  sourceMode?: "live" | "snapshot";
 };
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -47,7 +47,7 @@ function normalizePayload(body: unknown): RequestPayload | null {
   if (!body || typeof body !== "object") return null;
 
   const maybeFactors = (body as { factors?: unknown }).factors;
-  const warning = (body as { warning?: unknown }).warning;
+  const sourceMode = (body as { sourceMode?: unknown }).sourceMode;
   if (!Array.isArray(maybeFactors) || maybeFactors.length === 0 || maybeFactors.length > 8) {
     return null;
   }
@@ -117,7 +117,7 @@ function normalizePayload(body: unknown): RequestPayload | null {
 
   return {
     factors,
-    warning: typeof warning === "string" ? warning : null,
+    sourceMode: sourceMode === "snapshot" ? "snapshot" : "live",
   };
 }
 

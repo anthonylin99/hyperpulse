@@ -43,6 +43,34 @@ function getSeries(prices: ArtemisPriceMap, symbol: string): ArtemisPricePoint[]
   return prices[symbol.toUpperCase()] ?? prices[symbol.toLowerCase()] ?? [];
 }
 
+function withLiveMarketOverlay(
+  prices: ArtemisPriceMap,
+  marketAssets: MarketAsset[],
+): ArtemisPriceMap {
+  const overlaid: ArtemisPriceMap = Object.fromEntries(
+    Object.entries(prices).map(([symbol, series]) => [symbol, [...series]]),
+  );
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const asset of marketAssets) {
+    const symbol = asset.coin.toUpperCase();
+    const existingSeries = [...(overlaid[symbol] ?? overlaid[symbol.toLowerCase()] ?? [])];
+    if (existingSeries.length === 0 || !Number.isFinite(asset.markPx) || asset.markPx <= 0) {
+      continue;
+    }
+
+    const latest = existingSeries[existingSeries.length - 1];
+    if (latest?.date === today) {
+      existingSeries[existingSeries.length - 1] = { date: today, val: asset.markPx };
+    } else if (latest?.date < today) {
+      existingSeries.push({ date: today, val: asset.markPx });
+    }
+    overlaid[symbol] = existingSeries;
+  }
+
+  return overlaid;
+}
+
 function getLatestValue(series: ArtemisPricePoint[]): number | null {
   return series.length > 0 ? series[series.length - 1].val : null;
 }
@@ -270,13 +298,14 @@ export function buildFactorStates(
   prices: ArtemisPriceMap,
   marketAssets: MarketAsset[],
 ): LiveFactorState[] {
+  const effectivePrices = withLiveMarketOverlay(prices, marketAssets);
   const marketMap = new Map(marketAssets.map((asset) => [asset.coin, asset]));
 
   return snapshots
     .map((snapshot) => {
       const windows: FactorPerformanceWindow[] = WINDOW_DAYS.map((days) => {
-        const longReturn = computeWeightedLegReturn(snapshot.longs, prices, days);
-        const shortRaw = computeWeightedLegReturn(snapshot.shorts, prices, days);
+        const longReturn = computeWeightedLegReturn(snapshot.longs, effectivePrices, days);
+        const shortRaw = computeWeightedLegReturn(snapshot.shorts, effectivePrices, days);
         const shortReturn =
           snapshot.constructionType === "long-only"
             ? 0
@@ -293,10 +322,10 @@ export function buildFactorStates(
         return { days, longReturn, shortReturn, spreadReturn };
       });
 
-      const coverage = computeCoverage(snapshot, prices, marketMap);
-      const contributors = computeContributors(snapshot, prices, marketMap);
+      const coverage = computeCoverage(snapshot, effectivePrices, marketMap);
+      const contributors = computeContributors(snapshot, effectivePrices, marketMap);
       const tradeCandidates = computeTradeCandidates(snapshot, marketMap);
-      const constituents = computeConstituentPerformance(snapshot, prices, marketMap);
+      const constituents = computeConstituentPerformance(snapshot, effectivePrices, marketMap);
       const today = windows[0];
 
       return {
