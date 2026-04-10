@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     !enforceTimeRange({
       startTime,
       endTime,
-      maxLookbackMs: 30 * 24 * 60 * 60 * 1000,
+      maxLookbackMs: 90 * 24 * 60 * 60 * 1000,
     })
   ) {
     return jsonError("Requested candle range is not allowed.", { status: 400 });
