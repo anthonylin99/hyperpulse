@@ -118,21 +118,28 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
     try {
       // Fetch all-time history — Hyperliquid blockchain is the source of truth
-      const startTime = 0;
+      const fillsStartTime = 0;
+      const fundingStartTime = Math.max(
+        Date.now() - 90 * 24 * 60 * 60 * 1000,
+        1,
+      );
       const [fillsRes, fundingRes] = await Promise.all([
         fetch(
-          `/api/user/fills?address=${address}&startTime=${startTime}&aggregateByTime=true`,
+          `/api/user/fills?address=${address}&startTime=${fillsStartTime}&aggregateByTime=true`,
         ),
         fetch(
-          `/api/user/funding?address=${address}&startTime=${startTime}`,
+          `/api/user/funding?address=${address}&startTime=${fundingStartTime}`,
         ),
       ]);
 
       if (!fillsRes.ok) throw new Error("Failed to fetch trade history");
-      if (!fundingRes.ok) throw new Error("Failed to fetch funding history");
 
       const rawFills = await fillsRes.json();
-      const rawFunding = await fundingRes.json();
+      const rawFunding = fundingRes.ok ? await fundingRes.json() : [];
+
+      if (!fundingRes.ok) {
+        console.warn("Funding history unavailable; continuing without funding merge.");
+      }
 
       // Normalize fills from HL API format
       const normalizedFills: Fill[] = (

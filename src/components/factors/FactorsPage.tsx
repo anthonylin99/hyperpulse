@@ -157,6 +157,37 @@ export default function FactorsPage() {
     return () => controller.abort();
   }, [insightPayload, insightPayloadKey]);
 
+  const factorSummary = useMemo(() => {
+    if (factors.length === 0) return null;
+
+    const spreads1d = factors
+      .map((factor) => factor.windows.find((window) => window.days === 1)?.spreadReturn)
+      .filter((value): value is number => value != null);
+    const spreads7d = factors
+      .map((factor) => factor.windows.find((window) => window.days === 7)?.spreadReturn)
+      .filter((value): value is number => value != null);
+    const spreads30d = factors
+      .map((factor) => factor.windows.find((window) => window.days === 30)?.spreadReturn)
+      .filter((value): value is number => value != null);
+
+    const avg = (values: number[]) =>
+      values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+
+    return {
+      avg1d: avg(spreads1d),
+      avg7d: avg(spreads7d),
+      avg30d: avg(spreads30d),
+      leaders: factors.filter(
+        (factor) =>
+          (factor.windows.find((window) => window.days === 7)?.spreadReturn ?? -Infinity) > 0,
+      ).length,
+      laggards: factors.filter(
+        (factor) =>
+          (factor.windows.find((window) => window.days === 7)?.spreadReturn ?? Infinity) <= 0,
+      ).length,
+    };
+  }, [factors]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-6">
       <section className="rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-teal-950/20 p-6">
@@ -192,6 +223,63 @@ export default function FactorsPage() {
           </div>
         </div>
       </section>
+
+      {factorSummary && (
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">
+                Factor Takeaway
+              </div>
+              <h2 className="mt-2 text-xl font-semibold text-zinc-100">
+                Combined factor performance across every tracked bucket.
+              </h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                This gives you the fast read before diving into each factor card.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[440px]">
+              <WindowPill label="Avg 1d Spread" value={factorSummary.avg1d} />
+              <WindowPill label="Avg 7d Spread" value={factorSummary.avg7d} />
+              <WindowPill label="Avg 30d Spread" value={factorSummary.avg30d} />
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            {factors.map((factor) => {
+              const spread7d = factor.windows.find((window) => window.days === 7)?.spreadReturn ?? null;
+              return (
+                <div
+                  key={`summary-${factor.snapshot.id}`}
+                  className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-4 py-3"
+                >
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    {factor.snapshot.shortLabel}
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-zinc-100">
+                    {factor.snapshot.name}
+                  </div>
+                  <div
+                    className={cn(
+                      "mt-2 text-lg font-semibold",
+                      spread7d == null
+                        ? "text-zinc-500"
+                        : spread7d >= 0
+                          ? "text-emerald-400"
+                          : "text-red-400",
+                    )}
+                  >
+                    {spread7d == null ? "n/a" : formatPct(spread7d)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-500">7d spread</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 text-xs text-zinc-500">
+            {factorSummary.leaders} leading on 7d spread • {factorSummary.laggards} lagging on 7d spread
+          </div>
+        </section>
+      )}
 
       {error && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
