@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import {
   enforceRateLimit,
@@ -38,6 +39,26 @@ type RequestPayload = {
 };
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const BRIEF_CACHE_TTL_MS = 30 * 60 * 1000;
+const briefCache = new Map<string, { cachedAt: number; brief: FactorAiBrief }>();
+
+function payloadCacheKey(payload: RequestPayload): string {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+function getCachedBrief(key: string): FactorAiBrief | null {
+  const cached = briefCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > BRIEF_CACHE_TTL_MS) {
+    briefCache.delete(key);
+    return null;
+  }
+  return cached.brief;
+}
+
+function setCachedBrief(key: string, brief: FactorAiBrief) {
+  briefCache.set(key, { cachedAt: Date.now(), brief });
+}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -201,11 +222,17 @@ export async function POST(request: Request) {
   }
 
   try {
+    const cacheKey = payloadCacheKey(payload);
+    const cached = getCachedBrief(cacheKey);
+    if (cached) {
+      return jsonSuccess(cached, { cache: "private-no-store" });
+    }
+
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await client.responses.create({
       model: MODEL,
-      temperature: 0.4,
-      max_output_tokens: 500,
+      temperature: 0.2,
+      max_output_tokens: 260,
       input: [
         {
           role: "system",
@@ -213,7 +240,7 @@ export async function POST(request: Request) {
             {
               type: "input_text",
               text:
-                "You are HyperPulse's factor strategist. Turn structured factor data into a concise trader-facing brief. Do not invent metrics or symbols. Stay grounded in the supplied numbers only. Prefer cautious language when confidence is low, coverage is weak, or data is stale. Output strict JSON with keys: headline, summary, insights, disclaimer. insights must be an array of up to 3 objects with title, body, tone (bullish|cautious|neutral), tickers. Keep each body to 1-2 short sentences.",
+                "You are HyperPulse's factor strategist. Use only supplied factor data. No invented metrics, no hype, no long prose. Output strict JSON with keys: headline, summary, insights, disclaimer. insights must contain at most 2 objects with title, body, tone (bullish|cautious|neutral), tickers. Keep each body to one short sentence.",
             },
           ],
         },
@@ -240,6 +267,7 @@ export async function POST(request: Request) {
       throw new Error("OpenAI returned malformed JSON payload.");
     }
 
+    setCachedBrief(cacheKey, brief);
     return jsonSuccess(brief, { cache: "private-no-store" });
   } catch (error) {
     logServerError("api/factors/insights", error);

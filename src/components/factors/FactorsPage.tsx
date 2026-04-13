@@ -54,7 +54,8 @@ export default function FactorsPage() {
   const [brief, setBrief] = useState<FactorAiBrief | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
-  const lastInsightFetchRef = useRef<{ key: string; at: number } | null>(null);
+  const [briefRequested, setBriefRequested] = useState(false);
+  const lastInsightFetchRef = useRef<string | null>(null);
 
   const insightPayload = useMemo(
     () => ({
@@ -105,23 +106,21 @@ export default function FactorsPage() {
   );
 
   useEffect(() => {
-    if (insightPayload.factors.length === 0) {
+    if (!briefRequested || insightPayload.factors.length === 0) {
       setBrief(null);
       setBriefError(null);
       setBriefLoading(false);
       return;
     }
 
-    const now = Date.now();
-    const lastFetch = lastInsightFetchRef.current;
-    if (lastFetch && lastFetch.key === insightPayloadKey && now - lastFetch.at < 5 * 60 * 1000) {
+    if (lastInsightFetchRef.current === insightPayloadKey && brief) {
       return;
     }
 
     const controller = new AbortController();
     setBriefLoading(true);
     setBriefError(null);
-    lastInsightFetchRef.current = { key: insightPayloadKey, at: now };
+    lastInsightFetchRef.current = insightPayloadKey;
 
     void fetch("/api/factors/insights", {
       method: "POST",
@@ -155,7 +154,7 @@ export default function FactorsPage() {
       });
 
     return () => controller.abort();
-  }, [insightPayload, insightPayloadKey]);
+  }, [brief, briefRequested, insightPayload, insightPayloadKey]);
 
   const factorSummary = useMemo(() => {
     if (factors.length === 0) return null;
@@ -295,16 +294,30 @@ export default function FactorsPage() {
                 OpenAI Factor Brief
               </div>
               <h2 className="mt-2 text-xl font-semibold text-zinc-100">
-                {brief?.headline ?? "Generating a trader-facing factor read..."}
+                {brief?.headline ?? "Generate a lighter-weight factor brief only when you want it."}
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
                 {brief?.summary ??
-                  "This narrative layer translates the deterministic factor rankings into a quick morning brief. The rankings themselves still come from Artemis snapshots plus live Hyperliquid data."}
+                  "This optional narrative layer translates the deterministic factor rankings into a short read. It no longer auto-runs when you open the tab."}
               </p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-4 py-3 text-xs text-zinc-500">
-              <div>Model</div>
-              <div className="mt-1 font-mono text-zinc-200">OpenAI</div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-4 py-3 text-xs text-zinc-500">
+                <div>Model</div>
+                <div className="mt-1 font-mono text-zinc-200">OpenAI</div>
+              </div>
+              <button
+                onClick={() => {
+                  lastInsightFetchRef.current = null;
+                  setBrief(null);
+                  setBriefError(null);
+                  setBriefRequested(true);
+                }}
+                disabled={briefLoading || insightPayload.factors.length === 0}
+                className="rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-3 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {briefLoading ? "Generating..." : brief ? "Refresh Brief" : "Generate Brief"}
+              </button>
             </div>
           </div>
 
@@ -347,7 +360,11 @@ export default function FactorsPage() {
                 </article>
               ))}
             </div>
-          ) : null}
+          ) : briefRequested ? null : (
+            <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3 text-sm text-zinc-500">
+              Generate the brief only when you want a written summary. Factor scores and tables update without using OpenAI.
+            </div>
+          )}
 
           {brief?.disclaimer && (
             <div className="mt-4 text-xs text-zinc-500">{brief.disclaimer}</div>
