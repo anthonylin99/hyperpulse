@@ -10,6 +10,8 @@ import { PortfolioProvider } from "@/context/PortfolioContext";
 
 export default function Providers({ children }: { children: ReactNode }) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  const allowEmbeddedWallets =
+    process.env.NEXT_PUBLIC_PRIVY_ALLOW_EMBEDDED === "true";
 
   const content = (
     <MarketProvider>
@@ -48,7 +50,9 @@ export default function Providers({ children }: { children: ReactNode }) {
         },
         embeddedWallets: {
           ethereum: {
-            createOnLogin: "users-without-wallets",
+            createOnLogin: allowEmbeddedWallets
+              ? "users-without-wallets"
+              : "off",
           },
         },
       }}

@@ -38,6 +38,7 @@ interface WalletContextValue {
   connectWithBrowserWallet: (
     preference?: BrowserWalletPreference
   ) => Promise<void>;
+  connectWithPrivyWallet: (wallet: PrivyEthereumWallet) => Promise<void>;
   connectReadOnly: (walletAddress: string) => Promise<void>;
   disconnect: () => void;
   refreshPortfolio: () => Promise<void>;
@@ -51,6 +52,12 @@ interface InjectedEthereumProvider {
   isMetaMask?: boolean;
   isRabby?: boolean;
   isCoinbaseWallet?: boolean;
+}
+
+export interface PrivyEthereumWallet {
+  address: string;
+  walletClientType?: string;
+  getEthereumProvider: () => Promise<InjectedEthereumProvider>;
 }
 
 function matchesPreference(
@@ -213,15 +220,76 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [getInfo]
   );
 
+  const connectWithExecutionProvider = useCallback(
+    async (
+      provider: InjectedEthereumProvider,
+      explicitAddress?: string,
+      walletLabel = "wallet"
+    ) => {
+      if (!ENABLE_TRADING) {
+        throw new Error(
+          "Trading connections are disabled in the public deployment. Use read-only wallet analytics instead."
+        );
+      }
+
+      const transport = new HttpTransport({ isTestnet: IS_TESTNET });
+      const walletClient = createWalletClient({
+        transport: custom(provider),
+      });
+      const [providerAddr] = await walletClient.requestAddresses();
+      const mainAddr = (explicitAddress ?? providerAddr) as Address | undefined;
+
+      if (!mainAddr) {
+        throw new Error(`Failed to connect ${walletLabel}: no address returned.`);
+      }
+
+      const browserWallet = {
+        getAddresses: async () => [mainAddr as Address],
+        getChainId: async () => walletClient.getChainId(),
+        signTypedData: async (params: {
+          domain: Record<string, unknown>;
+          types: Record<string, Array<{ name: string; type: string }>>;
+          primaryType: string;
+          message: Record<string, unknown>;
+        }) =>
+          walletClient.signTypedData({
+            ...params,
+            account: mainAddr as Address,
+          } as Parameters<typeof walletClient.signTypedData>[0]),
+      };
+
+      const agentPrivateKey = generatePrivateKey();
+      const agentWallet = privateKeyToAccount(agentPrivateKey);
+      const approver = new ExchangeClient({
+        transport,
+        wallet: browserWallet as never,
+      });
+      const agentName = `hp${Date.now().toString(36).slice(-10)}`;
+      await approver.approveAgent({
+        agentAddress: agentWallet.address,
+        agentName,
+      });
+
+      const exchange = new ExchangeClient({ transport, wallet: agentWallet });
+
+      const info = getInfo();
+      await info.openOrders({ user: mainAddr });
+      await fetchPortfolio(mainAddr, true);
+
+      setAddress(mainAddr);
+      setApiAddress(agentWallet.address);
+      setExchangeClient(exchange);
+      setIsReadOnly(false);
+
+      toast.success(`Trading enabled: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`);
+    },
+    [fetchPortfolio, getInfo]
+  );
+
   const connectWithBrowserWallet = useCallback(
     async (preference: BrowserWalletPreference = "auto") => {
       setLoading(true);
       try {
-        if (!ENABLE_TRADING) {
-          throw new Error(
-            "Trading connections are disabled in the public deployment. Use read-only wallet analytics instead."
-          );
-        }
         if (typeof window === "undefined") {
           throw new Error("Browser wallet is unavailable in this environment.");
         }
@@ -232,58 +300,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           throw new Error("No browser wallet found. Install MetaMask or Rabby.");
         }
         const injectedProvider = selectProvider(ethereum, preference);
-
-        const transport = new HttpTransport({ isTestnet: IS_TESTNET });
-        const walletClient = createWalletClient({
-          transport: custom(injectedProvider),
-        });
-        const [mainAddr] = await walletClient.requestAddresses();
-        if (!mainAddr) {
-          throw new Error("Wallet connection failed: no address returned.");
-        }
-
-        const browserWallet = {
-          getAddresses: async () => [mainAddr as Address],
-          getChainId: async () => walletClient.getChainId(),
-          signTypedData: async (params: {
-            domain: Record<string, unknown>;
-            types: Record<string, Array<{ name: string; type: string }>>;
-            primaryType: string;
-            message: Record<string, unknown>;
-          }) =>
-            walletClient.signTypedData({
-              ...params,
-              account: mainAddr as Address,
-            } as Parameters<typeof walletClient.signTypedData>[0]),
-        };
-
-        // Generate a local agent key in-browser, approve it once using the connected wallet.
-        const agentPrivateKey = generatePrivateKey();
-        const agentWallet = privateKeyToAccount(agentPrivateKey);
-        const approver = new ExchangeClient({
-          transport,
-          wallet: browserWallet as never,
-        });
-        // Hyperliquid requires base agent name length <= 16.
-        const agentName = `hp${Date.now().toString(36).slice(-10)}`;
-        await approver.approveAgent({
-          agentAddress: agentWallet.address,
-          agentName,
-        });
-
-        // Trading client uses the approved local agent wallet.
-        const exchange = new ExchangeClient({ transport, wallet: agentWallet });
-
-        const info = getInfo();
-        await info.openOrders({ user: mainAddr });
-        await fetchPortfolio(mainAddr, true);
-
-        setAddress(mainAddr);
-        setApiAddress(agentWallet.address);
-        setExchangeClient(exchange);
-        setIsReadOnly(false);
-
-        toast.success(`Connected: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`);
+        await connectWithExecutionProvider(injectedProvider, undefined, "browser wallet");
       } catch (err) {
         const msg =
           err instanceof Error
@@ -295,7 +312,31 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [fetchPortfolio, getInfo]
+    [connectWithExecutionProvider]
+  );
+
+  const connectWithPrivyWallet = useCallback(
+    async (wallet: PrivyEthereumWallet) => {
+      setLoading(true);
+      try {
+        const provider = await wallet.getEthereumProvider();
+        await connectWithExecutionProvider(
+          provider,
+          wallet.address as Address,
+          wallet.walletClientType === "privy" ? "Privy wallet" : "linked wallet"
+        );
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Failed to connect with Privy wallet";
+        toast.error(msg);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [connectWithExecutionProvider]
   );
 
   const connectReadOnly = useCallback(
@@ -350,7 +391,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       intervalRef.current = null;
     }
     toast.success("Wallet disconnected");
-  }, []);
+  }, [address]);
 
   const refreshPortfolio = useCallback(async () => {
     if (address) {
@@ -395,6 +436,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         exchangeClient,
         loading,
         connectWithBrowserWallet,
+        connectWithPrivyWallet,
         connectReadOnly,
         disconnect,
         refreshPortfolio,

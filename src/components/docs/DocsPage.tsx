@@ -89,6 +89,10 @@ const faqs = [
     a: "Because wallet analytics are built on public account state and public fill history. Read-only mode only needs the wallet address.",
   },
   {
+    q: "Does Privy email login automatically connect my Hyperliquid trading wallet?",
+    a: "Not always. Privy can authenticate you by email and may also expose an embedded wallet, but your actual Hyperliquid trading account is often a separate linked external address. HyperPulse now lets you explicitly choose which Privy wallet to view or trade from, and you can always paste the exact address you trade on.",
+  },
+  {
     q: "Why might HyperPulse differ slightly from Hyperliquid?",
     a: "The app groups fills into round trips and computes portfolio metrics on top of those trades. Hyperliquid is the source of truth for raw balances, positions, fills, and funding.",
   },
@@ -352,6 +356,15 @@ export default function DocsPage() {
                   Requests a connected wallet, then approves a local Hyperliquid agent key for order execution. Trading
                   permissions stay scoped to the approved agent.
                 </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
+              <div className="font-medium text-amber-200">Honest note on Privy</div>
+              <div className="mt-1 text-amber-100/80">
+                Privy is best treated as an identity and wallet-discovery layer here, not as proof that HyperPulse has
+                found your exact Hyperliquid trading account automatically. If your live trading address differs from
+                the wallet Privy shows first, choose the linked wallet explicitly or paste the exact address you trade
+                on.
               </div>
             </div>
           </Section>

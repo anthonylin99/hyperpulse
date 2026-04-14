@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { usePrivy, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
 import { useWallet } from "@/context/WalletContext";
 import { getSavedWallets, removeWallet, clearSavedWallets, type SavedWallet } from "@/lib/savedWallets";
 import { ENABLE_TRADING } from "@/lib/appConfig";
@@ -10,13 +10,15 @@ import { truncateAddress, cn } from "@/lib/format";
 function PrivyLoginPanel({
   onAddress,
   onConnectExternal,
+  onTradeWallet,
   disabled,
 }: {
   onAddress: (address: string) => void;
   onConnectExternal: () => void;
+  onTradeWallet: (wallet: ConnectedWallet) => void;
   disabled: boolean;
 }) {
-  const { ready, authenticated, login, user } = usePrivy();
+  const { ready, authenticated, login, user, connectWallet } = usePrivy();
   const { wallets } = useWallets();
   const [connecting, setConnecting] = useState(false);
   const [pendingConnect, setPendingConnect] = useState(false);
@@ -42,30 +44,69 @@ function PrivyLoginPanel({
   }, [pendingConnect, authenticated, privyAddress]);
 
   if (authenticated && showSelector) {
+    const sortedWallets = [...wallets].sort((a, b) => {
+      if (a.walletClientType === "privy" && b.walletClientType !== "privy") return 1;
+      if (a.walletClientType !== "privy" && b.walletClientType === "privy") return -1;
+      return a.address.localeCompare(b.address);
+    });
+
     return (
       <div className="space-y-2">
         <div className="text-xs text-zinc-400 font-medium text-left">
           Choose the wallet to view
         </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-left text-[11px] text-zinc-500">
+          Your Hyperliquid trading account is usually the externally linked wallet, not the embedded Privy wallet.
+          If the address you trade on ends with something else, use that address for analytics or trade from the linked wallet row below.
+        </div>
         {wallets.length > 0 ? (
           <div className="space-y-2">
-            {wallets.map((wallet) => (
-              <button
+            {sortedWallets.map((wallet) => (
+              <div
                 key={wallet.address}
-                onClick={() => onAddress(wallet.address)}
                 className={cn(
-                  "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm transition-all",
-                  "bg-zinc-900 border border-zinc-800 hover:border-teal-600/50 hover:bg-zinc-800/80",
+                  "w-full px-4 py-3 rounded-lg text-sm transition-all",
+                  "bg-zinc-900 border border-zinc-800 hover:border-teal-600/50 hover:bg-zinc-800/80"
                 )}
               >
-                <div className="text-left min-w-0">
-                  <div className="text-zinc-200 font-medium truncate">
-                    {wallet.walletClientType === "privy" ? "Privy Embedded Wallet" : "Linked Wallet"}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-left min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="text-zinc-200 font-medium truncate">
+                        {wallet.walletClientType === "privy" ? "Privy Embedded Wallet" : "Linked Wallet"}
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide",
+                          wallet.walletClientType === "privy"
+                            ? "bg-zinc-800 text-zinc-400"
+                            : "bg-teal-500/10 text-teal-300"
+                        )}
+                      >
+                        {wallet.walletClientType === "privy" ? "embedded" : "external"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-zinc-500 font-mono text-xs break-all">{wallet.address}</div>
                   </div>
-                  <div className="text-zinc-500 font-mono text-xs">{wallet.address}</div>
                 </div>
-                <span className="text-xs text-zinc-500">Use</span>
-              </button>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => onAddress(wallet.address)}
+                    className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 transition-colors hover:border-teal-600/50 hover:text-white"
+                  >
+                    View Analytics
+                  </button>
+                  {ENABLE_TRADING && (
+                    <button
+                      onClick={() => onTradeWallet(wallet)}
+                      className="flex-1 rounded-lg bg-teal-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-teal-500"
+                    >
+                      Trade From This Wallet
+                    </button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         ) : (
@@ -109,16 +150,24 @@ function PrivyLoginPanel({
               onClick={onConnectExternal}
               className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
             >
-              Connect External Wallet
+              Connect External Wallet Directly
+            </button>
+          )}
+          <button
+            onClick={() => connectWallet()}
+            className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+          >
+            Link External Wallet In Privy
+          </button>
+          {authenticated && wallets.length > 0 && (
+            <button
+              onClick={() => setShowSelector(false)}
+              className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-950 hover:bg-zinc-900 text-zinc-400 border border-zinc-800"
+            >
+              Back
             </button>
           )}
         </div>
-        <button
-          onClick={() => setShowSelector(false)}
-          className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
-        >
-          Back
-        </button>
       </div>
     );
   }
@@ -150,7 +199,7 @@ function PrivyLoginPanel({
 }
 
 export default function ConnectPrompt() {
-  const { connectReadOnly, connectWithBrowserWallet, loading } = useWallet();
+  const { connectReadOnly, connectWithBrowserWallet, connectWithPrivyWallet, loading } = useWallet();
   const [addressInput, setAddressInput] = useState("");
   const [mode, setMode] = useState<"main" | "paste">("main");
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +227,15 @@ export default function ConnectPrompt() {
       await connectWithBrowserWallet();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connection failed");
+    }
+  };
+
+  const handlePrivyTradeConnect = async (wallet: ConnectedWallet) => {
+    setError(null);
+    try {
+      await connectWithPrivyWallet(wallet);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect wallet");
     }
   };
 
@@ -269,6 +327,7 @@ export default function ConnectPrompt() {
               <PrivyLoginPanel
                 disabled={loading}
                 onConnectExternal={handleWalletConnect}
+                onTradeWallet={handlePrivyTradeConnect}
                 onAddress={async (addr) => {
                   try {
                     await connectReadOnly(addr);
@@ -287,7 +346,7 @@ export default function ConnectPrompt() {
 
             {privyEnabled && (
               <div className="text-[11px] text-zinc-500">
-                Uses your linked external wallet if available. Otherwise a new embedded wallet may be created.
+                Privy can create an embedded wallet, but Hyperliquid analytics usually belong to your linked external address. If the listed wallet is wrong, paste the exact trading address you use on Hyperliquid.
               </div>
             )}
 
