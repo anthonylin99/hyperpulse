@@ -351,9 +351,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         await fetchPortfolio(normalized, true);
 
         setAddress(normalized);
-    setApiAddress(null);
-    setExchangeClient(null);
-    setIsReadOnly(true);
+        setApiAddress(null);
+        setExchangeClient(null);
+        setIsReadOnly(true);
 
         sessionStorage.setItem(SESSION_MAIN_ADDR, normalized);
 
