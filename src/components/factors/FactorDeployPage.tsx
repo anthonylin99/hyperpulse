@@ -43,7 +43,7 @@ export default function FactorDeployPage() {
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           <InfoPill
             label="Trading Mode"
-            value={!ENABLE_TRADING ? "Disabled" : !isConnected ? "Connect wallet" : isReadOnly ? "Read-only" : "Ready"}
+            value={!ENABLE_TRADING ? "Disabled in prod config" : !isConnected ? "Connect wallet" : isReadOnly ? "Read-only only" : "Ready"}
             tone={!ENABLE_TRADING || isReadOnly ? "warn" : isConnected ? "good" : "neutral"}
           />
           <InfoPill label="Workflow" value="Review then deploy" />

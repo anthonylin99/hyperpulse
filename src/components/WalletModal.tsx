@@ -55,10 +55,10 @@ export default function WalletModal({ onClose }: WalletModalProps) {
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/60 z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[440px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl">
+      <div className="fixed left-1/2 top-1/2 z-[120] max-h-[calc(100vh-4rem)] w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
