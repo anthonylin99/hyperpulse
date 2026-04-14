@@ -225,7 +225,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       const prevOI = prevOIRef.current;
 
       const parsed = meta.universe
-        .map((u: { name: string; isDelisted: boolean; maxLeverage: number }, i: number) => {
+        .map((u: { name: string; isDelisted: boolean; maxLeverage: number; szDecimals: number }, i: number) => {
           if (u.isDelisted) return null;
           const ctx = assetCtxs[i];
           if (!ctx) return null;
@@ -257,6 +257,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
           return {
             coin: u.name,
             assetIndex: i,
+            szDecimals: u.szDecimals,
             markPx,
             midPx,
             oraclePx,

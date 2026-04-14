@@ -4,7 +4,7 @@ import { ArrowRight, BarChart3, BookOpenText, BriefcaseBusiness, Layers3 } from 
 import { cn } from "@/lib/format";
 import MarketOverviewPanel from "./MarketOverviewPanel";
 
-type Tab = "home" | "portfolio" | "markets" | "factors" | "docs";
+type Tab = "home" | "portfolio" | "markets" | "factors" | "deploy" | "docs";
 
 interface HomePageProps {
   onSelectTab: (tab: Exclude<Tab, "home">) => void;
@@ -33,6 +33,12 @@ const MODE_CARDS: Array<{
     title: "Factors",
     description: "Track Artemis-style factor baskets, mapped names, and constituent performance in real time.",
     icon: Layers3,
+  },
+  {
+    tab: "deploy",
+    title: "Deploy",
+    description: "Edit factor baskets, set flexible weights, save presets, and deploy to Hyperliquid with guardrails.",
+    icon: BriefcaseBusiness,
   },
   {
     tab: "docs",

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useWallet } from "@/context/WalletContext";
 import { useFactors } from "@/context/FactorContext";
 import { formatPct, formatUSD } from "@/lib/format";
 import { cn } from "@/lib/format";
+import { ENABLE_TRADING } from "@/lib/appConfig";
 import type {
   FactorAiBrief,
   FactorConstituentPerformance,
@@ -12,6 +14,7 @@ import type {
   FactorPerformanceWindow,
   LiveFactorState,
 } from "@/types";
+import FactorTradeDrawer from "@/components/factors/FactorTradeDrawer";
 
 function WindowPill({ label, value }: { label: string; value: number | null }) {
   return (
@@ -51,11 +54,13 @@ function confidenceClasses(confidence: LiveFactorState["confidence"]) {
 
 export default function FactorsPage() {
   const { factors, loading, error, sourceMode, lastUpdated } = useFactors();
+  const { isConnected, isReadOnly } = useWallet();
   const [brief, setBrief] = useState<FactorAiBrief | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
   const [briefRequested, setBriefRequested] = useState(false);
   const lastInsightFetchRef = useRef<string | null>(null);
+  const [tradeFactor, setTradeFactor] = useState<LiveFactorState | null>(null);
 
   const insightPayload = useMemo(
     () => ({
@@ -380,7 +385,7 @@ export default function FactorsPage() {
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          {factors.map((factor: LiveFactorState) => {
+	          {factors.map((factor: LiveFactorState) => {
             const windows = Object.fromEntries(
               factor.windows.map((window: FactorPerformanceWindow) => [window.days, window]),
             ) as Record<number, FactorPerformanceWindow>;
@@ -389,23 +394,38 @@ export default function FactorsPage() {
               sourceMode === "snapshot",
             );
             return (
-              <article key={factor.snapshot.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-semibold text-zinc-100">{factor.snapshot.name}</h2>
-                      <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] font-mono text-zinc-400">
-                        {factor.snapshot.shortLabel}
-                      </span>
+	              <article key={factor.snapshot.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+	                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+	                  <div className="min-w-0 flex-1">
+	                    <div className="flex flex-wrap items-center gap-2">
+	                      <h2 className="text-xl font-semibold text-zinc-100">{factor.snapshot.name}</h2>
+	                      <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] font-mono text-zinc-400">
+	                        {factor.snapshot.shortLabel}
+	                      </span>
                       <span
                         className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", confidenceClasses(displayConfidence))}
                       >
                         {displayConfidence} confidence
                       </span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-zinc-400">{factor.snapshot.description}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:w-full sm:max-w-[260px] xl:w-[260px]">
+	                    </div>
+	                    <p className="mt-2 text-sm leading-6 text-zinc-400">{factor.snapshot.description}</p>
+                      {ENABLE_TRADING && (
+                        <div className="mt-4">
+                          <button
+                            onClick={() => setTradeFactor(factor)}
+                            disabled={!isConnected || isReadOnly}
+                            className="rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {!isConnected
+                              ? "Connect Trading Wallet"
+                              : isReadOnly
+                                ? "Read-Only Mode"
+                                : "Trade Factor"}
+                          </button>
+                        </div>
+                      )}
+	                  </div>
+	                  <div className="grid grid-cols-2 gap-2 sm:w-full sm:max-w-[260px] xl:w-[260px]">
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Report Date</div>
                       <div className="mt-1 text-sm font-medium text-zinc-100">{factor.snapshot.reportDate}</div>
@@ -576,7 +596,8 @@ export default function FactorsPage() {
             );
           })}
         </div>
-      )}
-    </div>
-  );
+	      )}
+      {tradeFactor && <FactorTradeDrawer factor={tradeFactor} onClose={() => setTradeFactor(null)} />}
+	    </div>
+	  );
 }

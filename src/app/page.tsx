@@ -24,6 +24,7 @@ import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
 import MoreStats from "@/components/portfolio/MoreStats";
 import DocsPage from "@/components/docs/DocsPage";
 import FactorsPage from "@/components/factors/FactorsPage";
+import FactorDeployPage from "@/components/factors/FactorDeployPage";
 import FactorLeaderStrip from "@/components/factors/FactorLeaderStrip";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
@@ -33,13 +34,14 @@ import { useMarket } from "@/context/MarketContext";
 import { ENABLE_TRADING } from "@/lib/appConfig";
 import { cn, formatUSD } from "@/lib/format";
 
-type Tab = "home" | "portfolio" | "markets" | "factors" | "docs";
+type Tab = "home" | "portfolio" | "markets" | "factors" | "deploy" | "docs";
 
 const APP_TABS: Array<{ key: Tab; label: string }> = [
   { key: "home", label: "Home" },
   { key: "portfolio", label: "Portfolio" },
   { key: "markets", label: "Markets" },
   { key: "factors", label: "Factors" },
+  { key: "deploy", label: "Deploy" },
   { key: "docs", label: "Docs" },
 ];
 
@@ -205,6 +207,8 @@ export default function Home() {
         </>
       ) : tab === "factors" ? (
         <FactorsPage />
+      ) : tab === "deploy" ? (
+        <FactorDeployPage />
       ) : (
         <DocsPage />
       )}

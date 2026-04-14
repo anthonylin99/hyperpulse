@@ -35,6 +35,40 @@ function isOrderLikeResponse(input: unknown): input is OrderLikeResponse {
   return typeof input === "object" && input !== null;
 }
 
+export interface ParsedOrderStatus {
+  kind: "filled" | "resting" | "waiting" | "error" | "unknown";
+  message?: string;
+}
+
+export function parseOrderStatuses(input: unknown): ParsedOrderStatus[] {
+  if (!isOrderLikeResponse(input)) {
+    throw new Error("Invalid order response from exchange");
+  }
+
+  const statuses = input.response?.data?.statuses;
+  if (!Array.isArray(statuses) || statuses.length === 0) {
+    throw new Error("Order response missing execution statuses");
+  }
+
+  return statuses.map((status) => {
+    if (status === "waitingForFill" || status === "waitingForTrigger") {
+      return { kind: "waiting", message: status };
+    }
+    if (typeof status === "object" && status !== null) {
+      if ("error" in status && typeof status.error === "string") {
+        return { kind: "error", message: status.error };
+      }
+      if ("filled" in status) {
+        return { kind: "filled", message: status.filled.avgPx };
+      }
+      if ("resting" in status) {
+        return { kind: "resting", message: String(status.resting.oid) };
+      }
+    }
+    return { kind: "unknown" };
+  });
+}
+
 export function summarizeOrderResponse(input: unknown): {
   filled: number;
   resting: number;

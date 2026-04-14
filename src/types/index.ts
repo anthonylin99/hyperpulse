@@ -21,6 +21,7 @@ export interface Signal {
 export interface MarketAsset {
   coin: string;
   assetIndex: number;
+  szDecimals: number;
   markPx: number;
   midPx: number;
   oraclePx: number;
@@ -293,6 +294,74 @@ export interface LiveFactorState {
   topDetractors: FactorContributor[];
   tradeCandidates: FactorTradeCandidate[];
   constituents: FactorConstituentPerformance[];
+}
+
+export interface EditableFactorLeg {
+  symbol: string;
+  enabled: boolean;
+  side: "long" | "short";
+  weight: number;
+  sourceRole: "long" | "short";
+}
+
+export interface FactorTradePreset {
+  id: string;
+  factorId: string;
+  name: string;
+  longGrossUsd: number;
+  shortGrossUsd: number;
+  leverage: number;
+  slippageBps: number;
+  legs: EditableFactorLeg[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FactorExecutionLeg {
+  symbol: string;
+  assetIndex: number | null;
+  enabled: boolean;
+  side: "long" | "short";
+  sourceRole: "long" | "short";
+  weightInput: number;
+  normalizedWeight: number;
+  markPx: number | null;
+  priceDecimals: number;
+  sizeDecimals: number;
+  currentQty: number;
+  targetQty: number;
+  deltaQty: number;
+  targetNotionalUsd: number;
+  deltaNotionalUsd: number;
+  orderPrice: string | null;
+  marginRequiredUsd: number;
+  liveChange24h: number | null;
+  fundingAPR: number | null;
+  signalLabel: string | null;
+  status: "ready" | "skipped" | "unmapped";
+  statusReason: string | null;
+}
+
+export interface FactorExecutionSummary {
+  longGrossUsd: number;
+  shortGrossUsd: number;
+  grossUsd: number;
+  netUsd: number;
+  estimatedMarginUsd: number;
+  activeLongLegs: number;
+  activeShortLegs: number;
+  tradableCoverage: number;
+}
+
+export interface FactorExecutionPlan {
+  factorId: string;
+  factorName: string;
+  leverage: number;
+  slippageBps: number;
+  summary: FactorExecutionSummary;
+  legs: FactorExecutionLeg[];
+  executableLegs: FactorExecutionLeg[];
+  skippedLegs: FactorExecutionLeg[];
 }
 
 export interface FactorAiInsight {
