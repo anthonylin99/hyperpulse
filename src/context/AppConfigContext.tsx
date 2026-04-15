@@ -6,9 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import toast from "react-hot-toast";
 import { ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
 
 type PublicAppConfig = {
@@ -18,6 +20,7 @@ type PublicAppConfig = {
 
 type AppConfigContextValue = PublicAppConfig & {
   loading: boolean;
+  configReady: boolean;
   refresh: () => Promise<void>;
 };
 
@@ -35,6 +38,7 @@ const AppConfigContext = createContext<AppConfigContextValue | null>(null);
 export function AppConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<PublicAppConfig>(fallbackConfig);
   const [loading, setLoading] = useState(true);
+  const fetchFailureWarnedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -48,8 +52,15 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
       const nextConfig = (await response.json()) as PublicAppConfig;
       setConfig(nextConfig);
+      fetchFailureWarnedRef.current = false;
     } catch (error) {
       console.error("Failed to refresh app config", error);
+      if (!fetchFailureWarnedRef.current) {
+        fetchFailureWarnedRef.current = true;
+        toast.error(
+          "Couldn't load runtime config — using defaults. Trading features may be limited."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -63,6 +74,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     () => ({
       ...config,
       loading,
+      configReady: !loading,
       refresh,
     }),
     [config, loading, refresh]

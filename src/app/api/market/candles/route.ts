@@ -1,4 +1,3 @@
-import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import {
   enforceRateLimit,
   enforceTimeRange,
@@ -9,9 +8,7 @@ import {
   parseTimestamp,
   validateCoin,
 } from "@/lib/security";
-
-const transport = new HttpTransport({ isTestnet: false });
-const info = new InfoClient({ transport });
+import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +54,7 @@ export async function GET(request: Request) {
     });
   }
 
+  const info = getInfoClient(resolveNetworkFromRequest(new URL(request.url)));
   try {
     const data = await info.candleSnapshot({
       coin,

@@ -113,6 +113,120 @@ export function summarizeOrderResponse(input: unknown): {
   return { filled, resting, waiting, errors };
 }
 
+export interface SequentialOrderInstruction {
+  assetIndex: number;
+  side: "buy" | "sell";
+  price: string;
+  size: string;
+  reduceOnly: boolean;
+}
+
+export interface SequentialLegResult<T extends SequentialOrderInstruction> {
+  order: T;
+  status: "filled" | "resting" | "waiting" | "error";
+  message?: string;
+  avgPx?: number;
+  filledSz?: number;
+}
+
+type ExchangeOrderClient = {
+  order: (args: {
+    orders: Array<{
+      a: number;
+      b: boolean;
+      p: string;
+      s: string;
+      r: boolean;
+      t: { limit: { tif: "Ioc" | "Gtc" | "Alo" } };
+    }>;
+    grouping: "na" | "normalTpsl" | "positionTpsl";
+  }) => Promise<unknown>;
+};
+
+export async function executeOrdersSequentially<T extends SequentialOrderInstruction>(
+  client: ExchangeOrderClient,
+  orders: T[],
+  onLeg?: (index: number, result: SequentialLegResult<T>) => void,
+  opts: { stopOnFailure?: boolean } = { stopOnFailure: true },
+): Promise<{
+  executed: SequentialLegResult<T>[];
+  failed: SequentialLegResult<T>[];
+  stoppedAt: number | null;
+}> {
+  const executed: SequentialLegResult<T>[] = [];
+  const failed: SequentialLegResult<T>[] = [];
+  let stoppedAt: number | null = null;
+
+  for (let i = 0; i < orders.length; i += 1) {
+    const order = orders[i];
+    try {
+      const response = await client.order({
+        orders: [
+          {
+            a: order.assetIndex,
+            b: order.side === "buy",
+            p: order.price,
+            s: order.size,
+            r: order.reduceOnly,
+            t: { limit: { tif: "Ioc" } },
+          },
+        ],
+        grouping: "na",
+      });
+
+      const parsed = parseOrderStatuses(response);
+      const status = parsed[0];
+      const rawStatuses = (response as OrderLikeResponse)?.response?.data?.statuses;
+      const rawFirst = Array.isArray(rawStatuses) ? rawStatuses[0] : undefined;
+      let avgPx: number | undefined;
+      let filledSz: number | undefined;
+      if (
+        rawFirst &&
+        typeof rawFirst === "object" &&
+        "filled" in rawFirst &&
+        rawFirst.filled
+      ) {
+        avgPx = Number(rawFirst.filled.avgPx);
+        filledSz = Number(rawFirst.filled.totalSz);
+      }
+
+      const result: SequentialLegResult<T> = {
+        order,
+        status: status?.kind === "unknown" ? "error" : (status?.kind ?? "error"),
+        message: status?.message,
+        avgPx,
+        filledSz,
+      };
+
+      if (result.status === "error") {
+        failed.push(result);
+        onLeg?.(i, result);
+        if (opts.stopOnFailure) {
+          stoppedAt = i;
+          break;
+        }
+      } else {
+        executed.push(result);
+        onLeg?.(i, result);
+      }
+    } catch (err) {
+      const result: SequentialLegResult<T> = {
+        order,
+        status: "error",
+        message: err instanceof Error ? err.message : "order failed",
+      };
+      failed.push(result);
+      onLeg?.(i, result);
+      if (opts.stopOnFailure) {
+        stoppedAt = i;
+        break;
+      }
+    }
+  }
+
+  return { executed, failed, stoppedAt };
+}
+
 export function assertOrderSucceeded(input: unknown): string {
   const summary = summarizeOrderResponse(input);
 

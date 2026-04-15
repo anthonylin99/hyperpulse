@@ -2,6 +2,7 @@
 
 import { useMarket } from "@/context/MarketContext";
 import WalletConnect from "./WalletConnect";
+import NetworkToggle from "./NetworkToggle";
 
 export default function Nav() {
   const { lastUpdated, loading } = useMarket();
@@ -37,6 +38,7 @@ export default function Nav() {
             <span className="font-mono text-zinc-300">{timeStr}</span>
           </div>
 
+          <NetworkToggle />
           <WalletConnect />
         </div>
       </div>

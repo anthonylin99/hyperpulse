@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import {
   enforceRateLimit,
   enforceTimeRange,
@@ -9,9 +8,7 @@ import {
   parseTimestamp,
   validateAddress,
 } from "@/lib/security";
-
-const transport = new HttpTransport({ isTestnet: false });
-const info = new InfoClient({ transport });
+import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +51,7 @@ export async function GET(req: NextRequest) {
     return jsonError("Requested history window is not allowed.", { status: 400 });
   }
 
+  const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
   try {
     const params: Record<string, unknown> = {
       user: address as `0x${string}`,

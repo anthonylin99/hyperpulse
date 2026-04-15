@@ -14,10 +14,37 @@ function spreadTone(value: number | null) {
 }
 
 export default function FactorDeployPage() {
-  const { tradingEnabled } = useAppConfig();
+  const { tradingEnabled, configReady } = useAppConfig();
   const { factors, loading, error } = useFactors();
   const { isConnected, isReadOnly } = useWallet();
   const [tradeFactor, setTradeFactor] = useState<LiveFactorState | null>(null);
+
+  const tradingModeValue = !configReady
+    ? "Checking runtime config…"
+    : !tradingEnabled
+      ? "Disabled in runtime config"
+      : !isConnected
+        ? "Connect wallet"
+        : isReadOnly
+          ? "Read-only only"
+          : "Ready";
+  const tradingModeTone: "neutral" | "good" | "warn" = !configReady
+    ? "neutral"
+    : !tradingEnabled || isReadOnly
+      ? "warn"
+      : isConnected
+        ? "good"
+        : "neutral";
+  const deployDisabled = !configReady || !tradingEnabled || !isConnected || isReadOnly;
+  const deployLabel = !configReady
+    ? "Loading…"
+    : !tradingEnabled
+      ? "Trading Off"
+      : !isConnected
+        ? "Connect Wallet"
+        : isReadOnly
+          ? "Read-Only"
+          : "Deploy";
 
   const sorted = useMemo(
     () =>
@@ -44,8 +71,8 @@ export default function FactorDeployPage() {
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           <InfoPill
             label="Trading Mode"
-            value={!tradingEnabled ? "Disabled in runtime config" : !isConnected ? "Connect wallet" : isReadOnly ? "Read-only only" : "Ready"}
-            tone={!tradingEnabled || isReadOnly ? "warn" : isConnected ? "good" : "neutral"}
+            value={tradingModeValue}
+            tone={tradingModeTone}
           />
           <InfoPill label="Workflow" value="Review then deploy" />
           <InfoPill label="Guardrails" value="Margin checks, typed confirm, skipped tiny legs" />
@@ -85,16 +112,10 @@ export default function FactorDeployPage() {
                   </div>
                   <button
                     onClick={() => setTradeFactor(factor)}
-                    disabled={!tradingEnabled || !isConnected || isReadOnly}
+                    disabled={deployDisabled}
                     className="shrink-0 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {!tradingEnabled
-                      ? "Trading Off"
-                      : !isConnected
-                        ? "Connect Wallet"
-                        : isReadOnly
-                          ? "Read-Only"
-                          : "Deploy"}
+                    {deployLabel}
                   </button>
                 </div>
 

@@ -9,7 +9,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { getSubscriptionClient } from "@/lib/hyperliquid";
+import { getSubscriptionClient, withNetworkParam, getStoredNetwork } from "@/lib/hyperliquid";
 import { fundingToSignal, computeFundingSignal } from "@/lib/signals";
 import {
   POLL_INTERVAL_MARKET,
@@ -214,7 +214,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
 
   const fetchMarketData = useCallback(async () => {
     try {
-      const res = await fetch("/api/market");
+      const res = await fetch(withNetworkParam("/api/market"));
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);
@@ -332,7 +332,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
 
     const initWs = async () => {
       try {
-        const sub = getSubscriptionClient();
+        const sub = getSubscriptionClient(getStoredNetwork());
 
         allMidsSub = await sub.allMids((event) => {
           const mids = event.mids;

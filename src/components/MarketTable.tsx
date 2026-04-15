@@ -16,6 +16,7 @@ import {
   type AssetCategory,
 } from "@/lib/constants";
 import { formatCompact, formatPct, formatUSD } from "@/lib/format";
+import { withNetworkParam } from "@/lib/hyperliquid";
 
 type Mode = "perps" | "spot";
 
@@ -108,7 +109,7 @@ export default function MarketTable({
   const fetchSpot = useCallback(async () => {
     try {
       setSpotLoading(true);
-      const res = await fetch("/api/spot");
+      const res = await fetch(withNetworkParam("/api/spot"));
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data.assets)) {

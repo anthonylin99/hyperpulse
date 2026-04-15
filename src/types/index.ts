@@ -353,6 +353,27 @@ export interface FactorExecutionSummary {
   tradableCoverage: number;
 }
 
+export interface FactorDeploymentRecordLeg {
+  symbol: string;
+  side: "buy" | "sell";
+  phase: "rebalance-close" | "rebalance-open" | "delta";
+  targetSize: string;
+  executedQty: number | null;
+  avgPx: number | null;
+  status: "filled" | "resting" | "waiting" | "error" | "skipped";
+  error: string | null;
+}
+
+export interface FactorDeploymentRecord {
+  id: string;
+  factorId: string;
+  factorName: string;
+  timestamp: number;
+  mainnet: boolean;
+  address: string;
+  legs: FactorDeploymentRecordLeg[];
+}
+
 export interface FactorExecutionPlan {
   factorId: string;
   factorName: string;

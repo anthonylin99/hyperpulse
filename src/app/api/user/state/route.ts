@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import {
   enforceRateLimit,
   jsonError,
@@ -7,9 +6,7 @@ import {
   logServerError,
   validateAddress,
 } from "@/lib/security";
-
-const transport = new HttpTransport({ isTestnet: false });
-const info = new InfoClient({ transport });
+import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +23,7 @@ export async function GET(req: NextRequest) {
     return jsonError("A valid wallet address is required.", { status: 400 });
   }
 
+  const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
   try {
     const [perpState, spotState] = await Promise.all([
       info.clearinghouseState({ user: address as `0x${string}` }),

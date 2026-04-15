@@ -20,6 +20,7 @@ import {
   computeByDayOfWeek,
 } from "@/lib/analytics";
 import { generateInsights } from "@/lib/insights";
+import { withNetworkParam } from "@/lib/hyperliquid";
 import type {
   Fill,
   FundingEntry,
@@ -125,10 +126,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       );
       const [fillsRes, fundingRes] = await Promise.all([
         fetch(
-          `/api/user/fills?address=${address}&startTime=${fillsStartTime}&aggregateByTime=true`,
+          withNetworkParam(
+            `/api/user/fills?address=${address}&startTime=${fillsStartTime}&aggregateByTime=true`,
+          ),
         ),
         fetch(
-          `/api/user/funding?address=${address}&startTime=${fundingStartTime}`,
+          withNetworkParam(
+            `/api/user/funding?address=${address}&startTime=${fundingStartTime}`,
+          ),
         ),
       ]);
 
@@ -197,7 +202,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       let startBal = 1000; // fallback
       try {
         const ledgerRes = await fetch(
-          `/api/user/ledger?address=${address}&startTime=0`,
+          withNetworkParam(`/api/user/ledger?address=${address}&startTime=0`),
         );
         if (ledgerRes.ok) {
           const ledgerData = await ledgerRes.json();

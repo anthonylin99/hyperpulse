@@ -7,7 +7,9 @@ import {
   type BrowserWalletPreference,
 } from "@/context/WalletContext";
 import { useAppConfig } from "@/context/AppConfigContext";
-import { IS_TESTNET } from "@/lib/hyperliquid";
+import { isNetworkTestnet } from "@/lib/hyperliquid";
+import PrivyWalletPanel from "@/components/PrivyWalletPanel";
+import type { ConnectedWallet } from "@privy-io/react-auth";
 
 interface WalletModalProps {
   onClose: () => void;
@@ -15,7 +17,29 @@ interface WalletModalProps {
 
 export default function WalletModal({ onClose }: WalletModalProps) {
   const { tradingEnabled } = useAppConfig();
-  const { connectWithBrowserWallet, connectReadOnly, loading } = useWallet();
+  const { connectWithBrowserWallet, connectReadOnly, connectWithPrivyWallet, loading } = useWallet();
+  const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
+  const privyAllowEmbedded = process.env.NEXT_PUBLIC_PRIVY_ALLOW_EMBEDDED === "true";
+
+  const handlePrivyTrade = async (wallet: ConnectedWallet) => {
+    setError("");
+    try {
+      await connectWithPrivyWallet(wallet);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect wallet");
+    }
+  };
+
+  const handlePrivyAddress = async (addr: string) => {
+    setError("");
+    try {
+      await connectReadOnly(addr);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load wallet");
+    }
+  };
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
   const trimmedAddress = address.trim();
@@ -66,7 +90,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
             <Shield className="w-4 h-4 text-[#7dd4c4]" />
             <span className="text-sm font-medium">Wallet Access</span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
-              {IS_TESTNET ? "TESTNET" : "MAINNET"}
+              {isNetworkTestnet() ? "TESTNET" : "MAINNET"}
             </span>
           </div>
           <button
@@ -89,6 +113,20 @@ export default function WalletModal({ onClose }: WalletModalProps) {
               intentionally to minimize trust and keep the demo safe to share broadly.
             </p>
           </div>
+
+          {privyEnabled && privyAllowEmbedded && (
+            <div className="space-y-3 border border-zinc-800 rounded p-3 bg-zinc-950/50">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500">
+                Email / Privy
+              </div>
+              <PrivyWalletPanel
+                disabled={loading}
+                tradingEnabled={tradingEnabled}
+                onAddress={handlePrivyAddress}
+                onTradeWallet={handlePrivyTrade}
+              />
+            </div>
+          )}
 
           <div className="space-y-3 border border-zinc-800 rounded p-3 bg-zinc-950/50">
             <div>
@@ -161,7 +199,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-800">
           <p className="text-[10px] text-zinc-600 text-center">
-            {IS_TESTNET ? "Testnet only. " : ""}Read-only analytics never request your private
+            {isNetworkTestnet() ? "Testnet only. " : ""}Read-only analytics never request your private
             key or seed phrase.
           </p>
         </div>

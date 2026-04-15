@@ -10,14 +10,23 @@ import {
   buildDefaultFactorLegs,
   buildFactorExecutionOrders,
   buildFactorExecutionPlan,
+  type FactorExecutionOrderInstruction,
 } from "@/lib/factorExecution";
 import {
   deleteFactorTradePreset,
   listFactorTradePresets,
   saveFactorTradePreset,
 } from "@/lib/factorTradePresets";
-import { parseOrderStatuses } from "@/lib/order";
-import type { EditableFactorLeg, FactorTradePreset, LiveFactorState } from "@/types";
+import { executeOrdersSequentially, type SequentialLegResult } from "@/lib/order";
+import { saveDeployment } from "@/lib/factorDeployments";
+import { isNetworkTestnet } from "@/lib/hyperliquid";
+import type {
+  EditableFactorLeg,
+  FactorDeploymentRecord,
+  FactorDeploymentRecordLeg,
+  FactorTradePreset,
+  LiveFactorState,
+} from "@/types";
 
 interface FactorTradeDrawerProps {
   factor: LiveFactorState;
@@ -35,7 +44,7 @@ const SAFE_DEFAULT_MARGIN_USAGE_PCT = 0.1;
 
 export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawerProps) {
   const { assets } = useMarket();
-  const { exchangeClient, accountState, isReadOnly, refreshPortfolio } = useWallet();
+  const { exchangeClient, accountState, address, isReadOnly, refreshPortfolio } = useWallet();
 
   const [legs, setLegs] = useState<EditableFactorLeg[]>(() => buildDefaultFactorLegs(factor.snapshot));
   const [longGrossUsd, setLongGrossUsd] = useState(DEFAULT_LONG_GROSS);
@@ -46,6 +55,8 @@ export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawer
   const [presets, setPresets] = useState<FactorTradePreset[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [executionNotes, setExecutionNotes] = useState<string[]>([]);
+  const [lastReceipt, setLastReceipt] = useState<FactorDeploymentRecord | null>(null);
+  const [failedOrders, setFailedOrders] = useState<FactorExecutionOrderInstruction[]>([]);
   const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const defaultsInitializedRef = useRef(false);
@@ -181,17 +192,20 @@ export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawer
     toast.success("Preset deleted");
   };
 
-  const handleExecute = async () => {
-    if (!exchangeClient) return;
+  const runOrders = async (orders: FactorExecutionOrderInstruction[]) => {
+    if (!exchangeClient || orders.length === 0) return;
     setSubmitting(true);
     setExecutionNotes([]);
+
+    const toastId = toast.loading(`Deploying factor — leg 1/${orders.length}`);
+    const resultsByIndex: Record<number, SequentialLegResult<FactorExecutionOrderInstruction>> = {};
+
     try {
       const uniqueAssets = new Map<number, true>();
       for (const leg of plan.executableLegs) {
         if (leg.assetIndex == null) continue;
         uniqueAssets.set(leg.assetIndex, true);
       }
-
       for (const assetIndex of uniqueAssets.keys()) {
         await exchangeClient.updateLeverage({
           asset: assetIndex,
@@ -200,40 +214,98 @@ export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawer
         });
       }
 
-      const response = await exchangeClient.order({
-        orders: orderInstructions.map((order) => ({
-          a: order.assetIndex,
-          b: order.side === "buy",
-          p: order.price,
-          s: order.size,
-          r: order.reduceOnly,
-          t: { limit: { tif: "Ioc" } },
-        })),
-        grouping: "na",
+      const { executed, failed, stoppedAt } = await executeOrdersSequentially(
+        exchangeClient,
+        orders,
+        (index, result) => {
+          resultsByIndex[index] = result;
+          const current = index + 1;
+          toast.loading(
+            `Leg ${current}/${orders.length}: ${result.order.symbol} ${result.status}`,
+            { id: toastId },
+          );
+        },
+        { stopOnFailure: true },
+      );
+
+      const notes: string[] = [];
+      const receiptLegs: FactorDeploymentRecordLeg[] = [];
+      orders.forEach((order, index) => {
+        const res = resultsByIndex[index];
+        const prefix = `${order.symbol} (${order.phase}${order.reduceOnly ? ", reduce-only" : ""})`;
+        if (!res) {
+          notes.push(`${prefix}: skipped (stopped at earlier failure)`);
+          receiptLegs.push({
+            symbol: order.symbol,
+            side: order.side,
+            phase: order.phase,
+            targetSize: order.size,
+            executedQty: null,
+            avgPx: null,
+            status: "skipped",
+            error: null,
+          });
+          return;
+        }
+        notes.push(
+          res.status === "error"
+            ? `${prefix}: error — ${res.message ?? "unknown"}`
+            : res.status === "filled"
+              ? `${prefix}: filled @ ${res.avgPx?.toFixed(4) ?? "?"} × ${res.filledSz ?? "?"}`
+              : `${prefix}: ${res.status}`,
+        );
+        receiptLegs.push({
+          symbol: order.symbol,
+          side: order.side,
+          phase: order.phase,
+          targetSize: order.size,
+          executedQty: res.filledSz ?? null,
+          avgPx: res.avgPx ?? null,
+          status: res.status,
+          error: res.status === "error" ? res.message ?? "unknown" : null,
+        });
       });
 
-      const statuses = parseOrderStatuses(response);
-      const notes = orderInstructions.map((order, index) => {
-        const status = statuses[index];
-        const prefix = `${order.symbol} (${order.phase}${order.reduceOnly ? ", reduce-only" : ""})`;
-        if (!status) return `${prefix}: unknown response`;
-        if (status.kind === "error") return `${prefix}: ${status.message}`;
-        if (status.kind === "filled") return `${prefix}: filled`;
-        if (status.kind === "resting") return `${prefix}: resting`;
-        if (status.kind === "waiting") return `${prefix}: pending`;
-        return `${prefix}: unknown`;
-      });
       setExecutionNotes(notes);
+
+      if (address) {
+        const record: FactorDeploymentRecord = {
+          id: `${factor.snapshot.id}-${Date.now()}`,
+          factorId: factor.snapshot.id,
+          factorName: factor.snapshot.name,
+          timestamp: Date.now(),
+          mainnet: !isNetworkTestnet(),
+          address,
+          legs: receiptLegs,
+        };
+        saveDeployment(address, record);
+        setLastReceipt(record);
+      }
+
+      if (failed.length > 0) {
+        const failedOrdersList = failed.map((f) => f.order);
+        setFailedOrders(failedOrdersList);
+        toast.error(
+          `Stopped at leg ${(stoppedAt ?? 0) + 1}: ${failed[0]?.message ?? "order failed"}`,
+          { id: toastId },
+        );
+      } else {
+        setFailedOrders([]);
+        toast.success(`Deployed ${executed.length} legs`, { id: toastId });
+      }
+
       await refreshPortfolio();
-      toast.success(`Submitted ${orderInstructions.length} factor orders`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Factor deployment failed";
-      toast.error(message);
+      toast.error(message, { id: toastId });
       setExecutionNotes([message]);
     } finally {
       setSubmitting(false);
     }
   };
+
+  const handleExecute = () => runOrders(orderInstructions);
+  const handleRetryFailed = () => runOrders(failedOrders);
 
   return (
     <>
@@ -448,9 +520,20 @@ export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawer
             </div>
           </section>
 
-          {(plan.skippedLegs.length > 0 || executionNotes.length > 0) && (
+          {(plan.skippedLegs.length > 0 || executionNotes.length > 0 || lastReceipt) && (
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Notes</div>
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Notes</div>
+                {failedOrders.length > 0 && (
+                  <button
+                    onClick={handleRetryFailed}
+                    disabled={submitting}
+                    className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Retry failed legs ({failedOrders.length})
+                  </button>
+                )}
+              </div>
               <div className="mt-3 space-y-2 text-sm text-zinc-400">
                 {plan.skippedLegs.slice(0, 8).map((leg) => (
                   <div key={`skip-${leg.symbol}`}>{leg.symbol}: {leg.statusReason}</div>
@@ -459,6 +542,24 @@ export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawer
                   <div key={`exec-${index}`}>{note}</div>
                 ))}
               </div>
+              {lastReceipt && (
+                <details className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-xs">
+                  <summary className="cursor-pointer text-zinc-400">
+                    Deployment receipt · {new Date(lastReceipt.timestamp).toLocaleString()} · {lastReceipt.mainnet ? "mainnet" : "testnet"}
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {lastReceipt.legs.map((leg, index) => (
+                      <div key={`receipt-${index}`} className="font-mono text-[11px] text-zinc-400">
+                        {leg.status === "filled" ? "✓" : leg.status === "error" ? "✗" : "·"}{" "}
+                        {leg.symbol} {leg.side} {leg.targetSize}
+                        {leg.executedQty != null && ` → ${leg.executedQty}`}
+                        {leg.avgPx != null && ` @ ${leg.avgPx.toFixed(4)}`}
+                        {leg.error && <span className="text-red-400"> — {leg.error}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
             </section>
           )}
 

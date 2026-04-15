@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import {
   enforceRateLimit,
   enforceTimeRange,
@@ -10,9 +9,7 @@ import {
   parseTimestamp,
   validateCoin,
 } from "@/lib/security";
-
-const transport = new HttpTransport({ isTestnet: false });
-const info = new InfoClient({ transport });
+import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +53,7 @@ export async function GET(req: NextRequest) {
     return jsonError("Requested candle range is not allowed.", { status: 400 });
   }
 
+  const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
   try {
     const candles = await info.candleSnapshot({
       coin,

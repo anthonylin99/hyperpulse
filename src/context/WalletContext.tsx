@@ -13,7 +13,7 @@ import { custom, createWalletClient, type Address } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HttpTransport, InfoClient, ExchangeClient } from "@nktkas/hyperliquid";
 import { POLL_INTERVAL_PORTFOLIO } from "@/lib/constants";
-import { IS_TESTNET } from "@/lib/hyperliquid";
+import { isNetworkTestnet, onNetworkChange } from "@/lib/hyperliquid";
 import { useAppConfig } from "@/context/AppConfigContext";
 import type { AccountState, Position } from "@/types";
 import toast from "react-hot-toast";
@@ -160,7 +160,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const getInfo = useCallback(() => {
     if (!infoRef.current) {
-      const transport = new HttpTransport({ isTestnet: IS_TESTNET });
+      const transport = new HttpTransport({ isTestnet: isNetworkTestnet() });
       infoRef.current = new InfoClient({ transport });
     }
     return infoRef.current;
@@ -233,7 +233,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      const transport = new HttpTransport({ isTestnet: IS_TESTNET });
+      const transport = new HttpTransport({ isTestnet: isNetworkTestnet() });
       const walletClient = createWalletClient({
         transport: custom(provider),
       });
@@ -399,6 +399,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       await fetchPortfolio(address);
     }
   }, [address, fetchPortfolio]);
+
+  useEffect(() => {
+    const unsubscribe = onNetworkChange(() => {
+      infoRef.current = null;
+      setExchangeClient(null);
+      setAccountState(null);
+      setAddress(null);
+      setApiAddress(null);
+      setIsReadOnly(false);
+      sessionStorage.removeItem(SESSION_MAIN_ADDR);
+      toast("Network changed — reconnect required", { icon: "⚡" });
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const storedAddr = sessionStorage.getItem(SESSION_MAIN_ADDR);
