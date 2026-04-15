@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
 
 type PublicAppConfig = {
   tradingEnabled: boolean;
@@ -21,7 +22,8 @@ type AppConfigContextValue = PublicAppConfig & {
 };
 
 const fallbackTradingEnabled =
-  process.env.NEXT_PUBLIC_ENABLE_TRADING === "true";
+  process.env.NEXT_PUBLIC_ENABLE_TRADING === "true" ||
+  ENABLE_TRADING_DEFAULT;
 
 const fallbackConfig: PublicAppConfig = {
   tradingEnabled: fallbackTradingEnabled,
