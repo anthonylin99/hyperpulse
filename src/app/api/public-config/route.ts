@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const tradingEnabled = process.env.NEXT_PUBLIC_ENABLE_TRADING === "true";
+  const tradingEnabled =
+    process.env.ENABLE_TRADING === "true" ||
+    process.env.NEXT_PUBLIC_ENABLE_TRADING === "true";
 
   return NextResponse.json(
     {
