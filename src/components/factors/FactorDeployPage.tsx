@@ -7,6 +7,7 @@ import { useWallet } from "@/context/WalletContext";
 import { cn, formatPct } from "@/lib/format";
 import type { FactorPerformanceWindow, LiveFactorState } from "@/types";
 import FactorTradeDrawer from "@/components/factors/FactorTradeDrawer";
+import WalletModal from "@/components/WalletModal";
 
 function spreadTone(value: number | null) {
   if (value == null) return "text-zinc-500";
@@ -18,6 +19,7 @@ export default function FactorDeployPage() {
   const { factors, loading, error } = useFactors();
   const { isConnected, isReadOnly } = useWallet();
   const [tradeFactor, setTradeFactor] = useState<LiveFactorState | null>(null);
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   const tradingModeValue = !configReady
     ? "Checking runtime config…"
@@ -35,7 +37,16 @@ export default function FactorDeployPage() {
       : isConnected
         ? "good"
         : "neutral";
-  const deployDisabled = !configReady || !tradingEnabled || !isConnected || isReadOnly;
+  const needsConnect = configReady && tradingEnabled && !isConnected;
+  const deployDisabled =
+    !configReady || !tradingEnabled || isReadOnly || (!needsConnect && !isConnected);
+  const handleDeployClick = (factor: LiveFactorState) => {
+    if (needsConnect) {
+      setWalletModalOpen(true);
+      return;
+    }
+    setTradeFactor(factor);
+  };
   const deployLabel = !configReady
     ? "Loading…"
     : !tradingEnabled
@@ -111,9 +122,9 @@ export default function FactorDeployPage() {
                     <p className="mt-2 text-sm leading-6 text-zinc-400">{factor.snapshot.description}</p>
                   </div>
                   <button
-                    onClick={() => setTradeFactor(factor)}
+                    onClick={() => handleDeployClick(factor)}
                     disabled={deployDisabled}
-                    className="shrink-0 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="shrink-0 cursor-pointer rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {deployLabel}
                   </button>
@@ -164,6 +175,9 @@ export default function FactorDeployPage() {
 
       {tradeFactor && (
         <FactorTradeDrawer factor={tradeFactor} onClose={() => setTradeFactor(null)} />
+      )}
+      {walletModalOpen && (
+        <WalletModal onClose={() => setWalletModalOpen(false)} />
       )}
     </div>
   );
