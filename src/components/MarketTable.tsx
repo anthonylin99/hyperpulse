@@ -2,9 +2,9 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Search } from "lucide-react";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
-import { ENABLE_TRADING } from "@/lib/appConfig";
 import AssetRow from "./AssetRow";
 import AssetDetail from "./AssetDetail";
 import type { MarketAsset, SpotAsset, SpotCategory } from "@/types";
@@ -84,9 +84,10 @@ export default function MarketTable({
   onSelectAsset,
   onTrade,
 }: MarketTableProps) {
+  const { tradingEnabled } = useAppConfig();
   const { assets, loading, fundingHistories } = useMarket();
   const { isConnected } = useWallet();
-  const tradingEnabled = ENABLE_TRADING && isConnected;
+  const tradingActive = tradingEnabled && isConnected;
 
   const [mode, setMode] = useState<Mode>("perps");
   const [search, setSearch] = useState("");
@@ -343,7 +344,7 @@ export default function MarketTable({
                     isExpanded={selectedAsset === asset.coin}
                     onSelect={() => onSelectAsset(selectedAsset === asset.coin ? null : asset.coin)}
                     onTrade={(direction) => onTrade(asset.coin, direction)}
-                    tradingEnabled={tradingEnabled}
+                    tradingEnabled={tradingActive}
                     fundingHistory={fundingHistories[asset.coin]}
                     detailNode={
                       selectedAsset === asset.coin ? (

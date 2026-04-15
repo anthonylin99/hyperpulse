@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useFactors } from "@/context/FactorContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatPct } from "@/lib/format";
-import { ENABLE_TRADING } from "@/lib/appConfig";
 import type { FactorPerformanceWindow, LiveFactorState } from "@/types";
 import FactorTradeDrawer from "@/components/factors/FactorTradeDrawer";
 
@@ -14,6 +14,7 @@ function spreadTone(value: number | null) {
 }
 
 export default function FactorDeployPage() {
+  const { tradingEnabled } = useAppConfig();
   const { factors, loading, error } = useFactors();
   const { isConnected, isReadOnly } = useWallet();
   const [tradeFactor, setTradeFactor] = useState<LiveFactorState | null>(null);
@@ -43,8 +44,8 @@ export default function FactorDeployPage() {
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           <InfoPill
             label="Trading Mode"
-            value={!ENABLE_TRADING ? "Disabled in prod config" : !isConnected ? "Connect wallet" : isReadOnly ? "Read-only only" : "Ready"}
-            tone={!ENABLE_TRADING || isReadOnly ? "warn" : isConnected ? "good" : "neutral"}
+            value={!tradingEnabled ? "Disabled in runtime config" : !isConnected ? "Connect wallet" : isReadOnly ? "Read-only only" : "Ready"}
+            tone={!tradingEnabled || isReadOnly ? "warn" : isConnected ? "good" : "neutral"}
           />
           <InfoPill label="Workflow" value="Review then deploy" />
           <InfoPill label="Guardrails" value="Margin checks, typed confirm, skipped tiny legs" />
@@ -84,10 +85,10 @@ export default function FactorDeployPage() {
                   </div>
                   <button
                     onClick={() => setTradeFactor(factor)}
-                    disabled={!ENABLE_TRADING || !isConnected || isReadOnly}
+                    disabled={!tradingEnabled || !isConnected || isReadOnly}
                     className="shrink-0 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {!ENABLE_TRADING
+                    {!tradingEnabled
                       ? "Trading Off"
                       : !isConnected
                         ? "Connect Wallet"

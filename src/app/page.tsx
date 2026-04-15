@@ -28,10 +28,10 @@ import FactorDeployPage from "@/components/factors/FactorDeployPage";
 import FactorLeaderStrip from "@/components/factors/FactorLeaderStrip";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useWallet } from "@/context/WalletContext";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useMarket } from "@/context/MarketContext";
-import { ENABLE_TRADING } from "@/lib/appConfig";
 import { cn, formatUSD } from "@/lib/format";
 
 type Tab = "home" | "portfolio" | "markets" | "factors" | "deploy" | "docs";
@@ -46,6 +46,7 @@ const APP_TABS: Array<{ key: Tab; label: string }> = [
 ];
 
 export default function Home() {
+  const { tradingEnabled } = useAppConfig();
   const { isConnected, accountState } = useWallet();
   const { trades, loading: portfolioLoading, error: portfolioError } = usePortfolio();
   const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
@@ -191,13 +192,13 @@ export default function Home() {
                 selectedAsset={selectedAsset}
                 onSelectAsset={setSelectedAsset}
                 onTrade={(coin, direction) =>
-                  ENABLE_TRADING ? setTradeDrawer({ coin, direction }) : null
+                  tradingEnabled ? setTradeDrawer({ coin, direction }) : null
                 }
               />
             </section>
           </div>
 
-          {tradeDrawer && ENABLE_TRADING && (
+          {tradeDrawer && tradingEnabled && (
             <TradeDrawer
               coin={tradeDrawer.coin}
               direction={tradeDrawer.direction}

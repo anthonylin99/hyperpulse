@@ -14,7 +14,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { HttpTransport, InfoClient, ExchangeClient } from "@nktkas/hyperliquid";
 import { POLL_INTERVAL_PORTFOLIO } from "@/lib/constants";
 import { IS_TESTNET } from "@/lib/hyperliquid";
-import { ENABLE_TRADING } from "@/lib/appConfig";
+import { useAppConfig } from "@/context/AppConfigContext";
 import type { AccountState, Position } from "@/types";
 import toast from "react-hot-toast";
 
@@ -146,6 +146,7 @@ function parsePositions(
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
+  const { tradingEnabled } = useAppConfig();
   const [address, setAddress] = useState<string | null>(null);
   const [apiAddress, setApiAddress] = useState<string | null>(null);
   const [isReadOnly, setIsReadOnly] = useState(false);
@@ -226,7 +227,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       explicitAddress?: string,
       walletLabel = "wallet"
     ) => {
-      if (!ENABLE_TRADING) {
+      if (!tradingEnabled) {
         throw new Error(
           "Trading connections are disabled in the public deployment. Use read-only wallet analytics instead."
         );
@@ -283,7 +284,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       toast.success(`Trading enabled: ${mainAddr.slice(0, 6)}...${mainAddr.slice(-4)}`);
     },
-    [fetchPortfolio, getInfo]
+    [fetchPortfolio, getInfo, tradingEnabled]
   );
 
   const connectWithBrowserWallet = useCallback(

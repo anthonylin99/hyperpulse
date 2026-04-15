@@ -6,7 +6,7 @@ import {
   useWallet,
   type BrowserWalletPreference,
 } from "@/context/WalletContext";
-import { ENABLE_TRADING } from "@/lib/appConfig";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { IS_TESTNET } from "@/lib/hyperliquid";
 
 interface WalletModalProps {
@@ -14,6 +14,7 @@ interface WalletModalProps {
 }
 
 export default function WalletModal({ onClose }: WalletModalProps) {
+  const { tradingEnabled } = useAppConfig();
   const { connectWithBrowserWallet, connectReadOnly, loading } = useWallet();
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
@@ -113,7 +114,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
             </button>
           </div>
 
-          {ENABLE_TRADING && (
+          {tradingEnabled && (
             <>
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-zinc-800" />

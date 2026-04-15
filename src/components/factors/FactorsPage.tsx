@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useWallet } from "@/context/WalletContext";
 import { useFactors } from "@/context/FactorContext";
 import { formatPct, formatUSD } from "@/lib/format";
 import { cn } from "@/lib/format";
-import { ENABLE_TRADING } from "@/lib/appConfig";
 import type {
   FactorAiBrief,
   FactorConstituentPerformance,
@@ -53,6 +53,7 @@ function confidenceClasses(confidence: LiveFactorState["confidence"]) {
 }
 
 export default function FactorsPage() {
+  const { tradingEnabled } = useAppConfig();
   const { factors, loading, error, sourceMode, lastUpdated } = useFactors();
   const { isConnected, isReadOnly } = useWallet();
   const [brief, setBrief] = useState<FactorAiBrief | null>(null);
@@ -409,7 +410,7 @@ export default function FactorsPage() {
                       </span>
 	                    </div>
 	                    <p className="mt-2 text-sm leading-6 text-zinc-400">{factor.snapshot.description}</p>
-                      {ENABLE_TRADING && (
+                      {tradingEnabled && (
                         <div className="mt-4">
                           <button
                             onClick={() => setTradeFactor(factor)}

@@ -2,20 +2,22 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { usePrivy, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useWallet } from "@/context/WalletContext";
 import { getSavedWallets, removeWallet, clearSavedWallets, type SavedWallet } from "@/lib/savedWallets";
-import { ENABLE_TRADING } from "@/lib/appConfig";
 import { truncateAddress, cn } from "@/lib/format";
 
 function PrivyLoginPanel({
   onAddress,
   onConnectExternal,
   onTradeWallet,
+  tradingEnabled,
   disabled,
 }: {
   onAddress: (address: string) => void;
   onConnectExternal: () => void;
   onTradeWallet: (wallet: ConnectedWallet) => void;
+  tradingEnabled: boolean;
   disabled: boolean;
 }) {
   const { ready, authenticated, login, user, connectWallet } = usePrivy();
@@ -97,7 +99,7 @@ function PrivyLoginPanel({
                   >
                     View Analytics
                   </button>
-                  {ENABLE_TRADING && (
+                  {tradingEnabled && (
                     <button
                       onClick={() => onTradeWallet(wallet)}
                       className="flex-1 rounded-lg bg-teal-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-teal-500"
@@ -145,7 +147,7 @@ function PrivyLoginPanel({
               Use
             </button>
           </div>
-          {ENABLE_TRADING && (
+          {tradingEnabled && (
             <button
               onClick={onConnectExternal}
               className="w-full py-2.5 px-4 rounded-lg font-medium text-xs transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
@@ -199,6 +201,7 @@ function PrivyLoginPanel({
 }
 
 export default function ConnectPrompt() {
+  const { tradingEnabled } = useAppConfig();
   const { connectReadOnly, connectWithBrowserWallet, connectWithPrivyWallet, loading } = useWallet();
   const [addressInput, setAddressInput] = useState("");
   const [mode, setMode] = useState<"main" | "paste">("main");
@@ -328,6 +331,7 @@ export default function ConnectPrompt() {
                 disabled={loading}
                 onConnectExternal={handleWalletConnect}
                 onTradeWallet={handlePrivyTradeConnect}
+                tradingEnabled={tradingEnabled}
                 onAddress={async (addr) => {
                   try {
                     await connectReadOnly(addr);
@@ -350,7 +354,7 @@ export default function ConnectPrompt() {
               </div>
             )}
 
-            {ENABLE_TRADING && (
+            {tradingEnabled && (
               <button
                 onClick={handleWalletConnect}
                 disabled={loading}
@@ -364,7 +368,7 @@ export default function ConnectPrompt() {
               </button>
             )}
 
-            {ENABLE_TRADING && (
+            {tradingEnabled && (
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-zinc-800" />
                 <span className="text-xs text-zinc-500 uppercase tracking-wider">or</span>
@@ -376,12 +380,12 @@ export default function ConnectPrompt() {
               onClick={() => setMode("paste")}
               className={cn(
                 "w-full py-3 px-4 rounded-lg font-medium text-sm transition-all",
-                ENABLE_TRADING
+                tradingEnabled
                   ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
                   : "bg-teal-600 hover:bg-teal-500 text-white",
               )}
             >
-              {ENABLE_TRADING ? "View Any Wallet Address" : "View Wallet Address"}
+              {tradingEnabled ? "View Any Wallet Address" : "View Wallet Address"}
             </button>
           </div>
         ) : (
