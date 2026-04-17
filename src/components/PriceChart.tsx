@@ -9,6 +9,7 @@ import {
   type ISeriesApi,
   ColorType,
 } from "lightweight-charts";
+import { withNetworkParam } from "@/lib/hyperliquid";
 
 interface PriceChartProps {
   coin: string;
@@ -117,7 +118,9 @@ export default function PriceChart({ coin }: PriceChartProps) {
         const startTime = now - lookbackMs;
 
         const res = await fetch(
-          `/api/market/candles?coin=${coin}&interval=${interval}&startTime=${startTime}&endTime=${now}`
+          withNetworkParam(
+            `/api/market/candles?coin=${coin}&interval=${interval}&startTime=${startTime}&endTime=${now}`,
+          )
         );
         if (!res.ok) {
           throw new Error(`Failed to fetch ${interval} candles`);

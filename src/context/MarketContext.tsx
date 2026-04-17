@@ -341,7 +341,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               const newMid = mids[asset.coin];
               if (newMid) {
                 const newMidPx = parseFloat(newMid);
-                return { ...asset, midPx: newMidPx, markPx: newMidPx };
+                return { ...asset, midPx: newMidPx };
               }
               return asset;
             })

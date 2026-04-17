@@ -6,6 +6,7 @@ import { useFactors } from "@/context/FactorContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatPct } from "@/lib/format";
 import type { FactorPerformanceWindow, LiveFactorState } from "@/types";
+import FactorDeploymentHistory from "@/components/factors/FactorDeploymentHistory";
 import FactorTradeDrawer from "@/components/factors/FactorTradeDrawer";
 import WalletModal from "@/components/WalletModal";
 
@@ -17,9 +18,10 @@ function spreadTone(value: number | null) {
 export default function FactorDeployPage() {
   const { tradingEnabled, configReady } = useAppConfig();
   const { factors, loading, error } = useFactors();
-  const { isConnected, isReadOnly } = useWallet();
+  const { address, isConnected, isReadOnly } = useWallet();
   const [tradeFactor, setTradeFactor] = useState<LiveFactorState | null>(null);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const tradingModeValue = !configReady
     ? "Checking runtime config…"
@@ -95,6 +97,11 @@ export default function FactorDeployPage() {
           {error}
         </div>
       )}
+
+      <FactorDeploymentHistory
+        address={address}
+        refreshKey={historyRefreshKey}
+      />
 
       {loading && factors.length === 0 ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -174,7 +181,11 @@ export default function FactorDeployPage() {
       )}
 
       {tradeFactor && (
-        <FactorTradeDrawer factor={tradeFactor} onClose={() => setTradeFactor(null)} />
+        <FactorTradeDrawer
+          factor={tradeFactor}
+          onClose={() => setTradeFactor(null)}
+          onDeploymentRecorded={() => setHistoryRefreshKey((current) => current + 1)}
+        />
       )}
       {walletModalOpen && (
         <WalletModal onClose={() => setWalletModalOpen(false)} />

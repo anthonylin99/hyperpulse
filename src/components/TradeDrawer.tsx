@@ -6,6 +6,12 @@ import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import { formatUSD } from "@/lib/format";
 import { assertOrderSucceeded } from "@/lib/order";
+import { formatOrderSize } from "@/lib/orderSizing";
+import {
+  getStoredNetwork,
+  getSubscriptionClient,
+  withNetworkParam,
+} from "@/lib/hyperliquid";
 import toast from "react-hot-toast";
 
 interface TradeDrawerProps {
@@ -16,6 +22,23 @@ interface TradeDrawerProps {
 
 const DEFAULT_LEVERAGE = 10;
 const TP_SL_SUPPORTED = true;
+const ORDERBOOK_STALE_MS = 6_000;
+
+interface DepthLevel {
+  px: number;
+  sz: number;
+  n: number;
+}
+
+interface DepthSnapshot {
+  bestBid: number | null;
+  bestAsk: number | null;
+  spreadBps: number | null;
+  bids: DepthLevel[];
+  asks: DepthLevel[];
+  source: "ws" | "http";
+  updatedAt: number | null;
+}
 
 export default function TradeDrawer({
   coin,
@@ -49,11 +72,112 @@ export default function TradeDrawer({
   const [slType, setSlType] = useState<"market" | "limit">("market");
   const [slTrigger, setSlTrigger] = useState("");
   const [slLimit, setSlLimit] = useState("");
+  const [depth, setDepth] = useState<DepthSnapshot | null>(null);
+  const [depthError, setDepthError] = useState<string | null>(null);
+  const [depthNow, setDepthNow] = useState(Date.now());
 
   useEffect(() => {
     const maxLev = asset?.maxLeverage ?? DEFAULT_LEVERAGE;
     setLeverage(Math.min(DEFAULT_LEVERAGE, maxLev));
   }, [asset?.maxLeverage]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setDepthNow(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (!asset) {
+      setDepth(null);
+      setDepthError(null);
+      return;
+    }
+
+    let mounted = true;
+    let depthSub: { unsubscribe: () => Promise<void> } | null = null;
+
+    const applyDepth = (
+      next: Omit<DepthSnapshot, "source" | "updatedAt">,
+      source: DepthSnapshot["source"],
+      updatedAt: number,
+    ) => {
+      if (!mounted) return;
+      setDepth({
+        ...next,
+        source,
+        updatedAt,
+      });
+      setDepthError(null);
+    };
+
+    const fetchSnapshot = async () => {
+      try {
+        const res = await fetch(withNetworkParam(`/api/market/orderbook?coin=${coin}`));
+        if (!res.ok) throw new Error("Unable to fetch order book");
+        const data = await res.json();
+        applyDepth(
+          {
+            bestBid: data.bestBid ?? null,
+            bestAsk: data.bestAsk ?? null,
+            spreadBps: data.spreadBps ?? null,
+            bids: Array.isArray(data.bids) ? data.bids : [],
+            asks: Array.isArray(data.asks) ? data.asks : [],
+          },
+          "http",
+          Number(data.time ?? Date.now()),
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setDepthError(error instanceof Error ? error.message : "Unable to fetch order book");
+      }
+    };
+
+    const initDepthStream = async () => {
+      try {
+        const sub = getSubscriptionClient(getStoredNetwork());
+        depthSub = await sub.l2Book({ coin }, (event) => {
+          const bids = event.levels[0].slice(0, 8).map((level) => ({
+            px: Number(level.px),
+            sz: Number(level.sz),
+            n: level.n,
+          }));
+          const asks = event.levels[1].slice(0, 8).map((level) => ({
+            px: Number(level.px),
+            sz: Number(level.sz),
+            n: level.n,
+          }));
+          const bestBid = bids[0]?.px ?? null;
+          const bestAsk = asks[0]?.px ?? null;
+          const spreadBps =
+            bestBid != null && bestAsk != null
+              ? ((bestAsk - bestBid) / ((bestAsk + bestBid) / 2)) * 10_000
+              : null;
+
+          applyDepth(
+            {
+              bestBid,
+              bestAsk,
+              spreadBps,
+              bids,
+              asks,
+            },
+            "ws",
+            Number(event.time ?? Date.now()),
+          );
+        });
+      } catch {
+        // Keep HTTP snapshot as fallback.
+      }
+    };
+
+    void fetchSnapshot();
+    void initDepthStream();
+
+    return () => {
+      mounted = false;
+      if (depthSub) void depthSub.unsubscribe();
+    };
+  }, [asset, coin]);
 
   const computed = useMemo(() => {
     const usd = parseFloat(sizeUSD) || 0;
@@ -78,6 +202,16 @@ export default function TradeDrawer({
   const invalidSl =
     slEnabled &&
     (!slTrigger || (slType === "limit" && !slLimit));
+
+  const depthAgeMs = depth?.updatedAt ? Math.max(0, depthNow - depth.updatedAt) : null;
+  const depthIsStale = depthAgeMs != null && depthAgeMs > ORDERBOOK_STALE_MS;
+  const depthStatusLabel = !depth
+    ? "Connecting..."
+    : depthIsStale
+      ? "Stale"
+      : depth.source === "ws"
+        ? "Live depth"
+        : "Snapshot";
 
   const canSubmit =
     isConnected &&
@@ -111,7 +245,11 @@ export default function TradeDrawer({
           : (markPx * slippage).toFixed(priceDecimals);
 
       const sizeCoin = computed.positionSize;
-      const sizeStr = sizeCoin.toPrecision(6);
+      const sizeStr = formatOrderSize(sizeCoin, asset.szDecimals);
+      if (Number(sizeStr) <= 0) {
+        toast.error("Order rounds to zero at this asset's size precision");
+        return;
+      }
 
       const orderResp = await exchangeClient.order({
         orders: [
@@ -446,6 +584,86 @@ export default function TradeDrawer({
               )}
             </div>
           )}
+
+          <div className="space-y-2 border-t border-zinc-800 pt-2.5">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500">
+                Order Book
+              </div>
+              <div
+                className={`text-[10px] font-mono ${
+                  !depth
+                    ? "text-zinc-500"
+                    : depthIsStale
+                      ? "text-amber-300"
+                      : depth.source === "ws"
+                        ? "text-emerald-300"
+                        : "text-zinc-400"
+                }`}
+              >
+                {depthStatusLabel}
+                {depthAgeMs != null ? ` · ${Math.round(depthAgeMs / 1000)}s ago` : ""}
+              </div>
+            </div>
+
+            {depthError ? (
+              <div className="rounded border border-amber-500/20 bg-amber-500/10 px-2.5 py-2 text-[10px] text-amber-200">
+                {depthError}
+              </div>
+            ) : depth ? (
+              <>
+                <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
+                  <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-2">
+                    <div className="text-zinc-500">Best Bid</div>
+                    <div className="mt-1 text-emerald-300">
+                      {depth.bestBid == null ? "—" : formatUSD(depth.bestBid, priceDecimals)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-2">
+                    <div className="text-zinc-500">Best Ask</div>
+                    <div className="mt-1 text-red-300">
+                      {depth.bestAsk == null ? "—" : formatUSD(depth.bestAsk, priceDecimals)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-zinc-800 bg-zinc-950 px-2 py-2">
+                    <div className="text-zinc-500">Spread</div>
+                    <div className="mt-1 text-zinc-200">
+                      {depth.spreadBps == null ? "—" : `${depth.spreadBps.toFixed(2)} bps`}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                  <div className="rounded border border-zinc-800 bg-zinc-950/70">
+                    <div className="border-b border-zinc-800 px-2 py-1 text-emerald-300">Bids</div>
+                    <div className="divide-y divide-zinc-800">
+                      {depth.bids.slice(0, 4).map((level, index) => (
+                        <div key={`bid-${index}`} className="flex items-center justify-between px-2 py-1.5">
+                          <span className="text-zinc-300">{formatUSD(level.px, priceDecimals)}</span>
+                          <span className="text-zinc-500">{level.sz}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded border border-zinc-800 bg-zinc-950/70">
+                    <div className="border-b border-zinc-800 px-2 py-1 text-red-300">Asks</div>
+                    <div className="divide-y divide-zinc-800">
+                      {depth.asks.slice(0, 4).map((level, index) => (
+                        <div key={`ask-${index}`} className="flex items-center justify-between px-2 py-1.5">
+                          <span className="text-zinc-300">{formatUSD(level.px, priceDecimals)}</span>
+                          <span className="text-zinc-500">{level.sz}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="rounded border border-zinc-800 bg-zinc-950 px-2.5 py-2 text-[10px] text-zinc-500">
+                Waiting for depth snapshot...
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex-shrink-0 px-3 py-3 border-t border-zinc-800 space-y-2">

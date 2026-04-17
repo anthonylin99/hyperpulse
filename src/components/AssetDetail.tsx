@@ -14,6 +14,7 @@ import {
 import type { MarketAsset } from "@/types";
 import { formatUSD, formatPct, formatFundingRate, formatFundingAPR, formatCompact } from "@/lib/format";
 import { getFundingRegime } from "@/lib/fundingRegime";
+import { withNetworkParam } from "@/lib/hyperliquid";
 import PriceChart from "./PriceChart";
 
 interface AssetDetailProps {
@@ -37,6 +38,7 @@ export default function AssetDetail({
   const [extendedFunding, setExtendedFunding] = useState<{ time: number; rate: number }[] | null>(null);
   const [loadingFunding, setLoadingFunding] = useState(false);
   const [tab, setTab] = useState<"price" | "funding">("price");
+  const [fundingView, setFundingView] = useState<"apr" | "hourly">("apr");
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const priceColor =
@@ -56,7 +58,9 @@ export default function AssetDetail({
       const now = Date.now();
       const startTime = now - days * 24 * 60 * 60 * 1000;
       const res = await fetch(
-        `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`
+        withNetworkParam(
+          `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`,
+        )
       );
       if (!res.ok) return;
       const data = await res.json();
@@ -78,9 +82,10 @@ export default function AssetDetail({
   }, [fundingRange, fetchExtendedFunding]);
 
   const activeFunding = fundingRange === 7 ? fundingHistory : extendedFunding;
-  const aprData = activeFunding?.map((f) => ({
+  const chartData = activeFunding?.map((f) => ({
     time: f.time,
     apr: f.rate * 8760 * 100,
+    hourlyPct: f.rate * 100,
   }));
   const fundingRegime = getFundingRegime(
     asset.fundingRate,
@@ -178,7 +183,7 @@ export default function AssetDetail({
               )}
             </div>
 
-            {aprData && aprData.length > 0 ? (
+            {chartData && chartData.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-3 text-[11px] font-mono">
                   <span className={regimeColor}>{fundingRegime.label}</span>
@@ -193,18 +198,42 @@ export default function AssetDetail({
                     </span>
                   )}
                 </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setFundingView("apr")}
+                    className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
+                      fundingView === "apr"
+                        ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
+                        : "text-zinc-600 hover:text-zinc-400"
+                    }`}
+                  >
+                    APR
+                  </button>
+                  <button
+                    onClick={() => setFundingView("hourly")}
+                    className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
+                      fundingView === "hourly"
+                        ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
+                        : "text-zinc-600 hover:text-zinc-400"
+                    }`}
+                  >
+                    Hourly %
+                  </button>
+                </div>
                 <div className="text-[10px] text-zinc-600">
-                  Funding chart is annualized APR (hourly rate x 8760).
+                  {fundingView === "apr"
+                    ? "Funding chart is annualized APR (hourly rate x 8760)."
+                    : "Hourly % shows the raw per-period funding rate without annualization."}
                 </div>
                 <div className="h-[200px]">
                   <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={aprData}
+                    data={chartData}
                     margin={{ top: 4, right: 10, left: 10, bottom: 0 }}
                   >
                     <Line
                       type="monotone"
-                      dataKey="apr"
+                      dataKey={fundingView === "apr" ? "apr" : "hourlyPct"}
                       stroke="#7dd4c4"
                       strokeWidth={1.5}
                       dot={false}
@@ -246,7 +275,9 @@ export default function AssetDetail({
                       }
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       formatter={(value: any) => [
-                        `${Number(value).toFixed(1)}% APR`,
+                        fundingView === "apr"
+                          ? `${Number(value).toFixed(1)}% APR`
+                          : `${Number(value).toFixed(4)}% hourly`,
                         "Funding",
                       ]}
                     />

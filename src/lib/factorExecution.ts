@@ -6,6 +6,7 @@ import type {
   MarketAsset,
   Position,
 } from "@/types";
+import { formatOrderSize } from "@/lib/orderSizing";
 
 export interface FactorExecutionOrderInstruction {
   symbol: string;
@@ -248,7 +249,7 @@ export function buildFactorExecutionOrders(
         symbol: leg.symbol,
         assetIndex: leg.assetIndex,
         side: leg.currentQty > 0 ? "sell" : "buy",
-        size: Math.abs(leg.currentQty).toFixed(leg.sizeDecimals),
+        size: formatOrderSize(leg.currentQty, leg.sizeDecimals),
         price: formatOrderPrice(
           leg.markPx ?? 0,
           leg.sizeDecimals,
@@ -263,7 +264,7 @@ export function buildFactorExecutionOrders(
         symbol: leg.symbol,
         assetIndex: leg.assetIndex,
         side: leg.targetQty > 0 ? "buy" : "sell",
-        size: Math.abs(leg.targetQty).toFixed(leg.sizeDecimals),
+        size: formatOrderSize(leg.targetQty, leg.sizeDecimals),
         price: formatOrderPrice(
           leg.markPx ?? 0,
           leg.sizeDecimals,
@@ -285,7 +286,7 @@ export function buildFactorExecutionOrders(
       symbol: leg.symbol,
       assetIndex: leg.assetIndex,
       side: leg.deltaQty > 0 ? "buy" : "sell",
-      size: Math.abs(leg.deltaQty).toFixed(leg.sizeDecimals),
+      size: formatOrderSize(leg.deltaQty, leg.sizeDecimals),
       price: leg.orderPrice,
       reduceOnly: isReduceOnly,
       phase: "delta",

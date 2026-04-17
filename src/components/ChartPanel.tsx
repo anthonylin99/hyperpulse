@@ -14,7 +14,7 @@ import {
   LineChart,
 } from "recharts";
 import { useMarket } from "@/context/MarketContext";
-import { getInfoClient } from "@/lib/hyperliquid";
+import { getInfoClient, getStoredNetwork } from "@/lib/hyperliquid";
 import { formatUSD, formatPct, formatFundingAPR } from "@/lib/format";
 
 interface ChartPanelProps {
@@ -74,7 +74,7 @@ export default function ChartPanel({ coin, onClose }: ChartPanelProps) {
     async (int: Interval) => {
       setLoading(true);
       try {
-        const info = getInfoClient();
+        const info = getInfoClient(getStoredNetwork());
         const now = Date.now();
         const startTime = now - INTERVAL_DURATIONS[int];
 
@@ -116,7 +116,7 @@ export default function ChartPanel({ coin, onClose }: ChartPanelProps) {
 
   const fetchFunding = useCallback(async () => {
     try {
-      const info = getInfoClient();
+      const info = getInfoClient(getStoredNetwork());
       const now = Date.now();
       const startTime = now - 7 * 24 * 60 * 60 * 1000; // 7 days
 

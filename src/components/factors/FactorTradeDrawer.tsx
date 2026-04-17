@@ -31,6 +31,7 @@ import type {
 interface FactorTradeDrawerProps {
   factor: LiveFactorState;
   onClose: () => void;
+  onDeploymentRecorded?: () => void;
 }
 
 const DEFAULT_LONG_GROSS = 1000;
@@ -42,7 +43,11 @@ const HIGH_MARGIN_USAGE_PCT = 0.35;
 const MAX_MARGIN_USAGE_PCT = 0.5;
 const SAFE_DEFAULT_MARGIN_USAGE_PCT = 0.1;
 
-export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawerProps) {
+export default function FactorTradeDrawer({
+  factor,
+  onClose,
+  onDeploymentRecorded,
+}: FactorTradeDrawerProps) {
   const { assets } = useMarket();
   const { exchangeClient, accountState, address, isReadOnly, refreshPortfolio } = useWallet();
 
@@ -280,6 +285,7 @@ export default function FactorTradeDrawer({ factor, onClose }: FactorTradeDrawer
         };
         saveDeployment(address, record);
         setLastReceipt(record);
+        onDeploymentRecorded?.();
       }
 
       if (failed.length > 0) {
