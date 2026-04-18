@@ -5,60 +5,35 @@ import Nav from "@/components/Nav";
 import HomePage from "@/components/HomePage";
 import MarketOverviewPanel from "@/components/MarketOverviewPanel";
 import ConnectPrompt from "@/components/portfolio/ConnectPrompt";
-import DashboardHeader from "@/components/portfolio/DashboardHeader";
-import PositionsTable from "@/components/portfolio/PositionsTable";
-import RiskStrip from "@/components/portfolio/RiskStrip";
-import StatsGrid from "@/components/portfolio/StatsGrid";
-import TradeSignals from "@/components/portfolio/TradeSignals";
-import SystemProfile from "@/components/portfolio/SystemProfile";
-import EquityCurve from "@/components/portfolio/EquityCurve";
-import TradeJournal from "@/components/portfolio/TradeJournal";
-import AssetBreakdown from "@/components/portfolio/AssetBreakdown";
-import FundingAnalysis from "@/components/portfolio/FundingAnalysis";
-import InsightsPanel from "@/components/portfolio/InsightsPanel";
-import PnLWaterfall from "@/components/portfolio/PnLWaterfall";
-import BenchmarkPanel from "@/components/portfolio/BenchmarkPanel";
-import Recommendations from "@/components/portfolio/Recommendations";
-import PerformanceHeatmap from "@/components/portfolio/PerformanceHeatmap";
-import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
-import MoreStats from "@/components/portfolio/MoreStats";
+import PortfolioWorkspace from "@/components/portfolio/PortfolioWorkspace";
 import DocsPage from "@/components/docs/DocsPage";
 import FactorsPage from "@/components/factors/FactorsPage";
-import FactorDeployPage from "@/components/factors/FactorDeployPage";
-import FactorLeaderStrip from "@/components/factors/FactorLeaderStrip";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
-import { useWallet } from "@/context/WalletContext";
-import { usePortfolio } from "@/context/PortfolioContext";
 import { useMarket } from "@/context/MarketContext";
-import { cn, formatUSD } from "@/lib/format";
+import { useWallet } from "@/context/WalletContext";
+import { cn } from "@/lib/format";
 
-type Tab = "home" | "portfolio" | "markets" | "factors" | "deploy" | "docs";
+type Tab = "home" | "portfolio" | "markets" | "factors" | "docs";
 
 const APP_TABS: Array<{ key: Tab; label: string }> = [
   { key: "home", label: "Home" },
   { key: "portfolio", label: "Portfolio" },
   { key: "markets", label: "Markets" },
   { key: "factors", label: "Factors" },
-  { key: "deploy", label: "Deploy" },
   { key: "docs", label: "Docs" },
 ];
 
 export default function Home() {
   const { tradingEnabled } = useAppConfig();
-  const { isConnected, accountState } = useWallet();
-  const { trades, loading: portfolioLoading, error: portfolioError } = usePortfolio();
+  const { isConnected } = useWallet();
   const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
   const [tab, setTab] = useState<Tab>("home");
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
     direction: "long" | "short";
   } | null>(null);
-
-  const hasPositions = (accountState?.positions?.length ?? 0) > 0;
-  const hasTrades = trades.length > 0;
-  const hasContent = hasTrades || hasPositions;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -91,76 +66,7 @@ export default function Home() {
         !isConnected ? (
           <ConnectPrompt />
         ) : (
-          <div className="max-w-7xl mx-auto px-4 py-6 space-y-6 pb-20">
-            {portfolioError && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
-                {portfolioError}
-              </div>
-            )}
-
-            {!portfolioLoading && !hasContent && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="text-zinc-500 text-sm mb-2">
-                  No trades found for this address on Hyperliquid.
-                </div>
-                {accountState && accountState.accountValue > 0 && (
-                  <div className="text-zinc-400 text-sm mb-4">
-                    Account balance: {formatUSD(accountState.accountValue)}
-                  </div>
-                )}
-                <div className="text-zinc-600 text-xs">
-                  Start trading on Hyperliquid to see your analytics here.
-                </div>
-              </div>
-            )}
-
-            {(hasContent || portfolioLoading) && (
-              <>
-                <DashboardHeader />
-                <FactorLeaderStrip />
-                <PositionsTable />
-                <RiskStrip />
-              </>
-            )}
-
-            {portfolioLoading && !hasTrades && (
-              <>
-                <StatsGrid />
-                <EquityCurve />
-              </>
-            )}
-
-            {hasTrades && (
-              <>
-                <StatsGrid />
-                <SystemProfile />
-                <TradeSignals />
-                <EquityCurve />
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <PnLWaterfall />
-                  <BenchmarkPanel />
-                </div>
-
-                <Recommendations />
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <PerformanceHeatmap />
-                  <AssetBreakdown />
-                </div>
-
-                <MonthlyPnL />
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <FundingAnalysis />
-                  <InsightsPanel />
-                </div>
-
-                <MoreStats />
-                <TradeJournal />
-              </>
-            )}
-          </div>
+          <PortfolioWorkspace />
         )
       ) : tab === "markets" ? (
         <>
@@ -208,8 +114,6 @@ export default function Home() {
         </>
       ) : tab === "factors" ? (
         <FactorsPage />
-      ) : tab === "deploy" ? (
-        <FactorDeployPage />
       ) : (
         <DocsPage />
       )}

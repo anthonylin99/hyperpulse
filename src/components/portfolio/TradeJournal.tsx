@@ -50,7 +50,7 @@ function exportCSV(trades: RoundTripTrade[], notes: Record<string, string>) {
   URL.revokeObjectURL(url);
 }
 
-export default function TradeJournal() {
+export default function TradeJournal({ density = "compact" }: { density?: "compact" | "roomy" }) {
   const { trades, loading } = usePortfolio();
   const { address } = useWallet();
   const [sortKey, setSortKey] = useState<SortKey>("time");
@@ -156,8 +156,8 @@ export default function TradeJournal() {
 
   if (loading && trades.length === 0) {
     return (
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+      <div className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
           <div className="skeleton h-4 w-32 rounded" />
           <div className="flex items-center gap-2">
             <div className="skeleton h-6 w-20 rounded" />
@@ -185,14 +185,71 @@ export default function TradeJournal() {
   const COL_COUNT = 12; // 10 data columns + analyze button + note icon column
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-        <h3 className="text-sm font-medium text-zinc-300">
-          Trade Journal ({sorted.length})
-        </h3>
-        <div className="flex items-center gap-2">
-          {/* Win/Loss filter buttons */}
-          <div className="flex items-center rounded overflow-hidden border border-zinc-700">
+    <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
+      <div className={cn("border-b border-zinc-800", density === "roomy" ? "px-6 py-6" : "px-5 py-5")}>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
+              Trade Journal
+            </div>
+            <h3 className="mt-2 text-xl font-semibold text-zinc-100">
+              Review closed trades without leaving the workspace.
+            </h3>
+            <p className="mt-2 text-sm text-zinc-500">
+              Filter winners and losers, annotate individual trades, export history, and open the analyzer when you want to inspect whether an exit left money on the table.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-4">
+            {[
+              {
+                label: "Trades",
+                value: summary.count.toString(),
+                tone: "neutral",
+              },
+              {
+                label: "Filtered P&L",
+                value: `${summary.totalPnl >= 0 ? "+" : ""}${formatUSD(summary.totalPnl)}`,
+                tone: summary.totalPnl >= 0 ? "positive" : "negative",
+              },
+              {
+                label: "Avg / Trade",
+                value: `${summary.avgPnl >= 0 ? "+" : ""}${formatUSD(summary.avgPnl)}`,
+                tone: summary.avgPnl >= 0 ? "positive" : "negative",
+              },
+              {
+                label: "Fees",
+                value: formatUSD(summary.totalFees),
+                tone: "neutral",
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3"
+              >
+                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                  {item.label}
+                </div>
+                <div
+                  className={cn(
+                    "mt-2 text-base font-semibold",
+                    item.tone === "positive"
+                      ? "text-emerald-400"
+                      : item.tone === "negative"
+                        ? "text-red-400"
+                        : "text-zinc-100",
+                  )}
+                >
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center overflow-hidden rounded-xl border border-zinc-700">
             {(
               [
                 { key: "all", label: "All", color: "text-zinc-300" },
@@ -207,7 +264,7 @@ export default function TradeJournal() {
                   setPage(0);
                 }}
                 className={cn(
-                  "text-xs px-2 py-1 transition-colors",
+                  "px-2.5 py-1.5 text-xs transition-colors",
                   filterResult === key
                     ? `bg-zinc-700 ${color} font-medium`
                     : "bg-zinc-800 text-zinc-500 hover:text-zinc-300",
@@ -217,31 +274,45 @@ export default function TradeJournal() {
               </button>
             ))}
           </div>
+            <button
+              onClick={() => exportCSV(sorted, notes)}
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+            >
+              Export CSV
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
           <button
-            onClick={() => exportCSV(sorted, notes)}
-            className="text-xs bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-200 rounded px-2.5 py-1 transition-colors"
-          >
-            Export CSV
-          </button>
-          <select
-            value={filterCoin}
-            onChange={(e) => {
-              setFilterCoin(e.target.value);
-              setPage(0);
-            }}
-            className="text-xs bg-zinc-800 border border-zinc-700 text-zinc-300 rounded px-2 py-1"
-          >
-            {coins.map((c) => (
-              <option key={c} value={c}>
-                {c === "all" ? "All Assets" : c}
-              </option>
-            ))}
-          </select>
+              className="text-xs text-zinc-500"
+              onClick={() => {
+                setFilterCoin("all");
+                setFilterResult("all");
+                setPage(0);
+              }}
+            >
+              Reset filters
+            </button>
+            <select
+              value={filterCoin}
+              onChange={(e) => {
+                setFilterCoin(e.target.value);
+                setPage(0);
+              }}
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300"
+            >
+              {coins.map((c) => (
+                <option key={c} value={c}>
+                  {c === "all" ? "All Assets" : c}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className={cn("w-full text-xs", density === "roomy" && "text-sm")}>
           <thead>
             <tr className="text-zinc-500 border-b border-zinc-800">
               <th
@@ -474,6 +545,6 @@ export default function TradeJournal() {
           onClose={() => setAnalyzedTrade(null)}
         />
       )}
-    </div>
+    </section>
   );
 }

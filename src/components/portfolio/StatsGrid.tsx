@@ -2,46 +2,25 @@
 
 import { useMemo } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
-import { formatUSD, cn } from "@/lib/format";
+import { useWallet } from "@/context/WalletContext";
+import { cn, formatUSD } from "@/lib/format";
 
-interface StatCardProps {
+interface RailMetric {
   label: string;
-  value: string | React.ReactNode;
-  subValue?: string;
-  positive?: boolean | null;
-  tooltip?: string;
-  large?: boolean;
+  value: string;
+  subValue: string;
+  tone?: "positive" | "negative" | "neutral";
 }
 
-function StatCard({ label, value, subValue, positive, tooltip, large }: StatCardProps) {
+function RailSkeleton() {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4" title={tooltip}>
-      <div className="text-xs text-zinc-500 mb-1">{label}</div>
-      <div
-        className={cn(
-          large ? "text-2xl font-bold" : "text-xl font-bold",
-          typeof value === "string" && positive === true && "text-emerald-400",
-          typeof value === "string" && positive === false && "text-red-400",
-          typeof value === "string" && positive === null && "text-zinc-100",
-        )}
-      >
-        {value}
-      </div>
-      {subValue && (
-        <div className="text-xs text-zinc-500 mt-0.5">{subValue}</div>
-      )}
-    </div>
-  );
-}
-
-function StatsGridSkeleton() {
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {[0, 1, 2].map((col) => (
-          <div key={col} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-            <div className="skeleton h-3 w-20 rounded mb-2" />
-            <div className="skeleton h-6 w-28 rounded" />
+    <div className="overflow-hidden rounded-[26px] border border-zinc-800 bg-zinc-950/85">
+      <div className="grid gap-px bg-zinc-900/80 md:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="bg-zinc-950/85 px-4 py-4">
+            <div className="skeleton h-3 w-20 rounded mb-3" />
+            <div className="skeleton h-6 w-24 rounded mb-2" />
+            <div className="skeleton h-3 w-28 rounded" />
           </div>
         ))}
       </div>
@@ -49,78 +28,101 @@ function StatsGridSkeleton() {
   );
 }
 
-export default function StatsGrid() {
-  const { stats, fills, trades, byAsset, funding, loading } = usePortfolio();
+export default function StatsGrid({ density = "compact" }: { density?: "compact" | "roomy" }) {
+  const { stats, trades, loading } = usePortfolio();
+  const { accountState } = useWallet();
 
-  const derived = useMemo(() => {
-    if (!stats || stats.totalTrades === 0) return null;
+  const metrics = useMemo<RailMetric[]>(() => {
+    const accountValue = accountState?.accountValue ?? 0;
+    const perpsValue = accountState?.isolatedAccountValue ?? 0;
+    const spotUsdc = accountState?.spotUsdcTotal ?? 0;
+    const openPositions = accountState?.positions.length ?? 0;
+    const unrealizedPnl = accountState?.unrealizedPnl ?? 0;
 
-    // Liquidation count from fills
-    const liquidations = fills.filter((f) => f.liquidation).length;
+    const netPnl =
+      stats ? stats.totalPnl + stats.totalFundingNet - stats.totalFeesPaid : 0;
 
-    // Long vs Short P&L
-    let longPnl = 0;
-    let shortPnl = 0;
-    let longCount = 0;
-    let shortCount = 0;
-    for (const t of trades) {
-      if (t.direction === "long") { longPnl += t.pnl; longCount++; }
-      else { shortPnl += t.pnl; shortCount++; }
-    }
+    return [
+      {
+        label: "Account Equity",
+        value: formatUSD(accountValue),
+        subValue: `Perps ${formatUSD(perpsValue)} • Spot ${formatUSD(spotUsdc)}`,
+        tone: "neutral",
+      },
+      {
+        label: "Net P&L",
+        value: formatUSD(netPnl),
+        subValue: stats
+          ? `Trading ${formatUSD(stats.totalPnl)} • Funding ${formatUSD(stats.totalFundingNet)}`
+          : "Waiting for trade history",
+        tone: netPnl > 0 ? "positive" : netPnl < 0 ? "negative" : "neutral",
+      },
+      {
+        label: "Win Rate",
+        value: stats ? `${(stats.winRate * 100).toFixed(1)}%` : "--",
+        subValue: stats ? `${stats.winners}W / ${stats.losers}L` : "No closed trades yet",
+        tone:
+          !stats ? "neutral" : stats.winRate > 0.5 ? "positive" : stats.winRate < 0.4 ? "negative" : "neutral",
+      },
+      {
+        label: "Open Positions",
+        value: openPositions.toString(),
+        subValue: openPositions > 0 ? "Live perp exposure" : "Flat right now",
+        tone: "neutral",
+      },
+      {
+        label: "Total Fees",
+        value: stats ? formatUSD(stats.totalFeesPaid) : "--",
+        subValue: stats ? `${trades.length} closed trades analyzed` : "Will populate after trading",
+        tone: "neutral",
+      },
+      {
+        label: "Unrealized P&L",
+        value: formatUSD(unrealizedPnl),
+        subValue: "Current mark-to-market",
+        tone:
+          unrealizedPnl > 0 ? "positive" : unrealizedPnl < 0 ? "negative" : "neutral",
+      },
+    ];
+  }, [accountState, stats, trades.length]);
 
-    // Best/worst asset
-    const sortedAssets = [...byAsset].sort((a, b) => b.pnl - a.pnl);
-    const bestAsset = sortedAssets[0] ?? null;
-    const worstAsset = sortedAssets[sortedAssets.length - 1] ?? null;
+  if (loading && trades.length === 0 && !accountState) return <RailSkeleton />;
 
-    // Fee as % of volume
-    const totalVolume = trades.reduce((s, t) => s + t.notional, 0);
-    const feePct = totalVolume > 0 ? (stats.totalFeesPaid / totalVolume) * 100 : 0;
-
-    // Funding earned vs paid
-    const fundingEarned = funding.filter((f) => f.usdc > 0).reduce((s, f) => s + f.usdc, 0);
-    const fundingPaid = funding.filter((f) => f.usdc < 0).reduce((s, f) => s + f.usdc, 0);
-
-    return {
-      liquidations,
-      longPnl, shortPnl, longCount, shortCount,
-      bestAsset, worstAsset,
-      feePct, totalVolume,
-      fundingEarned, fundingPaid,
-    };
-  }, [stats, fills, trades, byAsset, funding]);
-
-  if (loading && trades.length === 0) return <StatsGridSkeleton />;
-
-  if (!stats || stats.totalTrades === 0 || !derived) return null;
-
-  const netPnl = stats.totalPnl + stats.totalFundingNet - stats.totalFeesPaid;
+  if (!accountState && !stats) return null;
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatCard
-          label="Net P&L"
-          value={formatUSD(netPnl)}
-          subValue={`trading ${formatUSD(stats.totalPnl)} + funding ${formatUSD(stats.totalFundingNet)} - fees ${formatUSD(stats.totalFeesPaid)}`}
-          positive={netPnl > 0 ? true : netPnl < 0 ? false : null}
-          large
-        />
-        <StatCard
-          label="Win Rate"
-          value={`${(stats.winRate * 100).toFixed(1)}%`}
-          subValue={`${stats.winners}W / ${stats.losers}L`}
-          positive={stats.winRate > 0.5 ? true : stats.winRate < 0.4 ? false : null}
-          tooltip="Percentage of round-trip trades that were profitable"
-        />
-        <StatCard
-          label="Fees Paid"
-          value={formatUSD(stats.totalFeesPaid)}
-          subValue={`${derived.feePct.toFixed(2)}% of volume`}
-          positive={derived.feePct < 0.03 ? true : derived.feePct > 0.06 ? false : null}
-          tooltip="Total trading fees. Use limit orders to reduce fees — makers pay less than takers on Hyperliquid."
-        />
+    <section className="overflow-hidden rounded-[26px] border border-zinc-800 bg-zinc-950/85">
+      <div className="grid gap-px bg-zinc-900/80 md:grid-cols-3 xl:grid-cols-6">
+        {metrics.map((metric) => (
+          <div
+            key={metric.label}
+            className={cn(
+              "bg-zinc-950/90",
+              density === "roomy" ? "px-5 py-5" : "px-4 py-4",
+            )}
+          >
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+              {metric.label}
+            </div>
+            <div
+              className={cn(
+                density === "roomy" ? "mt-3 text-[1.9rem] font-semibold tracking-tight" : "mt-3 text-2xl font-semibold tracking-tight",
+                metric.tone === "positive"
+                  ? "text-emerald-400"
+                  : metric.tone === "negative"
+                    ? "text-red-400"
+                    : "text-zinc-100",
+              )}
+            >
+              {metric.value}
+            </div>
+            <div className="mt-2 text-xs leading-5 text-zinc-500">{metric.subValue}</div>
+          </div>
+        ))}
       </div>
-    </div>
+      <div className="border-t border-zinc-800 bg-emerald-500/[0.04] px-4 py-2 text-[11px] text-zinc-500">
+        Equity reflects perps plus spot USDC. Staked HYPE remains excluded from this workspace by design.
+      </div>
+    </section>
   );
 }
