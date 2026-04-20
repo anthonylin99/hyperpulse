@@ -43,8 +43,11 @@ const MEME_SYMBOLS = new Set(['DOGE', 'WIF', 'POPCAT', 'FARTCOIN', 'TRUMP', 'BRE
 const CRYPTO_BETA_SYMBOLS = new Set(['BTC', 'ETH', 'SOL', 'HYPE', 'BNB', 'XRP', 'ADA', 'SUI', 'AVAX', 'LINK', 'TRX']);
 const EQUITY_BROAD_SYMBOLS = new Set(['SPY', 'QQQ', 'USPYX']);
 const MAJORS = new Set(['BTC', 'ETH', 'SOL', 'HYPE']);
-const TELEGRAM_SPOT_CRYPTO_ALLOWLIST = new Set(['BTC', 'ETH', 'SOL', 'HYPE', 'TAO', 'NEAR', 'RENDER', 'PAXG']);
-const MIN_INTERESTING_HIP3_DAY_VOL = envNumber('WHALE_HIP3_MIN_DAY_VOL_USD', 1_000_000);
+const TELEGRAM_LARGE_CAP_PERP_ALLOWLIST = new Set([
+  'BTC', 'ETH', 'SOL', 'HYPE', 'AAVE', 'LINK', 'AVAX', 'SUI', 'XRP', 'ADA', 'BNB', 'DOGE',
+  'TAO', 'NEAR', 'RENDER', 'INJ', 'ONDO', 'UNI', 'CRV', 'GMX', 'JUP', 'PENDLE', 'MORPHO',
+  'WLD', 'FET', 'ENA', 'ARB', 'OP', 'SEI', 'APT', 'TON', 'TRX', 'LTC', 'BCH'
+]);
 
 function formatMultiple(value) {
   if (!Number.isFinite(value) || value <= 0) return 'n/a';
@@ -53,14 +56,11 @@ function formatMultiple(value) {
 }
 
 function isInterestingAlert(alert) {
-  if (alert.marketType !== 'hip3_spot') return true;
-  if (alert.assetClass === 'Stock' || alert.assetClass === 'Oil' || alert.assetClass === 'Commodity') return true;
-  if (alert.assetClass === 'Crypto') {
-    const spotMeta = spotMarketMap[alert.coin];
-    const dayVol = Number(spotMeta?.dayNtlVlm || spotMeta?.dayVolume || spotMeta?.dayNtlVlmUsd || 0);
-    return TELEGRAM_SPOT_CRYPTO_ALLOWLIST.has(alert.coin) && dayVol >= MIN_INTERESTING_HIP3_DAY_VOL && alert.conviction !== 'low';
-  }
-  return false;
+  // Telegram should act like a perp whale tape for Anthony's workflow.
+  // Keep the app capable of spot/HIP-3 analysis, but page only for tradable mid/large-cap perp names.
+  if (alert.marketType !== 'crypto_perp') return false;
+  if (!TELEGRAM_LARGE_CAP_PERP_ALLOWLIST.has(alert.coin)) return false;
+  return true;
 }
 
 
