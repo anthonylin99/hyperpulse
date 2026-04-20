@@ -43,6 +43,26 @@ const MEME_SYMBOLS = new Set(['DOGE', 'WIF', 'POPCAT', 'FARTCOIN', 'TRUMP', 'BRE
 const CRYPTO_BETA_SYMBOLS = new Set(['BTC', 'ETH', 'SOL', 'HYPE', 'BNB', 'XRP', 'ADA', 'SUI', 'AVAX', 'LINK', 'TRX']);
 const EQUITY_BROAD_SYMBOLS = new Set(['SPY', 'QQQ', 'USPYX']);
 const MAJORS = new Set(['BTC', 'ETH', 'SOL', 'HYPE']);
+const TELEGRAM_SPOT_CRYPTO_ALLOWLIST = new Set(['BTC', 'ETH', 'SOL', 'HYPE', 'TAO', 'NEAR', 'RENDER', 'PAXG']);
+const MIN_INTERESTING_HIP3_DAY_VOL = envNumber('WHALE_HIP3_MIN_DAY_VOL_USD', 1_000_000);
+
+function formatMultiple(value) {
+  if (!Number.isFinite(value) || value <= 0) return 'n/a';
+  if (value < 0.1) return '<0.1x';
+  return `${value.toFixed(1)}x`;
+}
+
+function isInterestingAlert(alert) {
+  if (alert.marketType !== 'hip3_spot') return true;
+  if (alert.assetClass === 'Stock' || alert.assetClass === 'Oil' || alert.assetClass === 'Commodity') return true;
+  if (alert.assetClass === 'Crypto') {
+    const spotMeta = spotMarketMap[alert.coin];
+    const dayVol = Number(spotMeta?.dayNtlVlm || spotMeta?.dayVolume || spotMeta?.dayNtlVlmUsd || 0);
+    return TELEGRAM_SPOT_CRYPTO_ALLOWLIST.has(alert.coin) && dayVol >= MIN_INTERESTING_HIP3_DAY_VOL && alert.conviction !== 'low';
+  }
+  return false;
+}
+
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 8 });
 const info = new InfoClient({ transport: new HttpTransport() });
@@ -743,21 +763,25 @@ async function persistAlert(alert, profile, episode) {
 }
 
 function shouldSendTelegram(alert) {
-  // The worker already filters to whale-sized trades before alert creation.
-  // For Telegram, send every persisted whale alert so the channel acts like a true large-trade tape.
+  if (!isInterestingAlert(alert)) return false;
   return true;
 }
 
 function buildTelegramMessage(alert, profile) {
   const emoji = alert.directionality === 'stress' ? '⚠️' : alert.eventType.startsWith('deposit-led') ? '💸' : '🐋';
-  const line1 = `${emoji} ${alert.headline} · ${alert.conviction.toUpperCase()} conviction`;
-  const line2 = `${alert.coin} ${alert.side} · ${alert.marketType === 'hip3_spot' ? alert.assetClass : 'Perp'} · ${alert.leverage ? `${alert.leverage.toFixed(1)}x` : 'spot'}`;
-  const line3 = `notional ${formatCompact(alert.notionalUsd)} · 24h flow ${formatCompact(alert.deposit24h || alert.netFlow24hUsd)}`;
-  const line4 = `size ${alert.sizeVsWalletAverage.toFixed(1)}x wallet avg · 30d PnL ${formatSignedUsd(profile.realizedPnl30d)} · vol ${formatCompact(profile.baseline?.volume30d || 0)}`;
-  const line5 = `${shortAddress(alert.address)} · ${[...alert.behaviorTags, ...(profile.styleTags || [])].slice(0, 3).join(' · ')}`;
-  const line6 = alert.evidence.summary;
-  const line7 = `${APP_URL}/?tab=whales&address=${alert.address}`;
-  return [line1, line2, line3, line4, line5, line6, line7].filter(Boolean).join('\n');
+  const marketLabel = alert.marketType === 'hip3_spot' ? `HIP-3 ${alert.assetClass}` : 'Perp';
+  const leverageLabel = alert.leverage ? `${alert.leverage.toFixed(1)}x` : 'spot';
+  const flowLabel = formatCompact(alert.deposit24h || alert.netFlow24hUsd);
+  const sizeVsAvg = formatMultiple(alert.sizeVsWalletAverage);
+  const topTags = [...alert.behaviorTags, ...(profile.styleTags || [])].slice(0, 2).join(' · ');
+
+  const line1 = `${emoji} ${alert.coin} ${alert.side} · ${formatCompact(alert.notionalUsd)} · ${alert.severity.toUpperCase()}`;
+  const line2 = `${alert.headline} · ${marketLabel} · ${leverageLabel}`;
+  const line3 = `24h flow ${flowLabel} · size ${sizeVsAvg} wallet avg · 30d PnL ${formatSignedUsd(profile.realizedPnl30d)}`;
+  const line4 = `${shortAddress(alert.address)}${topTags ? ` · ${topTags}` : ''}`;
+  const line5 = `${alert.evidence.summary}`;
+  const line6 = `${APP_URL}/?tab=whales&address=${alert.address}`;
+  return [line1, line2, line3, line4, line5, line6].filter(Boolean).join('\n');
 }
 
 function shortAddress(address) {
