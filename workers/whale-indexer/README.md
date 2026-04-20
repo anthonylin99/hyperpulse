@@ -23,9 +23,9 @@ This worker is the always-on discovery layer for the HyperPulse `Whales` tab.
 - `DATABASE_URL`
 - `WHALERPC_URL` optional, defaults to `wss://rpc.hyperliquid.xyz/ws`
 - `HYPERLIQUID_WS_URL` optional, defaults to `wss://api.hyperliquid.xyz/ws`
-- `WHALE_MAJOR_THRESHOLD_USD` optional, defaults to `1000000`
-- `WHALE_ALT_THRESHOLD_USD` optional, defaults to `500000`
-- `WHALE_DEPOSIT_THRESHOLD_USD` optional, defaults to `250000`
+- `WHALE_MAJOR_THRESHOLD_USD` optional, defaults to `250000`
+- `WHALE_ALT_THRESHOLD_USD` optional, defaults to `100000`
+- `WHALE_DEPOSIT_THRESHOLD_USD` optional, defaults to `100000`
 - `WHALE_HIGH_LEVERAGE` optional, defaults to `10`
 - `WHALE_RISK_LOSS_USD` optional, defaults to `500000`
 - `WHALE_LIQ_DISTANCE_PCT` optional, defaults to `10`

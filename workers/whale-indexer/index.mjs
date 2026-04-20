@@ -18,9 +18,9 @@ function envNumber(name, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-const MAJOR_THRESHOLD = envNumber('WHALE_MAJOR_THRESHOLD_USD', 1_000_000);
-const ALT_THRESHOLD = envNumber('WHALE_ALT_THRESHOLD_USD', 500_000);
-const DEPOSIT_THRESHOLD = envNumber('WHALE_DEPOSIT_THRESHOLD_USD', 250_000);
+const MAJOR_THRESHOLD = envNumber('WHALE_MAJOR_THRESHOLD_USD', 250_000);
+const ALT_THRESHOLD = envNumber('WHALE_ALT_THRESHOLD_USD', 100_000);
+const DEPOSIT_THRESHOLD = envNumber('WHALE_DEPOSIT_THRESHOLD_USD', 100_000);
 const EPISODE_WINDOW_MS = 15 * 60 * 1000;
 const ROTATION_WINDOW_MS = 60 * 60 * 1000;
 const HEDGE_WINDOW_MS = 30 * 60 * 1000;
