@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   Activity,
   ArrowRight,
@@ -133,11 +133,29 @@ function AlertFeedItem({
   active: boolean;
   onSelect: () => void;
 }) {
+  const handleCopyAddress = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(alert.address);
+      toast.success("Whale wallet copied");
+    } catch {
+      toast.error("Failed to copy whale wallet");
+    }
+  };
+
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
       className={cn(
-        "w-full rounded-2xl border p-4 text-left transition-all",
+        "group w-full rounded-2xl border p-4 text-left transition-all",
         active
           ? "border-emerald-500/30 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(16,185,129,0.10)]"
           : "border-zinc-800 bg-[linear-gradient(180deg,rgba(14,17,17,0.96),rgba(12,13,14,0.94))] hover:border-zinc-700 hover:bg-zinc-900",
@@ -151,7 +169,17 @@ function AlertFeedItem({
             <MarketChip alert={alert} />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-            <span title={alert.address}>{truncateAddress(alert.address)}</span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-transparent px-2 py-1 transition group-hover:border-zinc-800 group-hover:bg-zinc-950/60">
+              <span title={alert.address}>{truncateAddress(alert.address)}</span>
+              <button
+                type="button"
+                onClick={handleCopyAddress}
+                className="opacity-70 transition hover:text-emerald-300 group-hover:opacity-100"
+                title="Copy full wallet address"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </span>
             <span>·</span>
             <span>{humanizeBucket(alert.riskBucket)}</span>
             <span>·</span>
@@ -182,7 +210,7 @@ function AlertFeedItem({
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 

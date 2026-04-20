@@ -787,9 +787,11 @@ function titleCase(value) {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
-function telegramSideLabel(side) {
-  if (side === 'mixed') return 'Flow';
-  return titleCase(side);
+function inferDisplaySide(alert) {
+  const detailMatch = alert.detail?.match(/\b(long|short)\b/i);
+  if (detailMatch) return titleCase(detailMatch[1].toLowerCase());
+  if (alert.side === 'mixed') return 'Mixed';
+  return titleCase(alert.side);
 }
 
 function telegramHeader(alert) {
@@ -807,20 +809,21 @@ function buildTelegramMessage(alert, profile) {
   const flowLabel = formatCompact(alert.deposit24h || alert.netFlow24hUsd);
   const sizeVsAvg = formatMultiple(alert.sizeVsWalletAverage);
   const topTags = [...(profile.styleTags || []), ...(alert.behaviorTags || [])].slice(0, 3).join(' · ');
+  const displaySide = inferDisplaySide(alert);
   const avgSizeLabel = profile.medianTradeSize30d > 0
     ? `${sizeVsAvg} wallet avg (${formatCompact(profile.medianTradeSize30d)})`
     : `${sizeVsAvg} wallet avg`;
-  const pnlAndVolume = `30d: ${formatSignedUsd(profile.realizedPnl30d)} PnL · ${formatCompact(profile.baseline.volume30d)} vol`;
-  const leverageAndFlow = `${leverageLabel} leverage · ${formatCompact(alert.notionalUsd)} notional · 24h flow ${flowLabel}`;
+  const pnlAndVolume = `30D PNL: ${formatSignedUsd(profile.realizedPnl30d)} · 30D VOL: ${formatCompact(profile.baseline.volume30d)}`;
+  const leverageAndFlow = `NOTIONAL: ${formatCompact(alert.notionalUsd)} · LEVERAGE: ${leverageLabel} · FLOW 24H: ${flowLabel}`;
   const evidenceLine = alert.evidence.summary.replace(/\s+/g, ' ').trim();
 
   const line1 = telegramHeader(alert);
-  const line2 = `${alert.coin} ${telegramSideLabel(alert.side)} · ${marketLabel}`;
+  const line2 = `${alert.coin} ${displaySide.toUpperCase()} · ${marketLabel.toUpperCase()}`;
   const line3 = leverageAndFlow;
-  const line4 = `wallet ${alert.address}`;
-  const line5 = `${pnlAndVolume} · size ${avgSizeLabel}`;
-  const line6 = topTags ? `profile: ${topTags}` : '';
-  const line7 = `evidence: ${evidenceLine}`;
+  const line4 = `WALLET: ${alert.address}`;
+  const line5 = `${pnlAndVolume} · SIZE VS AVG: ${avgSizeLabel}`;
+  const line6 = topTags ? `PROFILE: ${topTags}` : '';
+  const line7 = `EVIDENCE: ${evidenceLine}`;
   const line8 = `${APP_URL}/?tab=whales&address=${alert.address}`;
   return [line1, line2, line3, line4, line5, line6, line7, line8].filter(Boolean).join('\n');
 }
