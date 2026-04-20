@@ -81,6 +81,9 @@ async function ensureTables() {
       created_at bigint not null
     );
   `);
+  await client.query(`alter table whale_alerts add column if not exists directionality text;`);
+  await client.query(`alter table whale_alerts add column if not exists market_type text;`);
+  await client.query(`alter table whale_alerts add column if not exists risk_bucket text;`);
   await client.query(`create index if not exists whale_alerts_created_at_idx on whale_alerts (created_at desc);`);
   await client.query(`create index if not exists whale_alerts_address_idx on whale_alerts (address);`);
   await client.query(`create index if not exists whale_alerts_directionality_idx on whale_alerts (directionality, created_at desc);`);

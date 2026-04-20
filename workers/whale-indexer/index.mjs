@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { setMaxListeners } from 'node:events';
 import { Pool } from 'pg';
 import {
   HttpTransport,
@@ -30,6 +31,8 @@ const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hyperpulse-gold.vercel.app';
+
+setMaxListeners(0);
 
 const STOCK_SYMBOLS = new Set(['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NFLX', 'NVDA', 'QQQ', 'SPY', 'TSLA', 'USPYX']);
 const OIL_SYMBOLS = new Set(['BRENT', 'BRENTOIL', 'WTI', 'USO', 'XBR', 'XTI']);
@@ -696,6 +699,12 @@ async function ensureTables() {
     );
   `);
   await pool.query(`create table if not exists whale_watchlist (address text primary key, nickname text, created_at bigint not null);`);
+  await pool.query(`alter table whale_alerts add column if not exists directionality text;`);
+  await pool.query(`alter table whale_alerts add column if not exists market_type text;`);
+  await pool.query(`alter table whale_alerts add column if not exists risk_bucket text;`);
+  await pool.query(`alter table whale_trade_episodes add column if not exists directionality text;`);
+  await pool.query(`alter table whale_trade_episodes add column if not exists market_type text;`);
+  await pool.query(`alter table whale_trade_episodes add column if not exists risk_bucket text;`);
   await pool.query(`create index if not exists whale_alerts_created_at_idx on whale_alerts (created_at desc);`);
   await pool.query(`create index if not exists whale_alerts_address_idx on whale_alerts (address);`);
   await pool.query(`create index if not exists whale_alerts_directionality_idx on whale_alerts (directionality, created_at desc);`);
