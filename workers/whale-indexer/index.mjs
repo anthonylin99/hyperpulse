@@ -767,25 +767,62 @@ function shouldSendTelegram(alert) {
   return true;
 }
 
+const TELEGRAM_ASSET_EMOJI = new Map([
+  ['BTC', '₿'],
+  ['ETH', 'Ξ'],
+  ['SOL', '◎'],
+  ['HYPE', '⚡'],
+  ['AAVE', '🏦'],
+  ['LINK', '🔗'],
+  ['AVAX', '🏔️'],
+  ['XRP', '💧'],
+  ['DOGE', '🐕'],
+  ['TAO', '🧠'],
+  ['NEAR', '🌐'],
+  ['RENDER', '🎨'],
+]);
+
+function titleCase(value) {
+  if (!value) return '';
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function telegramSideLabel(side) {
+  if (side === 'mixed') return 'Flow';
+  return titleCase(side);
+}
+
+function telegramHeader(alert) {
+  const assetEmoji = TELEGRAM_ASSET_EMOJI.get(alert.coin) || '🐋';
+  const convictionLabel = `${titleCase(alert.conviction)} conviction`;
+  if (alert.directionality === 'stress') return `${assetEmoji} ⚠️ WHALE UNDER PRESSURE · ${convictionLabel}`;
+  if (alert.eventType.startsWith('deposit-led')) return `${assetEmoji} 💸 DEPOSIT-LED ENTRY · ${convictionLabel}`;
+  if (alert.directionality === 'directional_add') return `${assetEmoji} 📈 SMART MONEY ADD · ${convictionLabel}`;
+  return `${assetEmoji} 🎯 SMART MONEY ENTRY · ${convictionLabel}`;
+}
+
 function buildTelegramMessage(alert, profile) {
-  const emoji = alert.directionality === 'stress' ? '⚠️' : alert.eventType.startsWith('deposit-led') ? '💸' : '🐋';
-  const marketLabel = alert.marketType === 'hip3_spot' ? `HIP-3 ${alert.assetClass}` : 'Perp';
+  const marketLabel = alert.marketType === 'hip3_spot' ? `HIP-3 ${titleCase(alert.assetClass)}` : 'Perp';
   const leverageLabel = alert.leverage ? `${alert.leverage.toFixed(1)}x` : 'spot';
   const flowLabel = formatCompact(alert.deposit24h || alert.netFlow24hUsd);
   const sizeVsAvg = formatMultiple(alert.sizeVsWalletAverage);
-  const topTags = [...alert.behaviorTags, ...(profile.styleTags || [])].slice(0, 2).join(' · ');
+  const topTags = [...(profile.styleTags || []), ...(alert.behaviorTags || [])].slice(0, 3).join(' · ');
+  const avgSizeLabel = profile.medianTradeSize30d > 0
+    ? `${sizeVsAvg} wallet avg (${formatCompact(profile.medianTradeSize30d)})`
+    : `${sizeVsAvg} wallet avg`;
+  const pnlAndVolume = `30d: ${formatSignedUsd(profile.realizedPnl30d)} PnL · ${formatCompact(profile.baseline.volume30d)} vol`;
+  const leverageAndFlow = `${leverageLabel} leverage · ${formatCompact(alert.notionalUsd)} notional · 24h flow ${flowLabel}`;
+  const evidenceLine = alert.evidence.summary.replace(/\s+/g, ' ').trim();
 
-  const line1 = `${emoji} ${alert.coin} ${alert.side} · ${formatCompact(alert.notionalUsd)} · ${alert.severity.toUpperCase()}`;
-  const line2 = `${alert.headline} · ${marketLabel} · ${leverageLabel}`;
-  const line3 = `24h flow ${flowLabel} · size ${sizeVsAvg} wallet avg · 30d PnL ${formatSignedUsd(profile.realizedPnl30d)}`;
-  const line4 = `${shortAddress(alert.address)}${topTags ? ` · ${topTags}` : ''}`;
-  const line5 = `${alert.evidence.summary}`;
-  const line6 = `${APP_URL}/?tab=whales&address=${alert.address}`;
-  return [line1, line2, line3, line4, line5, line6].filter(Boolean).join('\n');
-}
-
-function shortAddress(address) {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  const line1 = telegramHeader(alert);
+  const line2 = `${alert.coin} ${telegramSideLabel(alert.side)} · ${marketLabel}`;
+  const line3 = leverageAndFlow;
+  const line4 = `wallet ${alert.address}`;
+  const line5 = `${pnlAndVolume} · size ${avgSizeLabel}`;
+  const line6 = topTags ? `profile: ${topTags}` : '';
+  const line7 = `evidence: ${evidenceLine}`;
+  const line8 = `${APP_URL}/?tab=whales&address=${alert.address}`;
+  return [line1, line2, line3, line4, line5, line6, line7, line8].filter(Boolean).join('\n');
 }
 
 function formatCompact(value) {

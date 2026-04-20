@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BarChart3,
   BookmarkPlus,
+  Copy,
   Database,
   Layers3,
   Search,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn, formatCompact, formatPct, formatUSD, truncateAddress } from "@/lib/format";
 import type { WhaleAlert, WhaleWalletProfile, WhaleWatchlistEntry } from "@/types";
+import toast from "react-hot-toast";
 
 type FeedResponse = {
   alerts: WhaleAlert[];
@@ -58,6 +60,12 @@ function workerFreshness(workerStatus: FeedResponse["workerStatus"]) {
   if (deltaMs < 10_000) return "Live now";
   if (deltaMs < 60_000) return `${Math.round(deltaMs / 1000)}s ago`;
   return `${Math.round(deltaMs / 60_000)}m ago`;
+}
+
+function formatMultipleLabel(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "n/a";
+  if (value < 0.1) return "<0.1x";
+  return `${value.toFixed(1)}x`;
 }
 
 function SummaryCard({
@@ -143,7 +151,7 @@ function AlertFeedItem({
             <MarketChip alert={alert} />
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-            <span>{truncateAddress(alert.address)}</span>
+            <span title={alert.address}>{truncateAddress(alert.address)}</span>
             <span>·</span>
             <span>{humanizeBucket(alert.riskBucket)}</span>
             <span>·</span>
@@ -161,7 +169,7 @@ function AlertFeedItem({
         </div>
         <div>
           <div className="uppercase tracking-[0.14em] text-zinc-600">Size vs avg</div>
-          <div className="mt-1 text-zinc-200">{alert.sizeVsWalletAverage.toFixed(1)}x</div>
+          <div className="mt-1 text-zinc-200">{formatMultipleLabel(alert.sizeVsWalletAverage)}</div>
         </div>
         <div>
           <div className="uppercase tracking-[0.14em] text-zinc-600">Offset</div>
@@ -239,6 +247,14 @@ function ProfilePanel({
         : "Needs confirmation";
   const styleTitle = profile.styleTags[0] ?? "Conviction trader";
   const focusTitle = profile.focusTags.slice(0, 2).join(" · ") || "Crypto beta";
+  const handleCopyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(profile.address);
+      toast.success("Whale wallet copied");
+    } catch {
+      toast.error("Failed to copy whale wallet");
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -254,7 +270,25 @@ function ProfilePanel({
                 <SmallPill key={tag} label={tag} />
               ))}
             </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100">{truncateAddress(profile.address)}</h2>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <h2 className="text-3xl font-semibold tracking-tight text-zinc-100">{truncateAddress(profile.address)}</h2>
+              <button
+                onClick={handleCopyAddress}
+                className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:text-white"
+                title="Copy full wallet address"
+              >
+                <Copy className="h-4 w-4" />
+                Copy address
+              </button>
+            </div>
+            <button
+              onClick={handleCopyAddress}
+              className="mt-3 flex w-full max-w-3xl items-center justify-between gap-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.05] px-4 py-3 text-left transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.08]"
+              title="Click to copy full wallet address"
+            >
+              <span className="min-w-0 break-all font-mono text-sm text-emerald-100">{profile.address}</span>
+              <Copy className="h-4 w-4 shrink-0 text-emerald-300" />
+            </button>
             <div className="mt-2 text-sm text-zinc-400">
               First seen {profile.firstSeenAt ? new Date(profile.firstSeenAt).toLocaleString() : "n/a"}
               {" · "}
