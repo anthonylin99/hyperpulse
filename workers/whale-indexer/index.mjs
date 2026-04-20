@@ -734,7 +734,9 @@ async function persistAlert(alert, profile, episode) {
 }
 
 function shouldSendTelegram(alert) {
-  return ['directional_entry', 'directional_add', 'stress'].includes(alert.directionality) || alert.eventType.startsWith('deposit-led');
+  // The worker already filters to whale-sized trades before alert creation.
+  // For Telegram, send every persisted whale alert so the channel acts like a true large-trade tape.
+  return true;
 }
 
 function buildTelegramMessage(alert, profile) {
