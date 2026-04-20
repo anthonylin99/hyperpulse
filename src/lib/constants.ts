@@ -92,3 +92,18 @@ export const ALL_CATEGORIES: AssetCategory[] = [
 export function getAssetCategory(coin: string): AssetCategory {
   return ASSET_CATEGORIES[coin] ?? "Other";
 }
+
+
+export const WHALE_MAJORS = ["BTC", "ETH", "SOL", "HYPE"] as const;
+export const WHALE_MAJOR_NOTIONAL_USD = 1_000_000;
+export const WHALE_ALT_NOTIONAL_USD = 500_000;
+export const WHALE_DEPOSIT_ALERT_USD = 250_000;
+export const WHALE_AGGRESSIVE_ADD_MIN_OPEN_USD = 500_000;
+export const WHALE_AGGRESSIVE_ADD_MIN_DELTA_PCT = 20;
+export const WHALE_HIGH_LEVERAGE = 10;
+export const WHALE_RISK_LOSS_USD = -500_000;
+export const WHALE_LIQUIDATION_DISTANCE_PCT = 10;
+export const WHALE_EPISODE_WINDOW_MS = 15 * 60 * 1000;
+export const WHALE_PROFILE_LOOKBACK_30D_MS = 30 * 24 * 60 * 60 * 1000;
+export const WHALE_PROFILE_LOOKBACK_7D_MS = 7 * 24 * 60 * 60 * 1000;
+export const WHALE_PROFILE_LOOKBACK_24H_MS = 24 * 60 * 60 * 1000;

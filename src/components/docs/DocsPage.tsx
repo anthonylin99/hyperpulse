@@ -6,6 +6,7 @@ const quickLinks = [
   { href: "#portfolio", label: "Portfolio Analytics" },
   { href: "#signals", label: "Market Signals" },
   { href: "#factors", label: "Factors" },
+  { href: "#whales", label: "Whales" },
   { href: "#sentiment", label: "Tomorrow Bias" },
   { href: "#wallets", label: "Wallet Modes" },
   { href: "#limits", label: "Limitations" },
@@ -305,6 +306,46 @@ export default function DocsPage() {
               Factor cards are intentionally labeled as HyperPulse-tracked Artemis baskets. HyperPulse does not claim
               to reproduce private rebalance files; it shows the public factor logic, public report holdings, and the
               live Hyperliquid overlay built on top.
+            </p>
+          </Section>
+
+          <Section id="whales" eyebrow="Whales" title="How the Whale tracker works">
+            <p>
+              The Whales tab is built as a read-only intelligence surface. It is designed to flag unusual Hyperliquid
+              activity, then turn the address behind that flow into a profile with open positions, recent round trips,
+              ledger movement, and behavior tags.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Live profile lookup</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  Today&apos;s production app can already look up any whale wallet on demand from public Hyperliquid
+                  state, fills, funding, and ledger updates. That makes the right-side profile pane useful even before a
+                  background worker is configured.
+                </div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Always-on alert feed</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  The alert feed becomes durable when a background worker writes episodes into Neon Postgres. That
+                  worker watches large fills, recent deposit flow, leverage, and liquidation distance so repeated
+                  partial fills collapse into one cleaner alert instead of spamming the UI.
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Detection logic</div>
+              <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                <div>1. Watch large perp trades and explorer flow for candidate wallets.</div>
+                <div>2. Enrich candidate wallets with current state, recent fills, funding, and non-funding ledger events.</div>
+                <div>3. Join recent net inflow with new exposure to classify deposit-led long or short episodes.</div>
+                <div>4. Compute evidence-first tags such as aggressive leverage, underwater, concentrated book, and funding-sensitive.</div>
+                <div>5. Persist the normalized alert plus the current wallet snapshot for replay over the last 30 days.</div>
+              </div>
+            </div>
+            <p>
+              HyperPulse intentionally uses deterministic templates for whale alerts in v1. That keeps the feed cheap,
+              explainable, and suitable for always-on monitoring without burning model credits.
             </p>
           </Section>
 

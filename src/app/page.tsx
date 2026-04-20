@@ -8,6 +8,7 @@ import ConnectPrompt from "@/components/portfolio/ConnectPrompt";
 import PortfolioWorkspace from "@/components/portfolio/PortfolioWorkspace";
 import DocsPage from "@/components/docs/DocsPage";
 import FactorsPage from "@/components/factors/FactorsPage";
+import WhalesPage from "@/components/whales/WhalesPage";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -15,13 +16,14 @@ import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn } from "@/lib/format";
 
-type Tab = "home" | "portfolio" | "markets" | "factors" | "docs";
+type Tab = "home" | "portfolio" | "markets" | "factors" | "whales" | "docs";
 
 const APP_TABS: Array<{ key: Tab; label: string }> = [
   { key: "home", label: "Home" },
   { key: "portfolio", label: "Portfolio" },
   { key: "markets", label: "Markets" },
   { key: "factors", label: "Factors" },
+  { key: "whales", label: "Whales" },
   { key: "docs", label: "Docs" },
 ];
 
@@ -114,6 +116,8 @@ export default function Home() {
         </>
       ) : tab === "factors" ? (
         <FactorsPage />
+      ) : tab === "whales" ? (
+        <WhalesPage />
       ) : (
         <DocsPage />
       )}

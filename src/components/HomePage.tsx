@@ -1,10 +1,10 @@
 "use client";
 
-import { ArrowRight, BarChart3, BookOpenText, BriefcaseBusiness, Layers3 } from "lucide-react";
+import { ArrowRight, BarChart3, BookOpenText, BriefcaseBusiness, Layers3, Waves } from "lucide-react";
 import { cn } from "@/lib/format";
 import MarketOverviewPanel from "./MarketOverviewPanel";
 
-type Tab = "home" | "portfolio" | "markets" | "factors" | "docs";
+type Tab = "home" | "portfolio" | "markets" | "factors" | "whales" | "docs";
 
 interface HomePageProps {
   onSelectTab: (tab: Exclude<Tab, "home">) => void;
@@ -35,9 +35,15 @@ const MODE_CARDS: Array<{
     icon: Layers3,
   },
   {
+    tab: "whales",
+    title: "Whales",
+    description: "Spot unusual Hyperliquid flow, profile large wallets, and inspect positions, ledger moves, and realized P&L.",
+    icon: Waves,
+  },
+  {
     tab: "docs",
     title: "Docs",
-    description: "See how HyperPulse calculates portfolio analytics, factor views, and market signals.",
+    description: "See how HyperPulse calculates portfolio analytics, factor views, market signals, and whale tracking.",
     icon: BookOpenText,
   },
 ];
@@ -52,12 +58,12 @@ export default function HomePage({ onSelectTab }: HomePageProps) {
             Hyperliquid market intelligence in one calmer workspace.
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-300 md:text-base">
-            Start from the live market pulse below, then jump straight into Portfolio, Markets, Factors, or Docs.
+            Start from the live market pulse below, then jump straight into Portfolio, Markets, Factors, Whales, or Docs.
           </p>
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {MODE_CARDS.map((card) => {
           const Icon = card.icon;
           return (

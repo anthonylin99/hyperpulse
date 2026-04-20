@@ -18,6 +18,7 @@
     "lucide-react": "^1.0.1",
     "next": "^15.5.14",
     "openai": "^6.33.0",
+    "pg": "^8.20.0",
     "react": "^18",
     "react-dom": "^18",
     "react-hot-toast": "^2.6.0",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",

@@ -399,3 +399,139 @@ export interface FactorAiBrief {
   disclaimer?: string;
   generatedAt: string;
 }
+
+
+// ─── Whale Intelligence Types ─────────────────────────────────
+
+export type WhaleSeverity = "high" | "medium" | "low";
+
+export type WhaleEventType =
+  | "deposit-led-long"
+  | "deposit-led-short"
+  | "aggressive-add"
+  | "flip"
+  | "reduce"
+  | "underwater-whale"
+  | "liquidation-risk";
+
+export type WhaleBehaviorTag =
+  | "Deposit-led"
+  | "Aggressive leverage"
+  | "Single-asset concentrated"
+  | "Adds into strength"
+  | "Adds into weakness"
+  | "Underwater"
+  | "Two-sided book"
+  | "Recent flipper"
+  | "Funding-sensitive";
+
+export interface WhalePositionSnapshot {
+  coin: string;
+  side: "long" | "short";
+  size: number;
+  entryPx: number;
+  markPx: number;
+  notionalUsd: number;
+  leverage: number;
+  liquidationPx: number | null;
+  liquidationDistancePct: number | null;
+  unrealizedPnl: number;
+  returnOnEquity: number;
+}
+
+export interface WhaleTradeSummary {
+  id: string;
+  coin: string;
+  direction: "long" | "short";
+  entryTime: number;
+  exitTime: number;
+  durationMs: number;
+  entryPx: number;
+  exitPx: number;
+  size: number;
+  notionalUsd: number;
+  realizedPnl: number;
+  pnlPct: number;
+  fees: number;
+  funding: number;
+}
+
+export interface WhaleLedgerEvent {
+  id: string;
+  time: number;
+  type:
+    | "deposit"
+    | "withdraw"
+    | "internal-transfer"
+    | "spot-transfer"
+    | "subaccount-transfer"
+    | "account-class-transfer"
+    | "liquidation"
+    | "reward"
+    | "vault";
+  direction: "in" | "out" | "neutral";
+  amountUsd: number;
+  asset: string;
+  label: string;
+  hash?: string;
+}
+
+export interface WhaleAlert {
+  id: string;
+  address: string;
+  walletLabel: string;
+  eventType: WhaleEventType;
+  severity: WhaleSeverity;
+  headline: string;
+  detail: string;
+  timestamp: number;
+  coin: string;
+  side: "long" | "short" | "mixed";
+  notionalUsd: number;
+  leverage: number | null;
+  netFlow24hUsd: number;
+  unrealizedPnl: number | null;
+  confidenceLabel: string;
+  behaviorTags: WhaleBehaviorTag[];
+}
+
+export interface WhaleWalletProfile {
+  address: string;
+  firstSeenAt: number | null;
+  lastSeenAt: number | null;
+  accountEquity: number;
+  perpsEquity: number;
+  spotUsdc: number;
+  totalOpenNotionalUsd: number;
+  unrealizedPnl: number;
+  realizedPnl30d: number;
+  funding30d: number;
+  openPositionsCount: number;
+  averageLeverage: number;
+  dominantAssets: string[];
+  netFlow24hUsd: number;
+  netFlow7dUsd: number;
+  netFlow30dUsd: number;
+  behaviorTags: WhaleBehaviorTag[];
+  positions: WhalePositionSnapshot[];
+  trades: WhaleTradeSummary[];
+  ledger: WhaleLedgerEvent[];
+  activeAlerts: WhaleAlert[];
+}
+
+export interface WhaleEpisode {
+  id: string;
+  address: string;
+  coin: string;
+  startedAt: number;
+  endedAt: number;
+  fills: Fill[];
+  ledger: WhaleLedgerEvent[];
+  alert: WhaleAlert;
+}
+
+export interface WhaleWatchlistEntry {
+  address: string;
+  nickname: string | null;
+  createdAt: number;
+}

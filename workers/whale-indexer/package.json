@@ -1,0 +1,12 @@
+{
+  "name": "hyperpulse-whale-indexer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@nktkas/hyperliquid": "^0.32.1",
+    "pg": "^8.16.3"
+  }
+}
