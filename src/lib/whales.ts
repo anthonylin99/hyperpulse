@@ -1,7 +1,4 @@
-import {
-  groupFillsIntoTrades,
-  mergeFundingIntoTrades,
-} from "@/lib/analytics";
+import { groupFillsIntoTrades, mergeFundingIntoTrades } from "@/lib/analytics";
 import {
   WHALE_DEPOSIT_ALERT_USD,
   WHALE_EPISODE_WINDOW_MS,
@@ -12,22 +9,43 @@ import {
   WHALE_PROFILE_LOOKBACK_7D_MS,
   WHALE_RISK_LOSS_USD,
 } from "@/lib/constants";
+import { buildSpotMarketMap, classifyWhaleAsset, type WhaleSpotMarketContext } from "@/lib/whaleTaxonomy";
 import type {
   Fill,
   FundingEntry,
   WhaleAlert,
+  WhaleAssetClass,
   WhaleBehaviorTag,
+  WhaleBucketExposure,
+  WhaleConviction,
+  WhaleDirectionality,
   WhaleEventType,
+  WhaleFocusTag,
   WhaleLedgerEvent,
   WhalePositionSnapshot,
+  WhaleRiskBucket,
   WhaleSeverity,
+  WhaleStyleTag,
   WhaleTradeSummary,
+  WhaleWalletBaselineStats,
   WhaleWalletProfile,
 } from "@/types";
 
 function parseNumber(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 export function computeLiquidationDistancePct(position: {
@@ -65,10 +83,10 @@ export function buildWhalePositions(
       const unrealizedPnl = parseNumber(position.unrealizedPnl);
       const markPx = Math.abs(szi) > 0 ? entryPx + unrealizedPnl / szi : entryPx;
       const liquidationPx = position.liquidationPx ? parseNumber(position.liquidationPx) : null;
-      const notionalUsd =
-        parseNumber(position.positionValue) || Math.abs(szi) * Math.max(markPx, 0);
+      const descriptor = classifyWhaleAsset(position.coin, "crypto_perp");
+      const notionalUsd = parseNumber(position.positionValue) || Math.abs(szi) * Math.max(markPx, 0);
       return {
-        coin: position.coin,
+        coin: descriptor.symbol,
         side: szi > 0 ? "long" : "short",
         size: Math.abs(szi),
         entryPx,
@@ -79,15 +97,59 @@ export function buildWhalePositions(
         liquidationDistancePct: computeLiquidationDistancePct({ szi, markPx, liquidationPx }),
         unrealizedPnl,
         returnOnEquity: parseNumber(position.returnOnEquity),
+        marketType: descriptor.marketType,
+        assetClass: descriptor.assetClass,
+        riskBucket: descriptor.riskBucket,
       } satisfies WhalePositionSnapshot;
     })
     .filter((value): value is WhalePositionSnapshot => value != null)
     .sort((a, b) => b.notionalUsd - a.notionalUsd);
 }
 
-export function normalizeFills(rawFills: Array<Record<string, unknown>>): Fill[] {
+function buildSpotPositions(
+  balances: Array<Record<string, unknown>>,
+  spotMarketMap: Record<string, WhaleSpotMarketContext>,
+): WhalePositionSnapshot[] {
+  return balances
+    .map((balance): WhalePositionSnapshot | null => {
+      const coin = String(balance.coin ?? "").toUpperCase();
+      if (!coin || coin === "USDC") return null;
+      const total = parseNumber(balance.total);
+      if (!Number.isFinite(total) || total <= 0) return null;
+      const market = spotMarketMap[coin];
+      if (!market || market.markPx <= 0) return null;
+      const entryNtl = parseNumber(balance.entryNtl);
+      const entryPx = total > 0 && entryNtl > 0 ? entryNtl / total : market.markPx;
+      const notionalUsd = total * market.markPx;
+      const unrealizedPnl = entryNtl > 0 ? notionalUsd - entryNtl : 0;
+      const returnOnEquity = entryNtl > 0 ? (unrealizedPnl / entryNtl) * 100 : 0;
+      return {
+        coin: market.symbol,
+        side: "long",
+        size: total,
+        entryPx,
+        markPx: market.markPx,
+        notionalUsd,
+        leverage: 1,
+        liquidationPx: null,
+        liquidationDistancePct: null,
+        unrealizedPnl,
+        returnOnEquity,
+        marketType: "hip3_spot",
+        assetClass: market.assetClass,
+        riskBucket: market.riskBucket,
+      } satisfies WhalePositionSnapshot;
+    })
+    .filter((value): value is WhalePositionSnapshot => value != null)
+    .sort((a, b) => b.notionalUsd - a.notionalUsd);
+}
+
+export function normalizeFills(
+  rawFills: Array<Record<string, unknown>>,
+  coinAliasMap: Record<string, string> = {},
+): Fill[] {
   return (Array.isArray(rawFills) ? rawFills : []).map((f) => ({
-    coin: String(f.coin ?? ""),
+    coin: coinAliasMap[String(f.coin ?? "")] ?? String(f.coin ?? ""),
     side: String(f.side ?? "A") as "A" | "B",
     dir: String(f.dir ?? "") as Fill["dir"],
     px: parseNumber(f.px),
@@ -217,10 +279,7 @@ export function sumLedgerFlowSince(
   }, 0);
 }
 
-export function buildWhaleTrades(
-  fills: Fill[],
-  funding: FundingEntry[],
-): WhaleTradeSummary[] {
+export function buildWhaleTrades(fills: Fill[], funding: FundingEntry[]): WhaleTradeSummary[] {
   const trades = mergeFundingIntoTrades(groupFillsIntoTrades(fills), funding);
   return trades
     .sort((a, b) => b.exitTime - a.exitTime)
@@ -256,10 +315,7 @@ function deriveBehaviorTags(args: {
   const topPosition = positions[0];
   const hasLong = positions.some((position) => position.side === "long");
   const hasShort = positions.some((position) => position.side === "short");
-  const avgLeverage =
-    totalOpen > 0
-      ? positions.reduce((sum, position) => sum + position.notionalUsd * position.leverage, 0) / totalOpen
-      : 0;
+  const avgLeverage = totalOpen > 0 ? positions.reduce((sum, position) => sum + position.notionalUsd * position.leverage, 0) / totalOpen : 0;
 
   if (netFlow24hUsd >= WHALE_DEPOSIT_ALERT_USD && totalOpen >= 500_000) tags.push("Deposit-led");
   if (avgLeverage >= WHALE_HIGH_LEVERAGE || positions.some((position) => position.leverage >= WHALE_HIGH_LEVERAGE)) {
@@ -282,12 +338,8 @@ function deriveBehaviorTags(args: {
   }
 
   if (recentTrades.length > 0) {
-    const profitableLongBias = recentTrades.some(
-      (trade) => trade.direction === "long" && trade.realizedPnl > 0,
-    );
-    const profitableShortBias = recentTrades.some(
-      (trade) => trade.direction === "short" && trade.realizedPnl > 0,
-    );
+    const profitableLongBias = recentTrades.some((trade) => trade.direction === "long" && trade.realizedPnl > 0);
+    const profitableShortBias = recentTrades.some((trade) => trade.direction === "short" && trade.realizedPnl > 0);
     if (profitableLongBias && !profitableShortBias) tags.push("Adds into strength");
     if (profitableShortBias && !profitableLongBias) tags.push("Adds into weakness");
   }
@@ -297,6 +349,117 @@ function deriveBehaviorTags(args: {
   }
 
   return Array.from(new Set(tags));
+}
+
+function buildBucketExposures(positions: WhalePositionSnapshot[]): WhaleBucketExposure[] {
+  const map = new Map<WhaleRiskBucket, { long: number; short: number }>();
+  for (const position of positions) {
+    const current = map.get(position.riskBucket) ?? { long: 0, short: 0 };
+    if (position.side === "long") current.long += position.notionalUsd;
+    else current.short += position.notionalUsd;
+    map.set(position.riskBucket, current);
+  }
+  return Array.from(map.entries())
+    .map(([bucket, values]) => ({
+      bucket,
+      longNotionalUsd: values.long,
+      shortNotionalUsd: values.short,
+      netNotionalUsd: values.long - values.short,
+    }))
+    .sort((a, b) => Math.abs(b.netNotionalUsd) - Math.abs(a.netNotionalUsd));
+}
+
+function deriveFocusTags(
+  positions: WhalePositionSnapshot[],
+  bucketExposures: WhaleBucketExposure[],
+): WhaleFocusTag[] {
+  const tags: WhaleFocusTag[] = [];
+  const bucketSet = new Set(bucketExposures.map((bucket) => bucket.bucket));
+  if (bucketSet.has("crypto_beta")) tags.push("Crypto beta");
+  if (bucketSet.has("crypto_ai")) tags.push("Crypto AI");
+  if (bucketSet.has("crypto_defi")) tags.push("DeFi");
+  if (bucketSet.has("crypto_meme")) tags.push("Meme");
+  if (bucketSet.has("equities_growth") || bucketSet.has("equities_broad")) tags.push("Stocks");
+  if (bucketSet.has("energy")) tags.push("Energy");
+  if (bucketSet.has("metals")) tags.push("Metals");
+  if (bucketSet.size >= 3 || new Set(positions.map((position) => position.marketType)).size > 1) tags.push("Multi-asset");
+  return tags.length > 0 ? Array.from(new Set(tags)) : ["Crypto beta"];
+}
+
+function deriveStyleTags(args: {
+  trades: WhaleTradeSummary[];
+  positions: WhalePositionSnapshot[];
+  avgHoldHours30d: number;
+  longBiasPct30d: number;
+}): WhaleStyleTag[] {
+  const { trades, positions, avgHoldHours30d, longBiasPct30d } = args;
+  const tags: WhaleStyleTag[] = [];
+  const avgLeverageOpen = average(positions.map((position) => position.leverage));
+  const pnlSorted = [...trades].sort((a, b) => b.realizedPnl - a.realizedPnl);
+  const positiveRate = trades.length > 0 ? trades.filter((trade) => trade.realizedPnl > 0).length / trades.length : 0;
+
+  if (avgLeverageOpen >= WHALE_HIGH_LEVERAGE) tags.push("High leverage");
+  if (avgHoldHours30d > 0 && avgHoldHours30d <= 12) tags.push("Scalp trader");
+  if (avgHoldHours30d > 12) tags.push("Swing trader");
+  if (positiveRate >= 0.55 && pnlSorted.length >= 4) tags.push("Conviction trader");
+  if (positions.some((position) => position.side === "long") && positions.some((position) => position.side === "short")) tags.push("Hedger");
+  if (longBiasPct30d >= 65) tags.push("Momentum trader");
+  if (longBiasPct30d <= 35) tags.push("Dip buyer");
+
+  return tags.length > 0 ? Array.from(new Set(tags)).slice(0, 3) : ["Conviction trader"];
+}
+
+function buildBaselineStats(
+  trades: WhaleTradeSummary[],
+  positions: WhalePositionSnapshot[],
+  realizedPnl30d: number,
+  bucketExposures: WhaleBucketExposure[],
+): WhaleWalletBaselineStats {
+  const tradeSizes = trades.map((trade) => trade.notionalUsd).filter((value) => value > 0);
+  const holdHours = trades.map((trade) => trade.durationMs / (1000 * 60 * 60)).filter((value) => value > 0);
+  const longTrades = trades.filter((trade) => trade.direction === "long").length;
+  const volume30d = trades.reduce((sum, trade) => sum + trade.notionalUsd, 0);
+  const winningDirectional = trades.filter((trade) => trade.realizedPnl > 0).length;
+  const dominantBuckets = bucketExposures.slice(0, 3).map((bucket) => bucket.bucket);
+  const assetCounts = new Map<string, number>();
+  for (const trade of trades) {
+    assetCounts.set(trade.coin, (assetCounts.get(trade.coin) ?? 0) + 1);
+  }
+  const favoriteAssets = Array.from(assetCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([coin]) => coin);
+
+  return {
+    medianTradeSize30d: median(tradeSizes),
+    medianLeverage30d: median(positions.map((position) => position.leverage).filter((value) => value > 0)),
+    avgHoldHours30d: average(holdHours),
+    longBiasPct30d: trades.length > 0 ? (longTrades / trades.length) * 100 : 50,
+    realizedPnl30d,
+    volume30d,
+    favoriteAssets,
+    dominantBuckets,
+    directionalHitRate30d: trades.length > 0 ? (winningDirectional / trades.length) * 100 : 0,
+  };
+}
+
+function buildNarrative(args: {
+  styleTags: WhaleStyleTag[];
+  focusTags: WhaleFocusTag[];
+  baseline: WhaleWalletBaselineStats;
+  bucketExposures: WhaleBucketExposure[];
+}): string {
+  const primaryStyle = args.styleTags[0] ?? "Conviction trader";
+  const primaryFocus = args.focusTags.slice(0, 2).join(" and ").toLowerCase();
+  const dominantBucket = args.bucketExposures[0];
+  const avgTradeSize = args.baseline.medianTradeSize30d;
+  const avgHold = args.baseline.avgHoldHours30d;
+
+  const bucketText = dominantBucket
+    ? `${dominantBucket.bucket.replace(/_/g, " ")} is the largest current bucket`
+    : "book is currently flat";
+
+  return `${primaryStyle} focused on ${primaryFocus}. Median trade size ${avgTradeSize > 0 ? `$${avgTradeSize.toLocaleString()}` : "n/a"}; median hold ${avgHold > 0 ? `${avgHold.toFixed(1)}h` : "n/a"}; ${bucketText}.`;
 }
 
 export function buildWhaleProfile(args: {
@@ -309,10 +472,11 @@ export function buildWhaleProfile(args: {
   activeAlerts?: WhaleAlert[];
   firstSeenAt?: number | null;
   lastSeenAt?: number | null;
+  spotMarketMap?: Record<string, WhaleSpotMarketContext>;
 }): WhaleWalletProfile {
-  const { address, perpState, spotState, fills, funding, ledger, activeAlerts = [], firstSeenAt, lastSeenAt } = args;
-  const positions = buildWhalePositions(
-    ((perpState.assetPositions as Array<{ position: Record<string, unknown> }>) ?? []) as Array<{
+  const { address, perpState, spotState, fills, funding, ledger, activeAlerts = [], firstSeenAt, lastSeenAt, spotMarketMap = {} } = args;
+  const perpPositions = buildWhalePositions(
+    (((perpState.assetPositions as Array<{ position: Record<string, unknown> }>) ?? []) as Array<{
       position: {
         coin: string;
         szi: string;
@@ -323,11 +487,13 @@ export function buildWhaleProfile(args: {
         liquidationPx: string | null;
         returnOnEquity: string;
       };
-    }>,
+    }>),
   );
 
-  const trades = buildWhaleTrades(fills, funding);
   const balances = (spotState.balances as Array<Record<string, unknown>> | undefined) ?? [];
+  const spotPositions = buildSpotPositions(balances, spotMarketMap);
+  const positions = [...perpPositions, ...spotPositions].sort((a, b) => b.notionalUsd - a.notionalUsd);
+  const trades = buildWhaleTrades(fills, funding);
   const usdcBalance = balances.find((balance) => String(balance.coin ?? "") === "USDC");
   const spotUsdc = usdcBalance ? parseNumber(usdcBalance.total) : 0;
   const totalOpenNotionalUsd = positions.reduce((sum, position) => sum + position.notionalUsd, 0);
@@ -336,21 +502,20 @@ export function buildWhaleProfile(args: {
   const perpsEquity = parseNumber((perpState.marginSummary as Record<string, unknown> | undefined)?.accountValue);
   const realizedPnl30d = trades.reduce((sum, trade) => sum + trade.realizedPnl, 0);
   const funding30d = funding.reduce((sum, item) => sum + item.usdc, 0);
-  const averageLeverage =
-    totalOpenNotionalUsd > 0
-      ? positions.reduce((sum, position) => sum + position.notionalUsd * position.leverage, 0) / totalOpenNotionalUsd
-      : 0;
-  const dominantAssets = positions.slice(0, 3).map((position) => position.coin);
+  const averageLeverage = totalOpenNotionalUsd > 0 ? positions.reduce((sum, position) => sum + position.notionalUsd * position.leverage, 0) / totalOpenNotionalUsd : 0;
+  const dominantAssets = positions.slice(0, 4).map((position) => position.coin);
   const netFlow24hUsd = sumLedgerFlowSince(ledger, WHALE_PROFILE_LOOKBACK_24H_MS);
   const netFlow7dUsd = sumLedgerFlowSince(ledger, WHALE_PROFILE_LOOKBACK_7D_MS);
   const netFlow30dUsd = sumLedgerFlowSince(ledger, WHALE_PROFILE_LOOKBACK_30D_MS);
-  const behaviorTags = deriveBehaviorTags({
-    positions,
+  const behaviorTags = deriveBehaviorTags({ positions, trades, netFlow24hUsd, funding30d, realizedPnl30d, unrealizedPnl });
+  const bucketExposures = buildBucketExposures(positions);
+  const baseline = buildBaselineStats(trades, positions, realizedPnl30d, bucketExposures);
+  const focusTags = deriveFocusTags(positions, bucketExposures);
+  const styleTags = deriveStyleTags({
     trades,
-    netFlow24hUsd,
-    funding30d,
-    realizedPnl30d,
-    unrealizedPnl,
+    positions,
+    avgHoldHours30d: baseline.avgHoldHours30d,
+    longBiasPct30d: baseline.longBiasPct30d,
   });
 
   const discoveredTimes = [
@@ -384,6 +549,14 @@ export function buildWhaleProfile(args: {
     netFlow7dUsd,
     netFlow30dUsd,
     behaviorTags,
+    styleTags,
+    focusTags,
+    baseline,
+    medianTradeSize30d: baseline.medianTradeSize30d,
+    avgHoldHours30d: baseline.avgHoldHours30d,
+    directionalHitRate30d: baseline.directionalHitRate30d,
+    bucketExposures,
+    narrative: buildNarrative({ styleTags, focusTags, baseline, bucketExposures }),
     positions,
     trades,
     ledger,
@@ -399,28 +572,32 @@ export function severityRank(severity: WhaleSeverity): number {
 
 export function buildAlertHeadline(args: {
   eventType: WhaleEventType;
+  directionality: WhaleDirectionality;
   coin: string;
   side: "long" | "short";
   leverage: number | null;
   netFlow24hUsd: number;
+  assetClass: WhaleAssetClass;
 }): string {
-  const lev = args.leverage ? `${args.leverage.toFixed(1)}x` : "n/a";
+  const lev = args.leverage ? `${args.leverage.toFixed(1)}x` : "spot";
   if (args.eventType === "deposit-led-long" || args.eventType === "deposit-led-short") {
-    return `Whale ${args.netFlow24hUsd >= 0 ? "deposits" : "withdraws"} ${Math.abs(args.netFlow24hUsd).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 })} and leans ${args.side} ${args.coin} at ${lev}`;
+    return `Deposit-led ${args.assetClass.toLowerCase()} ${args.side} in ${args.coin} at ${lev}`;
   }
-  if (args.eventType === "underwater-whale") {
-    return `Whale underwater on ${args.coin} ${args.side} with ${lev} leverage`;
+  if (args.directionality === "stress" || args.eventType === "underwater-whale") {
+    return `Underwater whale in ${args.coin} ${args.side}`;
   }
-  if (args.eventType === "liquidation-risk") {
-    return `Whale nearing liquidation on ${args.coin} ${args.side}`;
+  if (args.directionality === "hedge") {
+    return `Hedge overlay in ${args.coin}`;
   }
-  if (args.eventType === "flip") {
-    return `Whale flips stance into ${args.side} ${args.coin}`;
+  if (args.directionality === "rotation") {
+    return `Rotation into ${args.coin}`;
   }
-  if (args.eventType === "reduce") {
-    return `Whale reduces ${args.coin} ${args.side} exposure`;
+  if (args.directionality === "reduce" || args.eventType === "reduce") {
+    return `De-risking ${args.coin}`;
   }
-  return `Whale aggressively adds ${args.side} ${args.coin}`;
+  return args.directionality === "directional_add"
+    ? `Directional add in ${args.coin} ${args.side}`
+    : `Directional entry in ${args.coin} ${args.side}`;
 }
 
 export function coalesceEpisodeId(address: string, coin: string, timestamp: number): string {
@@ -446,3 +623,11 @@ export function inferSeverity(profile: WhaleWalletProfile, notionalUsd: number):
   }
   return "low";
 }
+
+export function convictionFromSeverity(severity: WhaleSeverity, sizeVsWalletAverage: number): WhaleConviction {
+  if (severity === "high" || sizeVsWalletAverage >= 2.5) return "high";
+  if (severity === "medium" || sizeVsWalletAverage >= 1.4) return "medium";
+  return "low";
+}
+
+export { buildSpotMarketMap };

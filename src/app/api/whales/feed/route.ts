@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { enforceRateLimit, jsonError, jsonSuccess, validateCoin } from "@/lib/security";
-import { isWhaleStoreConfigured, listWhaleAlerts } from "@/lib/whaleStore";
+import { getWhaleWorkerStatus, isWhaleStoreConfigured, listWhaleAlerts } from "@/lib/whaleStore";
+import type { WhaleDirectionality } from "@/types";
 import { severityRank } from "@/lib/whales";
 
 const TIMEFRAME_TO_MS: Record<string, number> = {
@@ -24,6 +25,10 @@ export async function GET(req: NextRequest) {
   const eventType = req.nextUrl.searchParams.get("eventType");
   const timeframe = req.nextUrl.searchParams.get("timeframe") ?? "24h";
   const coin = validateCoin(req.nextUrl.searchParams.get("coin"));
+  const directionality = req.nextUrl.searchParams.get("directionality");
+  const marketType = req.nextUrl.searchParams.get("marketType");
+  const riskBucket = req.nextUrl.searchParams.get("riskBucket");
+  const hip3Only = req.nextUrl.searchParams.get("hip3Only") === "true";
   const cursorRaw = req.nextUrl.searchParams.get("cursor");
   const cursor = cursorRaw ? Number(cursorRaw) : null;
   if (cursorRaw && !Number.isFinite(cursor)) {
@@ -34,11 +39,16 @@ export async function GET(req: NextRequest) {
     severity,
     coin,
     eventType,
+    directionality: directionality as WhaleDirectionality | "all" | null,
+    marketType,
+    riskBucket,
+    hip3Only,
     timeframeMs: TIMEFRAME_TO_MS[timeframe] ?? TIMEFRAME_TO_MS["24h"],
     cursor,
     limit: 40,
   });
 
+  const workerStatus = await getWhaleWorkerStatus();
   const uniqueWallets = new Set(alerts.map((alert) => alert.address.toLowerCase())).size;
   const topSeverity = alerts.reduce((best, alert) => {
     return severityRank(alert.severity) > severityRank(best) ? alert.severity : best;
@@ -52,8 +62,12 @@ export async function GET(req: NextRequest) {
       uniqueWallets,
       depositLedCount: alerts.filter((alert) => alert.eventType.startsWith("deposit-led")).length,
       highSeverityCount: alerts.filter((alert) => alert.severity === "high").length,
+      directionalCount: alerts.filter((alert) => alert.directionality === "directional_entry" || alert.directionality === "directional_add").length,
+      hedgeCount: alerts.filter((alert) => alert.directionality === "hedge" || alert.directionality === "rotation").length,
+      hip3Count: alerts.filter((alert) => alert.marketType === "hip3_spot").length,
       topSeverity,
     },
     workerConfigured: isWhaleStoreConfigured(),
+    workerStatus,
   });
 }

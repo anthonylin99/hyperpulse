@@ -70,10 +70,10 @@ export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
       // Position fully closed (or close enough due to rounding)
       if (pos.size <= 0.000001) {
         const entryFills = pos.fills.filter(
-          (f) => f.dir.startsWith("Open"),
+          (f) => f.dir.startsWith("Open") || f.dir === "Buy",
         );
         const exitFills = pos.fills.filter(
-          (f) => f.dir.startsWith("Close"),
+          (f) => f.dir.startsWith("Close") || f.dir === "Sell",
         );
 
         if (entryFills.length > 0 && exitFills.length > 0) {

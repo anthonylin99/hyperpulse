@@ -85,7 +85,7 @@ export interface AccountState {
 export interface Fill {
   coin: string;
   side: "A" | "B"; // HL SDK uses A (buy) / B (sell)
-  dir: "Open Long" | "Close Long" | "Open Short" | "Close Short";
+  dir: "Open Long" | "Close Long" | "Open Short" | "Close Short" | "Buy" | "Sell";
   px: number;
   sz: number;
   time: number;
@@ -414,6 +414,32 @@ export type WhaleEventType =
   | "underwater-whale"
   | "liquidation-risk";
 
+export type WhaleDirectionality =
+  | "directional_entry"
+  | "directional_add"
+  | "hedge"
+  | "rotation"
+  | "reduce"
+  | "stress";
+
+export type WhaleMarketType = "crypto_perp" | "hip3_spot";
+
+export type WhaleRiskBucket =
+  | "crypto_beta"
+  | "crypto_ai"
+  | "crypto_defi"
+  | "crypto_meme"
+  | "equities_growth"
+  | "equities_broad"
+  | "energy"
+  | "metals"
+  | "commodities_other"
+  | "fx_rates_other";
+
+export type WhaleAssetClass = "Crypto" | "Stock" | "Oil" | "Commodity" | "Other HIP-3";
+
+export type WhaleConviction = "high" | "medium" | "low";
+
 export type WhaleBehaviorTag =
   | "Deposit-led"
   | "Aggressive leverage"
@@ -424,6 +450,53 @@ export type WhaleBehaviorTag =
   | "Two-sided book"
   | "Recent flipper"
   | "Funding-sensitive";
+
+export type WhaleStyleTag =
+  | "Conviction trader"
+  | "Hedger"
+  | "Scalp trader"
+  | "Swing trader"
+  | "High leverage"
+  | "Dip buyer"
+  | "Momentum trader";
+
+export type WhaleFocusTag =
+  | "Crypto beta"
+  | "Crypto AI"
+  | "DeFi"
+  | "Meme"
+  | "Stocks"
+  | "Energy"
+  | "Metals"
+  | "Multi-asset";
+
+export interface WhaleBucketExposure {
+  bucket: WhaleRiskBucket;
+  longNotionalUsd: number;
+  shortNotionalUsd: number;
+  netNotionalUsd: number;
+}
+
+export interface WhaleWalletBaselineStats {
+  medianTradeSize30d: number;
+  medianLeverage30d: number;
+  avgHoldHours30d: number;
+  longBiasPct30d: number;
+  realizedPnl30d: number;
+  volume30d: number;
+  favoriteAssets: string[];
+  dominantBuckets: WhaleRiskBucket[];
+  directionalHitRate30d: number;
+}
+
+export interface WhaleEpisodeEvidence {
+  summary: string;
+  sizeVsWalletAverage: number;
+  offsetRatio: number;
+  preNetBucketUsd: number;
+  postNetBucketUsd: number;
+  bucketChangePct: number;
+}
 
 export interface WhalePositionSnapshot {
   coin: string;
@@ -437,6 +510,9 @@ export interface WhalePositionSnapshot {
   liquidationDistancePct: number | null;
   unrealizedPnl: number;
   returnOnEquity: number;
+  marketType: WhaleMarketType;
+  assetClass: WhaleAssetClass;
+  riskBucket: WhaleRiskBucket;
 }
 
 export interface WhaleTradeSummary {
@@ -481,7 +557,9 @@ export interface WhaleAlert {
   address: string;
   walletLabel: string;
   eventType: WhaleEventType;
+  directionality: WhaleDirectionality;
   severity: WhaleSeverity;
+  conviction: WhaleConviction;
   headline: string;
   detail: string;
   timestamp: number;
@@ -490,9 +568,16 @@ export interface WhaleAlert {
   notionalUsd: number;
   leverage: number | null;
   netFlow24hUsd: number;
+  deposit24h: number;
   unrealizedPnl: number | null;
+  sizeVsWalletAverage: number;
+  offsetRatio: number;
+  marketType: WhaleMarketType;
+  assetClass: WhaleAssetClass;
+  riskBucket: WhaleRiskBucket;
   confidenceLabel: string;
   behaviorTags: WhaleBehaviorTag[];
+  evidence: WhaleEpisodeEvidence;
 }
 
 export interface WhaleWalletProfile {
@@ -513,6 +598,14 @@ export interface WhaleWalletProfile {
   netFlow7dUsd: number;
   netFlow30dUsd: number;
   behaviorTags: WhaleBehaviorTag[];
+  styleTags: WhaleStyleTag[];
+  focusTags: WhaleFocusTag[];
+  baseline: WhaleWalletBaselineStats;
+  medianTradeSize30d: number;
+  avgHoldHours30d: number;
+  directionalHitRate30d: number;
+  bucketExposures: WhaleBucketExposure[];
+  narrative: string;
   positions: WhalePositionSnapshot[];
   trades: WhaleTradeSummary[];
   ledger: WhaleLedgerEvent[];
@@ -525,6 +618,9 @@ export interface WhaleEpisode {
   coin: string;
   startedAt: number;
   endedAt: number;
+  marketType: WhaleMarketType;
+  riskBucket: WhaleRiskBucket;
+  directionality: WhaleDirectionality;
   fills: Fill[];
   ledger: WhaleLedgerEvent[];
   alert: WhaleAlert;
