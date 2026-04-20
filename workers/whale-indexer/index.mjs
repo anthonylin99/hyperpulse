@@ -11,14 +11,19 @@ if (!DATABASE_URL) {
   throw new Error('DATABASE_URL is required for the whale indexer');
 }
 
+function envNumber(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 const MAJORS = new Set(['BTC', 'ETH', 'SOL', 'HYPE']);
-const MAJOR_THRESHOLD = 1_000_000;
-const ALT_THRESHOLD = 500_000;
-const DEPOSIT_THRESHOLD = 250_000;
+const MAJOR_THRESHOLD = envNumber('WHALE_MAJOR_THRESHOLD_USD', 500_000);
+const ALT_THRESHOLD = envNumber('WHALE_ALT_THRESHOLD_USD', 200_000);
+const DEPOSIT_THRESHOLD = envNumber('WHALE_DEPOSIT_THRESHOLD_USD', 100_000);
 const EPISODE_WINDOW_MS = 15 * 60 * 1000;
-const RISK_LOSS_USD = -500_000;
-const HIGH_LEVERAGE = 10;
-const LIQ_DISTANCE_PCT = 10;
+const RISK_LOSS_USD = -envNumber('WHALE_RISK_LOSS_USD', 400_000);
+const HIGH_LEVERAGE = envNumber('WHALE_HIGH_LEVERAGE', 8);
+const LIQ_DISTANCE_PCT = envNumber('WHALE_LIQ_DISTANCE_PCT', 12);
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 8 });
 const info = new InfoClient({ transport: new HttpTransport() });
@@ -264,7 +269,9 @@ async function enrichWallet(address, trigger) {
 async function bootstrapUniverse() {
   const [meta] = await info.metaAndAssetCtxs();
   universe = meta.universe.filter((asset) => !asset.isDelisted).map((asset) => asset.name);
-  console.log(`[whale-indexer] loaded ${universe.length} assets`);
+  console.log(
+    `[whale-indexer] loaded ${universe.length} assets · thresholds majors=${MAJOR_THRESHOLD} alts=${ALT_THRESHOLD} deposits=${DEPOSIT_THRESHOLD} lev=${HIGH_LEVERAGE}x`,
+  );
 }
 
 async function handleTrade(trade) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -345,6 +345,8 @@ function ProfilePanel({
 }
 
 export default function WhalesPage() {
+  const hasLoadedFeedRef = useRef(false);
+  const selectedAddressRef = useRef<string | null>(null);
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAME_OPTIONS)[number]>("24h");
   const [severity, setSeverity] = useState<(typeof SEVERITY_OPTIONS)[number]>("all");
   const [eventType, setEventType] = useState<(typeof EVENT_OPTIONS)[number]["value"]>("all");
@@ -352,6 +354,7 @@ export default function WhalesPage() {
   const [searchAddress, setSearchAddress] = useState("");
   const [feed, setFeed] = useState<FeedResponse | null>(null);
   const [feedLoading, setFeedLoading] = useState(true);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profile, setProfile] = useState<WhaleWalletProfile | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -359,30 +362,50 @@ export default function WhalesPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    selectedAddressRef.current = selectedAddress;
+  }, [selectedAddress]);
+
+  useEffect(() => {
+    let mounted = true;
     const loadFeed = async () => {
-      setFeedLoading(true);
+      if (!hasLoadedFeedRef.current) {
+        setFeedLoading(true);
+      } else {
+        setFeedRefreshing(true);
+      }
       try {
         const params = new URLSearchParams({ timeframe, severity, eventType });
         if (coin.trim()) params.set("coin", coin.trim().toUpperCase());
         const response = await fetch(`/api/whales/feed?${params.toString()}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Failed to load whale feed");
         const data = (await response.json()) as FeedResponse;
+        if (!mounted) return;
+        hasLoadedFeedRef.current = true;
         setFeed(data);
-        if (!selectedAddress && data.alerts[0]) {
+        setError((current) => (current === "Failed to load whale feed." ? null : current));
+        if (!selectedAddressRef.current && data.alerts[0]) {
           setSelectedAddress(data.alerts[0].address);
         }
       } catch (loadError) {
         console.error(loadError);
-        setError("Failed to load whale feed.");
+        if (mounted) {
+          setError("Failed to load whale feed.");
+        }
       } finally {
-        setFeedLoading(false);
+        if (mounted) {
+          setFeedLoading(false);
+          setFeedRefreshing(false);
+        }
       }
     };
 
     loadFeed();
     const interval = setInterval(loadFeed, 20_000);
-    return () => clearInterval(interval);
-  }, [coin, eventType, severity, timeframe, selectedAddress]);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [coin, eventType, severity, timeframe]);
 
   useEffect(() => {
     const loadWatchlist = async () => {
@@ -573,11 +596,11 @@ export default function WhalesPage() {
             </section>
           )}
 
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Alert Feed</div>
-                <div className="mt-1 text-sm text-zinc-400">Live unusual-flow episodes for Hyperliquid whales.</div>
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Alert Feed</div>
+            <div className="mt-1 text-sm text-zinc-400">Live unusual-flow episodes for Hyperliquid whales.</div>
               </div>
               {feed?.workerConfigured ? (
                 <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-emerald-300">
@@ -589,6 +612,11 @@ export default function WhalesPage() {
                 </span>
               )}
             </div>
+            {feedRefreshing && (
+              <div className="mt-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                Refreshing…
+              </div>
+            )}
             <div className="mt-4 space-y-3">
               {feedLoading ? (
                 <div className="space-y-3">
