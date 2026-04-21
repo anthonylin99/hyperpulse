@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/format";
 import type { PositioningAlert, PositioningDigestRun, WhaleWatchlistEntry } from "@/types";
+import TrackedLiquidationHeatmap from "@/components/whales/TrackedLiquidationHeatmap";
 
 type FeedResponse = {
   alerts: PositioningAlert[];
@@ -396,6 +397,8 @@ export default function WhalesPage() {
           <SummaryCard label="Top-Wallet Repeat" value={feed.summary.whaleCount.toString()} helper="tracked-wallet repeat/timing screen" icon={ShieldAlert} />
         </section>
       )}
+
+      <TrackedLiquidationHeatmap />
 
       <section className="rounded-2xl border border-zinc-800 bg-[#13171f] p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">

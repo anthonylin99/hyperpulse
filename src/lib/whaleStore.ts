@@ -587,6 +587,21 @@ export async function getStoredWhaleProfile(address: string): Promise<WhaleWalle
   return result.rows[0]?.payload ?? null;
 }
 
+export async function listTrackedWhaleProfiles(limit = 500): Promise<WhaleWalletProfile[]> {
+  const client = getPool();
+  if (!client) {
+    return Array.from(memoryProfiles.values())
+      .sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0))
+      .slice(0, limit);
+  }
+  await ensureTables();
+  const result = await client.query(
+    `select payload from whale_profiles_current order by updated_at desc limit $1`,
+    [limit],
+  );
+  return result.rows.map((row) => row.payload as WhaleWalletProfile);
+}
+
 export async function listPositioningAlerts(filters: PositioningFeedFilters = {}): Promise<PositioningAlert[]> {
   const severity = filters.severity && filters.severity !== "all" ? filters.severity : null;
   const asset = filters.asset && filters.asset !== "all" ? filters.asset.toUpperCase() : null;
