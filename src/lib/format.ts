@@ -8,21 +8,51 @@ export function formatUSD(value: number, decimals = 2): string {
 }
 
 export function formatCompact(value: number): string {
-  if (value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  if (!Number.isFinite(value)) {
+    return "$0";
   }
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`;
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) {
+    return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
   }
-  if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(1)}K`;
+  if (abs >= 1_000_000) {
+    return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
   }
-  return `$${value.toFixed(0)}`;
+  if (abs >= 1_000) {
+    return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  }
+  return `${sign}$${abs.toFixed(0)}`;
 }
 
-export function formatPct(value: number): string {
+export function formatPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "n/a";
+  }
   const sign = value >= 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}%`;
+}
+
+export function formatCompactUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return formatCompact(value);
+}
+
+export function formatChartPrice(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return value >= 100
+    ? value.toLocaleString("en-US", { maximumFractionDigits: 0 })
+    : value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+export function formatTimestampShort(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export function formatFundingRate(rate: number): string {

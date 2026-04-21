@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn, formatCompact, formatPct, formatUSD, truncateAddress } from "@/lib/format";
 import type { WhaleAlert, WhalePositionSnapshot, WhaleWalletProfile, WhaleWatchlistEntry } from "@/types";
+import { IconActionButton, SectionEyebrow, SurfaceButton } from "@/components/trading-ui";
 import toast from "react-hot-toast";
 
 function humanizeBucket(bucket: string) {
@@ -321,7 +322,7 @@ export default function WhaleProfilePage({
 
   return (
     <div className="mx-auto w-full max-w-[1680px] space-y-6 px-4 py-6 pb-20 md:px-6">
-      <section className="rounded-[28px] border border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.08),transparent_28%),linear-gradient(180deg,#13171f,#0d1117)] p-5">
+      <section className="rounded-[28px] border border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(251,113,133,0.08),transparent_24%),linear-gradient(180deg,#151923,#0c1017)] p-5">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_340px]">
           <div>
             <div className="flex flex-wrap items-center gap-3 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
@@ -333,10 +334,13 @@ export default function WhaleProfilePage({
               <span>{truncateAddress(profile.address)}</span>
             </div>
 
-            <div className="mt-4 text-[11px] uppercase tracking-[0.24em] text-emerald-400/80">Tracked Wallet Dossier</div>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100">
-              {truncateAddress(profile.address)}
-            </h1>
+            <SectionEyebrow className="mt-4 text-emerald-400/80">Tracked wallet dossier</SectionEyebrow>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">{truncateAddress(profile.address)}</h1>
+              <div className="rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-1.5 font-mono text-xs text-zinc-400">
+                wallet casefile
+              </div>
+            </div>
             <p className="mt-3 max-w-4xl text-sm leading-7 text-zinc-300">
               {profile.narrative || "Review this wallet as a positioning input rather than a copy-trading signal. Focus on crowding, pressure, and whether it consistently adds with conviction."}
             </p>
@@ -354,8 +358,8 @@ export default function WhaleProfilePage({
             </div>
 
             <div className="mt-5 grid gap-3 lg:grid-cols-3">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Current trigger</div>
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
+                <SectionEyebrow>Current trigger</SectionEyebrow>
                 {selectedAlert ? (
                   <>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -370,16 +374,16 @@ export default function WhaleProfilePage({
                 )}
               </div>
 
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Focus map</div>
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
+                <SectionEyebrow>Focus map</SectionEyebrow>
                 <div className="mt-3 text-base font-medium text-zinc-100">{dominantAssets}</div>
                 <div className="mt-2 text-sm leading-6 text-zinc-400">
                   Favorite tape: {favoriteAssets}
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Clock</div>
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
+                <SectionEyebrow>Clock</SectionEyebrow>
                 <div className="mt-3 text-base font-medium text-zinc-100">
                   {profile.firstSeenAt ? new Date(profile.firstSeenAt).toLocaleDateString() : "n/a"} first seen
                 </div>
@@ -390,30 +394,21 @@ export default function WhaleProfilePage({
             </div>
           </div>
 
-          <aside className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Wallet controls</div>
+          <aside className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
+            <SectionEyebrow>Wallet controls</SectionEyebrow>
             <div className="mt-3 rounded-2xl border border-zinc-800 bg-[#0a0c10] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">Address</div>
+                  <SectionEyebrow className="text-[10px]">Address</SectionEyebrow>
                   <div className="mt-2 font-mono text-sm text-zinc-200 break-all">
                     {expandedAddress ? profile.address : truncateAddress(profile.address)}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopyAddress}
-                  className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-2 text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
-                  aria-label="Copy wallet address"
-                >
+                <IconActionButton onClick={handleCopyAddress} aria-label="Copy wallet address">
                   <Copy className="h-4 w-4" />
-                </button>
+                </IconActionButton>
               </div>
-              <button
-                type="button"
-                onClick={() => setExpandedAddress((current) => !current)}
-                className="mt-3 inline-flex items-center gap-2 text-xs text-zinc-400 transition hover:text-zinc-200"
-              >
+              <button type="button" onClick={() => setExpandedAddress((current) => !current)} className="mt-3 inline-flex items-center gap-2 text-xs text-zinc-400 transition hover:text-zinc-200">
                 {expandedAddress ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 {expandedAddress ? "Hide full address" : "Show full address"}
               </button>
@@ -421,21 +416,15 @@ export default function WhaleProfilePage({
 
             <div className="mt-3 grid gap-3">
               {watchlisted ? (
-                <button
-                  onClick={removeWatchlist}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/70 px-3 py-3 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
-                >
+                <SurfaceButton onClick={removeWatchlist} tone="secondary" className="w-full rounded-2xl py-3">
                   <Trash2 className="h-4 w-4" />
                   Remove watchlist
-                </button>
+                </SurfaceButton>
               ) : (
-                <button
-                  onClick={addWatchlist}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-200 transition hover:bg-emerald-500/15"
-                >
+                <SurfaceButton onClick={addWatchlist} tone="primary" className="w-full rounded-2xl py-3">
                   <BookmarkPlus className="h-4 w-4" />
                   Add to watchlist
-                </button>
+                </SurfaceButton>
               )}
 
               <Link
@@ -456,7 +445,7 @@ export default function WhaleProfilePage({
 
             <div className="mt-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-[#0a0c10] p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Eligibility gate</div>
+                <SectionEyebrow>Eligibility gate</SectionEyebrow>
                 <div className={cn("mt-2 text-sm font-medium", feedEligible ? "text-emerald-300" : "text-amber-300")}>
                   {feedEligible ? "Passes default +$200K 30d gate" : "Below the default +$200K gate"}
                 </div>
@@ -466,7 +455,7 @@ export default function WhaleProfilePage({
               </div>
 
               <div className="rounded-2xl border border-zinc-800 bg-[#0a0c10] p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Timing edge</div>
+                <SectionEyebrow>Timing edge</SectionEyebrow>
                 <div className="mt-2 text-sm font-medium text-zinc-100">{timingLabel}</div>
                 <div className="mt-2 text-xs leading-5 text-zinc-500">
                   Sample size {profile.preMoveSampleSize ?? 0} · 1h {profile.preMoveHitRate1h == null ? "n/a" : `${profile.preMoveHitRate1h.toFixed(0)}%`} · 4h{" "}

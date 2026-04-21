@@ -16,6 +16,7 @@ import { formatUSD, formatPct, formatFundingRate, formatFundingAPR, formatCompac
 import { getFundingRegime } from "@/lib/fundingRegime";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import PriceChart from "./PriceChart";
+import { FilterChip } from "@/components/trading-ui";
 
 interface AssetDetailProps {
   asset: MarketAsset;
@@ -133,26 +134,8 @@ export default function AssetDetail({
 
       {/* Tab selector */}
       <div className="flex items-center gap-1 px-4 pb-2">
-        <button
-            onClick={() => setTab("price")}
-            className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
-              tab === "price"
-                ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-        >
-          Price Chart
-        </button>
-        <button
-            onClick={() => setTab("funding")}
-            className={`px-3 py-1 text-[11px] font-medium rounded transition-colors ${
-              tab === "funding"
-                ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-        >
-          Funding History
-        </button>
+        <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
+        <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
       </div>
 
       {/* Chart area */}
@@ -166,17 +149,7 @@ export default function AssetDetail({
             {/* Funding range selector */}
             <div className="flex items-center gap-1 mb-2">
               {FUNDING_RANGES.map((r) => (
-                <button
-                  key={r.days}
-                  onClick={() => setFundingRange(r.days as 7 | 30 | 60)}
-                  className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
-                    fundingRange === r.days
-                      ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
-                      : "text-zinc-600 hover:text-zinc-400"
-                  }`}
-                >
-                  {r.label}
-                </button>
+                <FilterChip key={r.days} label={r.label} active={fundingRange === r.days} onClick={() => setFundingRange(r.days as 7 | 30 | 60)} className="py-1 text-[11px]" />
               ))}
               {loadingFunding && (
                 <span className="text-[10px] text-zinc-600 ml-2">Loading...</span>
@@ -199,26 +172,8 @@ export default function AssetDetail({
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setFundingView("apr")}
-                    className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
-                      fundingView === "apr"
-                        ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
-                        : "text-zinc-600 hover:text-zinc-400"
-                    }`}
-                  >
-                    APR
-                  </button>
-                  <button
-                    onClick={() => setFundingView("hourly")}
-                    className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors ${
-                      fundingView === "hourly"
-                        ? "bg-[#7dd4c4]/20 text-[#b9ece2]"
-                        : "text-zinc-600 hover:text-zinc-400"
-                    }`}
-                  >
-                    Hourly %
-                  </button>
+                  <FilterChip label="APR" active={fundingView === "apr"} onClick={() => setFundingView("apr")} className="py-1 text-[11px]" />
+                  <FilterChip label="Hourly %" active={fundingView === "hourly"} onClick={() => setFundingView("hourly")} className="py-1 text-[11px]" />
                 </div>
                 <div className="text-[10px] text-zinc-600">
                   {fundingView === "apr"
