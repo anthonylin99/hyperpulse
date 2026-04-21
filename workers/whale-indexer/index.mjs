@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { setMaxListeners } from 'node:events';
 import { Pool } from 'pg';
-import { google } from 'googleapis';
 import {
   HttpTransport,
   InfoClient,
@@ -9,9 +8,9 @@ import {
   WebSocketTransport,
 } from '@nktkas/hyperliquid';
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 if (!DATABASE_URL) {
-  throw new Error('DATABASE_URL is required for the whale indexer');
+  throw new Error('DATABASE_URL or POSTGRES_URL is required for the whale indexer');
 }
 
 function envNumber(name, fallback) {
@@ -1362,16 +1361,25 @@ async function flushTelegramQueue() {
 }
 
 let sheetsClient = null;
+let googleApisModule = null;
 async function getSheetsClient() {
   if (sheetsClient) return sheetsClient;
   if (!SHEETS_ENABLED || !SHEETS_CREDS_B64 || !SHEETS_SPREADSHEET_ID) return null;
+  if (!googleApisModule) {
+    try {
+      googleApisModule = await import('googleapis');
+    } catch (error) {
+      console.error('[whale-indexer] googleapis unavailable, disabling sheets mirror', error);
+      return null;
+    }
+  }
   const credsJson = Buffer.from(SHEETS_CREDS_B64, 'base64').toString('utf8');
   const creds = JSON.parse(credsJson);
-  const auth = new google.auth.JWT(creds.client_email, null, creds.private_key, [
+  const auth = new googleApisModule.google.auth.JWT(creds.client_email, null, creds.private_key, [
     'https://www.googleapis.com/auth/spreadsheets',
   ]);
   await auth.authorize();
-  sheetsClient = google.sheets({ version: 'v4', auth });
+  sheetsClient = googleApisModule.google.sheets({ version: 'v4', auth });
   return sheetsClient;
 }
 

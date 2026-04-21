@@ -17,10 +17,10 @@ This worker is the always-on discovery layer for the HyperPulse `Whales` tab.
 ## Railway settings
 - Service root directory: `workers/whale-indexer`
 - Start command: `npm start`
-- Required variable: `DATABASE_URL`
+- Required variable: `DATABASE_URL` or `POSTGRES_URL`
 
 ## Required env
-- `DATABASE_URL`
+- `DATABASE_URL` or `POSTGRES_URL`
 - `WHALERPC_URL` optional, defaults to `wss://rpc.hyperliquid.xyz/ws`
 - `HYPERLIQUID_WS_URL` optional, defaults to `wss://api.hyperliquid.xyz/ws`
 - `WHALE_MAJOR_THRESHOLD_USD` optional, defaults to `250000`
@@ -45,6 +45,8 @@ and continues (Telegram delivery is the source of truth).
   Generate with `base64 -i hyperpulse-google-api.json | tr -d '\n'`
 - `GOOGLE_SHEET_ID` — spreadsheet ID from the URL
 - `GOOGLE_SHEET_TAB` — tab name (defaults to `RAW DATA`)
+
+If Google Sheets env is not configured, the worker now starts normally and skips the sheet mirror instead of crashing at boot.
 
 Sheet column order: `TimeStamp | Trade | Conviction | Size vs Avg | Wallet | Entry Price | Current/Exit | PnL %`. Service account email needs Editor access.
 
