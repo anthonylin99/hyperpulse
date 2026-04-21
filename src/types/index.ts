@@ -576,6 +576,8 @@ export interface WhaleAlert {
   assetClass: WhaleAssetClass;
   riskBucket: WhaleRiskBucket;
   confidenceLabel: string;
+  walletRealizedPnl30d: number | null;
+  walletDirectionalHitRate30d: number | null;
   behaviorTags: WhaleBehaviorTag[];
   evidence: WhaleEpisodeEvidence;
 }

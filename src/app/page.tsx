@@ -9,7 +9,6 @@ import ConnectPrompt from "@/components/portfolio/ConnectPrompt";
 import PortfolioWorkspace from "@/components/portfolio/PortfolioWorkspace";
 import DocsPage from "@/components/docs/DocsPage";
 import FactorsPage from "@/components/factors/FactorsPage";
-import WhalesPage from "@/components/whales/WhalesPage";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -41,17 +40,26 @@ function HomeContent() {
   }, [searchParams]);
   const requestedAsset = searchParams.get("asset");
   const requestedAddress = searchParams.get("address");
-  const [tab, setTab] = useState<Tab>(requestedTab ?? "home");
+  const [tab, setTab] = useState<Tab>(requestedTab === "whales" ? "home" : requestedTab ?? "home");
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
     direction: "long" | "short";
   } | null>(null);
 
   useEffect(() => {
-    if (requestedTab && requestedTab !== tab) {
+    if (requestedTab && requestedTab !== "whales" && requestedTab !== tab) {
       setTab(requestedTab);
     }
   }, [requestedTab, tab]);
+
+  useEffect(() => {
+    if (requestedTab === "whales") {
+      router.replace(requestedAddress ? `/whales/${requestedAddress}` : "/whales", {
+        scroll: false,
+      });
+      return;
+    }
+  }, [requestedAddress, requestedTab, router]);
 
   useEffect(() => {
     if (!requestedAsset) return;
@@ -59,10 +67,14 @@ function HomeContent() {
   }, [requestedAsset, setSelectedAsset]);
 
   const handleTabChange = (nextTab: Tab) => {
+    if (nextTab === "whales") {
+      router.push("/whales");
+      return;
+    }
     setTab(nextTab);
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", nextTab);
-    if (nextTab !== "whales") params.delete("address");
+    params.delete("address");
     if (nextTab !== "markets") params.delete("asset");
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
@@ -94,7 +106,7 @@ function HomeContent() {
       </div>
 
       {tab === "home" ? (
-        <HomePage onSelectTab={setTab} />
+        <HomePage onSelectTab={handleTabChange} />
       ) : tab === "portfolio" ? (
         !isConnected ? (
           <ConnectPrompt />
@@ -147,8 +159,6 @@ function HomeContent() {
         </>
       ) : tab === "factors" ? (
         <FactorsPage />
-      ) : tab === "whales" ? (
-        <WhalesPage initialAddress={requestedAddress} />
       ) : (
         <DocsPage />
       )}

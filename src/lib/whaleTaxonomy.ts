@@ -39,6 +39,11 @@ const DEFI_SYMBOLS = new Set(["AAVE", "CRV", "GMX", "JUP", "MORPHO", "ONDO", "PE
 const MEME_SYMBOLS = new Set(["DOGE", "WIF", "POPCAT", "FARTCOIN", "TRUMP", "BRETT", "MEW", "kPEPE", "PENGU"]);
 const CRYPTO_BETA_SYMBOLS = new Set(["BTC", "ETH", "SOL", "HYPE", "BNB", "XRP", "ADA", "SUI", "AVAX", "LINK", "TRX"]);
 const EQUITY_BROAD_SYMBOLS = new Set(["SPY", "QQQ", "USPYX"]);
+const QUALIFIED_HIP3_SYMBOLS = new Set([
+  ...STOCK_SYMBOLS,
+  ...OIL_SYMBOLS,
+  ...METAL_SYMBOLS,
+]);
 
 function normalizeSymbol(symbol: string): string {
   return symbol.toUpperCase().replace(/\/USDC$/, "");
@@ -162,6 +167,10 @@ export function classifyWhaleAsset(
 
 export function isMajorWhaleAsset(symbol: string): boolean {
   return CRYPTO_BETA_SYMBOLS.has(normalizeSymbol(symbol));
+}
+
+export function isQualifiedHip3Symbol(symbol: string): boolean {
+  return QUALIFIED_HIP3_SYMBOLS.has(normalizeSymbol(symbol));
 }
 
 function parseNumber(value: unknown): number {

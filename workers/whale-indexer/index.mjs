@@ -28,6 +28,8 @@ const HEDGE_WINDOW_MS = 30 * 60 * 1000;
 const RISK_LOSS_USD = -envNumber('WHALE_RISK_LOSS_USD', 500_000);
 const HIGH_LEVERAGE = envNumber('WHALE_HIGH_LEVERAGE', 10);
 const LIQ_DISTANCE_PCT = envNumber('WHALE_LIQ_DISTANCE_PCT', 10);
+const DEFAULT_WHALE_MIN_REALIZED_PNL_30D = envNumber('WHALE_MIN_REALIZED_PNL_30D', 200_000);
+const TELEGRAM_ALERT_COOLDOWN_MS = envNumber('WHALE_TELEGRAM_ALERT_COOLDOWN_MS', 45 * 60 * 1000);
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
@@ -53,6 +55,11 @@ const TELEGRAM_LARGE_CAP_PERP_ALLOWLIST = new Set([
   'TAO', 'NEAR', 'RENDER', 'INJ', 'ONDO', 'UNI', 'CRV', 'GMX', 'JUP', 'PENDLE', 'MORPHO',
   'WLD', 'FET', 'ENA', 'ARB', 'OP', 'SEI', 'APT', 'TON', 'TRX', 'LTC', 'BCH'
 ]);
+const QUALIFIED_HIP3_SYMBOLS = new Set([
+  ...STOCK_SYMBOLS,
+  ...OIL_SYMBOLS,
+  ...METAL_SYMBOLS,
+]);
 
 function formatMultiple(value) {
   if (!Number.isFinite(value) || value <= 0) return 'n/a';
@@ -60,12 +67,8 @@ function formatMultiple(value) {
   return `${value.toFixed(1)}x`;
 }
 
-function isInterestingAlert(alert) {
-  // Telegram should act like a perp whale tape for Anthony's workflow.
-  // Keep the app capable of spot/HIP-3 analysis, but page only for tradable mid/large-cap perp names.
-  if (alert.marketType !== 'crypto_perp') return false;
-  if (!TELEGRAM_LARGE_CAP_PERP_ALLOWLIST.has(alert.coin)) return false;
-  return true;
+function isQualifiedHip3Symbol(symbol) {
+  return QUALIFIED_HIP3_SYMBOLS.has(normalizeSymbol(symbol));
 }
 
 
@@ -80,6 +83,7 @@ const rpcWs = new SubscriptionClient({
 
 const recentExplorerFlow = new Map();
 const recentEpisodes = new Map();
+const recentTelegramAlerts = new Map();
 let perpUniverse = [];
 let spotMarketMap = {};
 let spotSubscriptions = [];
@@ -654,13 +658,13 @@ function classifyEpisode({ trigger, profile, fills }) {
 function buildAlertHeadline({ eventType, directionality, coin, side, leverage, assetClass }) {
   const lev = leverage ? `${leverage.toFixed(1)}x` : 'spot';
   if (eventType === 'deposit-led-long' || eventType === 'deposit-led-short') {
-    return `Deposit-led ${assetClass.toLowerCase()} ${side} in ${coin} at ${lev}`;
+    return `Flow-led positioning in ${coin} ${side} at ${lev}`;
   }
-  if (directionality === 'stress' || eventType === 'underwater-whale') return `Underwater whale in ${coin} ${side}`;
+  if (directionality === 'stress' || eventType === 'underwater-whale') return `Positioning stress in ${coin} ${side}`;
   if (directionality === 'hedge') return `Hedge overlay in ${coin}`;
   if (directionality === 'rotation') return `Rotation into ${coin}`;
   if (directionality === 'reduce') return `De-risking ${coin}`;
-  return directionality === 'directional_add' ? `Directional add in ${coin} ${side}` : `Directional entry in ${coin} ${side}`;
+  return directionality === 'directional_add' ? `Positioning add in ${coin} ${side}` : `Positioning entry in ${coin} ${side}`;
 }
 
 async function persistWorkerStatus(payload = {}) {
@@ -767,8 +771,40 @@ async function persistAlert(alert, profile, episode) {
   );
 }
 
-function shouldSendTelegram(alert) {
-  if (!isInterestingAlert(alert)) return false;
+function buildWhyItPassed(alert, profile) {
+  const reasons = [];
+  if (alert.sizeVsWalletAverage >= 1) {
+    reasons.push(`${alert.sizeVsWalletAverage.toFixed(1)}x avg size`);
+  }
+  if (Number.isFinite(profile?.realizedPnl30d)) {
+    reasons.push(`${formatSignedUsd(profile.realizedPnl30d)} 30d PnL`);
+  } else if (alert.directionality === 'stress') {
+    reasons.push('stress setup');
+  } else if (alert.offsetRatio <= 0.2) {
+    reasons.push('low offset');
+  } else if (alert.marketType === 'hip3_spot') {
+    reasons.push('qualified HIP-3 flow');
+  } else {
+    reasons.push('positioning imbalance');
+  }
+  return reasons.slice(0, 2).join(' · ');
+}
+
+function shouldSendTelegram(alert, profile) {
+  if (profile.realizedPnl30d < DEFAULT_WHALE_MIN_REALIZED_PNL_30D) return false;
+  if (!['directional_entry', 'directional_add', 'stress'].includes(alert.directionality)) return false;
+  if (alert.eventType === 'reduce') return false;
+  if (alert.conviction === 'low' && alert.directionality !== 'stress') return false;
+  if (alert.marketType === 'hip3_spot') {
+    if (!isQualifiedHip3Symbol(alert.coin)) return false;
+  } else if (!TELEGRAM_LARGE_CAP_PERP_ALLOWLIST.has(alert.coin)) {
+    return false;
+  }
+
+  const dedupeKey = `${alert.address.toLowerCase()}:${alert.coin}:${alert.directionality}:${alert.side}`;
+  const lastSentAt = recentTelegramAlerts.get(dedupeKey);
+  if (lastSentAt && Date.now() - lastSentAt < TELEGRAM_ALERT_COOLDOWN_MS) return false;
+  recentTelegramAlerts.set(dedupeKey, Date.now());
   return true;
 }
 
@@ -795,33 +831,32 @@ function titleCase(value) {
 function inferDisplaySide(alert) {
   const detailMatch = alert.detail?.match(/\b(long|short)\b/i);
   if (detailMatch) return titleCase(detailMatch[1].toLowerCase());
-  if (alert.side === 'mixed') return 'Mixed';
+  if (alert.side === 'mixed') return 'Two-way';
   return titleCase(alert.side);
 }
 
 function telegramHeader(alert) {
   const assetEmoji = TELEGRAM_ASSET_EMOJI.get(alert.coin) || '🐋';
-  const convictionLabel = `${titleCase(alert.conviction)} conviction`;
-  if (alert.directionality === 'stress') return `${assetEmoji} ⚠️ WHALE UNDER PRESSURE · ${convictionLabel}`;
-  if (alert.eventType.startsWith('deposit-led')) return `${assetEmoji} 💸 FLOW-LED ENTRY · ${convictionLabel}`;
-  if (alert.directionality === 'directional_add') return `${assetEmoji} 📈 SMART MONEY ADD · ${convictionLabel}`;
-  return `${assetEmoji} 🎯 SMART MONEY ENTRY · ${convictionLabel}`;
+  if (alert.directionality === 'stress') return `${assetEmoji} ⚠️ POSITIONING STRESS`;
+  if (alert.eventType.startsWith('deposit-led')) return `${assetEmoji} 💸 FLOW-LED POSITIONING`;
+  if (alert.directionality === 'directional_add') return `${assetEmoji} 📈 POSITIONING ADD`;
+  return `${assetEmoji} 🎯 POSITIONING IMBALANCE`;
 }
 
 function buildTelegramMessage(alert, profile) {
-  const marketLabel = alert.marketType === 'hip3_spot' ? `HIP-3 ${titleCase(alert.assetClass)}` : 'Perp';
+  const marketLabel = alert.marketType === 'hip3_spot' ? `QUALIFIED HIP-3 ${titleCase(alert.assetClass)}` : 'Perp';
   const leverageLabel = alert.leverage ? `${alert.leverage.toFixed(1)}x` : 'spot';
   const sizeVsAvg = formatMultiple(alert.sizeVsWalletAverage);
   const displaySide = inferDisplaySide(alert);
-  const evidenceLine = alert.evidence.summary.replace(/\s+/g, ' ').trim();
-  const walletUrl = `${APP_URL}/?tab=whales&address=${alert.address}`;
+  const evidenceLine = buildWhyItPassed(alert, profile);
+  const walletUrl = `${APP_URL}/whales/${alert.address}?alert=${alert.id}`;
   const chartUrl = `${APP_URL}/?tab=markets&asset=${alert.coin}`;
 
   const line1 = telegramHeader(alert);
   const line2 = `${alert.coin} ${displaySide.toUpperCase()} · ${marketLabel.toUpperCase()}`;
   const line3 = `SIZE: ${formatCompact(alert.notionalUsd)} · LEVERAGE: ${leverageLabel} · VS AVG: ${sizeVsAvg}`;
   const line4 = `30D PNL: ${formatSignedUsd(profile.realizedPnl30d)} · WIN RATE: ${profile.directionalHitRate30d.toFixed(1)}%`;
-  const line5 = `WHY IT PASSED: ${evidenceLine}`;
+  const line5 = `WHY IT MATTERS: ${evidenceLine}`;
   const line6 = `WALLET: ${walletUrl}`;
   const line7 = `CHART: ${chartUrl}`;
   return [line1, line2, line3, line4, line5, line6, line7].filter(Boolean).join('\n');
@@ -842,7 +877,7 @@ function formatSignedUsd(value) {
 }
 
 async function enqueueTelegram(alert, profile) {
-  if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !shouldSendTelegram(alert)) return;
+  if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !shouldSendTelegram(alert, profile)) return;
   const message = buildTelegramMessage(alert, profile);
   const messageHash = createHash('sha256').update(message).digest('hex');
   await pool.query(
@@ -978,9 +1013,7 @@ async function enrichWallet(address, trigger) {
     detail: `${classification.descriptor.symbol} ${trigger.side} · ${classification.descriptor.assetClass} · ${classification.evidence.summary}`,
     timestamp: trigger.timestamp,
     coin: classification.descriptor.symbol,
-    side: profile.positions.some((position) => position.side !== trigger.side && position.riskBucket === classification.descriptor.riskBucket)
-      ? 'mixed'
-      : trigger.side,
+    side: trigger.side,
     notionalUsd: trigger.notionalUsd,
     leverage: focusPosition.leverage,
     entryPx: focusPosition.entryPx ?? null,
@@ -998,10 +1031,13 @@ async function enrichWallet(address, trigger) {
     marketType: classification.descriptor.marketType,
     assetClass: classification.descriptor.assetClass,
     riskBucket: classification.descriptor.riskBucket,
-    confidenceLabel: classification.conviction === 'high' ? 'high conviction' : classification.conviction === 'medium' ? 'validated' : 'watch',
+    confidenceLabel: '',
+    walletRealizedPnl30d: profile.realizedPnl30d,
+    walletDirectionalHitRate30d: profile.directionalHitRate30d,
     behaviorTags: Array.from(new Set([...(profile.behaviorTags || []), ...(profile.styleTags || []).includes('Hedger') ? ['Two-sided book'] : []])),
     evidence: classification.evidence,
   };
+  alert.confidenceLabel = buildWhyItPassed(alert, profile);
 
   const episode = {
     id: alert.id,
@@ -1051,6 +1087,7 @@ async function handleTrade(trade, marketType) {
     ? spotMarketMap[coinKey] || classifyWhaleAsset(coinKey, 'hip3_spot', inferSpotCategory(coinKey))
     : classifyWhaleAsset(coinKey, 'crypto_perp');
   const symbol = descriptor.symbol;
+  if (marketType === 'hip3_spot' && !isQualifiedHip3Symbol(symbol)) return;
   const notionalUsd = parseNumber(trade.px) * parseNumber(trade.sz);
   if (notionalUsd < tradeThreshold(symbol)) return;
 

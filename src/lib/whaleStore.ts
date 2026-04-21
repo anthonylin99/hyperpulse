@@ -1,7 +1,10 @@
 import { Pool } from "pg";
 import type { WhaleAlert, WhaleDirectionality, WhaleEpisode, WhaleWalletProfile, WhaleWatchlistEntry } from "@/types";
+import { isQualifiedHip3Symbol } from "@/lib/whaleTaxonomy";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DEFAULT_WHALE_MIN_REALIZED_PNL_30D = 200_000;
+const DEFAULT_FEED_FETCH_MULTIPLIER = 5;
 
 let pool: Pool | null = null;
 function getPool(): Pool | null {
@@ -17,6 +20,57 @@ const memoryProfiles = new Map<string, WhaleWalletProfile>();
 const memoryEpisodes = new Map<string, WhaleEpisode>();
 const memoryWatchlist = new Map<string, WhaleWatchlistEntry>();
 const memoryWorkerStatus: { updatedAt: number; payload: Record<string, unknown> | null } | null = null;
+
+function formatCompactSignedUsd(value: number): string {
+  const sign = value >= 0 ? "+" : "-";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+function normalizeAlertSide(alert: WhaleAlert): WhaleAlert["side"] {
+  if (alert.side !== "mixed") return alert.side;
+  const match = `${alert.headline} ${alert.detail}`.match(/\b(long|short)\b/i);
+  return match?.[1]?.toLowerCase() === "short" ? "short" : "long";
+}
+
+function buildWhyItPassed(alert: WhaleAlert, profile?: WhaleWalletProfile | null): string {
+  const reasons: string[] = [];
+  if (alert.sizeVsWalletAverage >= 1) {
+    reasons.push(`${alert.sizeVsWalletAverage.toFixed(1)}x avg size`);
+  }
+  const realizedPnl = profile?.realizedPnl30d ?? alert.walletRealizedPnl30d ?? null;
+  if (realizedPnl != null && Number.isFinite(realizedPnl)) {
+    reasons.push(`${formatCompactSignedUsd(realizedPnl)} 30d PnL`);
+  } else if (alert.directionality === "stress") {
+    reasons.push("stress setup");
+  } else if (alert.offsetRatio <= 0.2) {
+    reasons.push("low offset");
+  } else if (alert.marketType === "hip3_spot") {
+    reasons.push("qualified HIP-3 flow");
+  } else {
+    reasons.push("positioning imbalance");
+  }
+  return reasons.slice(0, 2).join(" · ");
+}
+
+function normalizeAlertPayload(alert: WhaleAlert, profile?: WhaleWalletProfile | null): WhaleAlert {
+  return {
+    ...alert,
+    side: normalizeAlertSide(alert),
+    walletRealizedPnl30d: alert.walletRealizedPnl30d ?? profile?.realizedPnl30d ?? null,
+    walletDirectionalHitRate30d: alert.walletDirectionalHitRate30d ?? profile?.directionalHitRate30d ?? null,
+    confidenceLabel: buildWhyItPassed(alert, profile),
+  };
+}
+
+function qualifiesForDefaultSurface(alert: WhaleAlert, profile?: WhaleWalletProfile | null): boolean {
+  if (!profile || profile.realizedPnl30d < DEFAULT_WHALE_MIN_REALIZED_PNL_30D) return false;
+  if (alert.marketType === "hip3_spot" && !isQualifiedHip3Symbol(alert.coin)) return false;
+  return true;
+}
 
 export function isWhaleStoreConfigured(): boolean {
   return Boolean(getPool());
@@ -225,6 +279,8 @@ export async function listWhaleAlerts(filters: WhaleFeedFilters = {}): Promise<W
       .filter((alert) => (riskBucket ? alert.riskBucket === riskBucket : true))
       .filter((alert) => (timeframeFloor ? alert.timestamp >= timeframeFloor : true))
       .filter((alert) => (cursor ? alert.timestamp < cursor : true))
+      .filter((alert) => qualifiesForDefaultSurface(alert, memoryProfiles.get(alert.address.toLowerCase()) ?? null))
+      .map((alert) => normalizeAlertPayload(alert, memoryProfiles.get(alert.address.toLowerCase()) ?? null))
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, limit);
 
@@ -268,12 +324,28 @@ export async function listWhaleAlerts(filters: WhaleFeedFilters = {}): Promise<W
     values.push(cursor);
     clauses.push(`created_at < $${values.length}`);
   }
-  values.push(limit);
+  values.push(Math.max(limit * DEFAULT_FEED_FETCH_MULTIPLIER, limit));
   const result = await client.query(
     `select payload from whale_alerts where ${clauses.join(" and ")} order by created_at desc limit $${values.length}`,
     values,
   );
-  return result.rows.map((row) => row.payload as WhaleAlert);
+  const alerts = result.rows.map((row) => row.payload as WhaleAlert);
+  const addresses = [...new Set(alerts.map((alert) => alert.address.toLowerCase()))];
+  let profilesByAddress = new Map<string, WhaleWalletProfile>();
+  if (addresses.length > 0) {
+    const profileResult = await client.query(
+      `select address, payload from whale_profiles_current where address = any($1::text[])`,
+      [addresses],
+    );
+    profilesByAddress = new Map(
+      profileResult.rows.map((row) => [String(row.address).toLowerCase(), row.payload as WhaleWalletProfile]),
+    );
+  }
+
+  return alerts
+    .filter((alert) => qualifiesForDefaultSurface(alert, profilesByAddress.get(alert.address.toLowerCase()) ?? null))
+    .map((alert) => normalizeAlertPayload(alert, profilesByAddress.get(alert.address.toLowerCase()) ?? null))
+    .slice(0, limit);
 }
 
 export async function getWhaleAlertsForAddress(address: string, limit = 8): Promise<WhaleAlert[]> {
@@ -282,12 +354,31 @@ export async function getWhaleAlertsForAddress(address: string, limit = 8): Prom
   if (!client) {
     return Array.from(memoryAlerts.values())
       .filter((alert) => alert.address.toLowerCase() === lower)
+      .map((alert) => normalizeAlertPayload(alert, memoryProfiles.get(lower) ?? null))
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, limit);
   }
   await ensureTables();
   const result = await client.query(`select payload from whale_alerts where address = $1 order by created_at desc limit $2`, [lower, limit]);
-  return result.rows.map((row) => row.payload as WhaleAlert);
+  const profile = await getStoredWhaleProfile(lower);
+  return result.rows.map((row) => normalizeAlertPayload(row.payload as WhaleAlert, profile));
+}
+
+export async function getWhaleEpisodesForAddress(address: string, limit = 50): Promise<WhaleEpisode[]> {
+  const lower = address.toLowerCase();
+  const client = getPool();
+  if (!client) {
+    return Array.from(memoryEpisodes.values())
+      .filter((episode) => episode.address.toLowerCase() === lower)
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, limit);
+  }
+  await ensureTables();
+  const result = await client.query(
+    `select payload from whale_trade_episodes where address = $1 order by created_at desc limit $2`,
+    [lower, limit],
+  );
+  return result.rows.map((row) => row.payload as WhaleEpisode);
 }
 
 export async function getStoredWhaleProfile(address: string): Promise<WhaleWalletProfile | null> {

@@ -581,10 +581,10 @@ export function buildAlertHeadline(args: {
 }): string {
   const lev = args.leverage ? `${args.leverage.toFixed(1)}x` : "spot";
   if (args.eventType === "deposit-led-long" || args.eventType === "deposit-led-short") {
-    return `Deposit-led ${args.assetClass.toLowerCase()} ${args.side} in ${args.coin} at ${lev}`;
+    return `Flow-led positioning in ${args.coin} ${args.side} at ${lev}`;
   }
   if (args.directionality === "stress" || args.eventType === "underwater-whale") {
-    return `Underwater whale in ${args.coin} ${args.side}`;
+    return `Positioning stress in ${args.coin} ${args.side}`;
   }
   if (args.directionality === "hedge") {
     return `Hedge overlay in ${args.coin}`;
@@ -596,8 +596,8 @@ export function buildAlertHeadline(args: {
     return `De-risking ${args.coin}`;
   }
   return args.directionality === "directional_add"
-    ? `Directional add in ${args.coin} ${args.side}`
-    : `Directional entry in ${args.coin} ${args.side}`;
+    ? `Positioning add in ${args.coin} ${args.side}`
+    : `Positioning entry in ${args.coin} ${args.side}`;
 }
 
 export function coalesceEpisodeId(address: string, coin: string, timestamp: number): string {
