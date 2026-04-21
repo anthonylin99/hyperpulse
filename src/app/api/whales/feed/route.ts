@@ -10,6 +10,7 @@ import type { PositioningAlertType, PositioningRegime, WhaleSeverity } from "@/t
 
 const TIMEFRAME_TO_MS: Record<string, number> = {
   "1h": 60 * 60 * 1000,
+  "2h": 2 * 60 * 60 * 1000,
   "6h": 6 * 60 * 60 * 1000,
   "24h": 24 * 60 * 60 * 1000,
   "7d": 7 * 24 * 60 * 60 * 1000,

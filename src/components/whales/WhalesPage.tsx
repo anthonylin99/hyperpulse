@@ -35,7 +35,7 @@ type FeedResponse = {
   } | null;
 };
 
-const TIMEFRAME_OPTIONS = ["6h", "24h", "7d"] as const;
+const TIMEFRAME_OPTIONS = ["2h", "6h", "24h", "7d"] as const;
 const VIEW_FILTERS = [
   { value: "all", label: "All" },
   { value: "crowding", label: "Crowding" },
@@ -228,7 +228,7 @@ function RecentDigests({ digests }: { digests: PositioningDigestRun[] }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Recent Digests</div>
-          <div className="mt-1 text-sm text-zinc-400">Telegram now sends a structured market update every four hours by default.</div>
+          <div className="mt-1 text-sm text-zinc-400">Telegram now sends a structured market update every two hours by default.</div>
         </div>
         <Link
           href="/api/whales/export?dataset=positioning-digests"
@@ -243,7 +243,10 @@ function RecentDigests({ digests }: { digests: PositioningDigestRun[] }) {
           <div key={digest.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-medium text-zinc-100">{digest.headline}</div>
-              <SmallPill label={digest.telegramSentAt ? "sent" : "queued"} tone={digest.telegramSentAt ? "green" : "neutral"} />
+              <div className="flex items-center gap-2">
+                {digest.payload?.manual ? <SmallPill label="manual preview" tone="amber" /> : null}
+                <SmallPill label={digest.telegramSentAt ? "sent" : "queued"} tone={digest.telegramSentAt ? "green" : "neutral"} />
+              </div>
             </div>
             <div className="mt-2 text-xs text-zinc-500">{formatTimestamp(digest.createdAt)}</div>
             <div className="mt-3 space-y-2">
@@ -354,7 +357,7 @@ export default function WhalesPage() {
               Slow, high-signal alerts for crowding, liquidation pressure, and rare whale conviction.
             </h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-300">
-              Telegram is now digest-first: four-hour market updates with rare interrupting alerts when positioning gets fragile or a top wallet shows real conviction.
+              Telegram is now digest-first: two-hour market updates with rare interrupting alerts when positioning gets fragile or a top wallet shows real conviction.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -468,7 +471,7 @@ export default function WhalesPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <SmallPill label="4h digest default" tone="neutral" />
+              <SmallPill label="2h digest default" tone="neutral" />
               {feedRefreshing && <SmallPill label="Refreshing" tone="neutral" />}
               <SmallPill
                 label={feed?.workerConfigured ? workerFreshness(feed.workerStatus) : "Worker offline"}
