@@ -1,5 +1,15 @@
 import { Pool } from "pg";
-import type { WhaleAlert, WhaleDirectionality, WhaleEpisode, WhaleWalletProfile, WhaleWatchlistEntry } from "@/types";
+import type {
+  PositioningAlert,
+  PositioningDigestRun,
+  PositioningMarketSnapshot,
+  WalletTimingScore,
+  WhaleAlert,
+  WhaleDirectionality,
+  WhaleEpisode,
+  WhaleWalletProfile,
+  WhaleWatchlistEntry,
+} from "@/types";
 import { isQualifiedHip3Symbol } from "@/lib/whaleTaxonomy";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
@@ -19,6 +29,10 @@ const memoryAlerts = new Map<string, WhaleAlert>();
 const memoryProfiles = new Map<string, WhaleWalletProfile>();
 const memoryEpisodes = new Map<string, WhaleEpisode>();
 const memoryWatchlist = new Map<string, WhaleWatchlistEntry>();
+const memoryPositioningAlerts = new Map<string, PositioningAlert>();
+const memoryPositioningSnapshots = new Map<string, PositioningMarketSnapshot>();
+const memoryPositioningDigests = new Map<string, PositioningDigestRun>();
+const memoryTimingScores = new Map<string, WalletTimingScore>();
 const memoryWorkerStatus: { updatedAt: number; payload: Record<string, unknown> | null } | null = null;
 
 function formatCompactSignedUsd(value: number): string {
@@ -135,6 +149,45 @@ async function ensureTables() {
       created_at bigint not null
     );
   `);
+  await client.query(`
+    create table if not exists positioning_market_snapshots (
+      id text primary key,
+      asset text not null,
+      created_at bigint not null,
+      market_type text not null,
+      payload jsonb not null
+    );
+  `);
+  await client.query(`
+    create table if not exists positioning_alerts (
+      id text primary key,
+      asset text not null,
+      alert_type text not null,
+      regime text not null,
+      severity text not null,
+      created_at bigint not null,
+      payload jsonb not null
+    );
+  `);
+  await client.query(`
+    create table if not exists positioning_digest_runs (
+      id text primary key,
+      created_at bigint not null,
+      payload jsonb not null,
+      message_hash text,
+      telegram_sent_at bigint
+    );
+  `);
+  await client.query(`
+    create table if not exists wallet_timing_scores (
+      address text not null,
+      asset text not null,
+      lookahead_hours integer not null,
+      updated_at bigint not null,
+      payload jsonb not null,
+      primary key (address, asset, lookahead_hours)
+    );
+  `);
   await client.query(`alter table whale_alerts add column if not exists directionality text;`);
   await client.query(`alter table whale_alerts add column if not exists market_type text;`);
   await client.query(`alter table whale_alerts add column if not exists risk_bucket text;`);
@@ -143,6 +196,9 @@ async function ensureTables() {
   await client.query(`create index if not exists whale_alerts_directionality_idx on whale_alerts (directionality, created_at desc);`);
   await client.query(`create index if not exists whale_alerts_market_type_idx on whale_alerts (market_type, created_at desc);`);
   await client.query(`create index if not exists whale_trade_episodes_created_at_idx on whale_trade_episodes (created_at desc);`);
+  await client.query(`create index if not exists positioning_alerts_created_at_idx on positioning_alerts (created_at desc);`);
+  await client.query(`create index if not exists positioning_alerts_asset_idx on positioning_alerts (asset, created_at desc);`);
+  await client.query(`create index if not exists positioning_market_snapshots_asset_idx on positioning_market_snapshots (asset, created_at desc);`);
 }
 
 export async function upsertWhaleAlert(alert: WhaleAlert): Promise<void> {
@@ -231,6 +287,99 @@ export async function upsertWhaleEpisode(episode: WhaleEpisode): Promise<void> {
   );
 }
 
+export async function upsertPositioningAlert(alert: PositioningAlert): Promise<void> {
+  const client = getPool();
+  if (!client) {
+    memoryPositioningAlerts.set(alert.id, alert);
+    return;
+  }
+  await ensureTables();
+  await client.query(
+    `
+    insert into positioning_alerts (id, asset, alert_type, regime, severity, created_at, payload)
+    values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+    on conflict (id) do update set
+      asset = excluded.asset,
+      alert_type = excluded.alert_type,
+      regime = excluded.regime,
+      severity = excluded.severity,
+      created_at = excluded.created_at,
+      payload = excluded.payload
+  `,
+    [
+      alert.id,
+      alert.asset,
+      alert.alertType,
+      alert.regime,
+      alert.severity,
+      alert.timestamp,
+      JSON.stringify(alert),
+    ],
+  );
+}
+
+export async function upsertPositioningMarketSnapshot(snapshot: PositioningMarketSnapshot): Promise<void> {
+  const client = getPool();
+  if (!client) {
+    memoryPositioningSnapshots.set(snapshot.id, snapshot);
+    return;
+  }
+  await ensureTables();
+  await client.query(
+    `
+    insert into positioning_market_snapshots (id, asset, created_at, market_type, payload)
+    values ($1, $2, $3, $4, $5::jsonb)
+    on conflict (id) do update set
+      asset = excluded.asset,
+      created_at = excluded.created_at,
+      market_type = excluded.market_type,
+      payload = excluded.payload
+  `,
+    [snapshot.id, snapshot.asset, snapshot.timestamp, snapshot.marketType, JSON.stringify(snapshot)],
+  );
+}
+
+export async function upsertPositioningDigestRun(digest: PositioningDigestRun): Promise<void> {
+  const client = getPool();
+  if (!client) {
+    memoryPositioningDigests.set(digest.id, digest);
+    return;
+  }
+  await ensureTables();
+  await client.query(
+    `
+    insert into positioning_digest_runs (id, created_at, payload, message_hash, telegram_sent_at)
+    values ($1, $2, $3::jsonb, $4, $5)
+    on conflict (id) do update set
+      created_at = excluded.created_at,
+      payload = excluded.payload,
+      message_hash = excluded.message_hash,
+      telegram_sent_at = excluded.telegram_sent_at
+  `,
+    [digest.id, digest.createdAt, JSON.stringify(digest), null, digest.telegramSentAt],
+  );
+}
+
+export async function upsertWalletTimingScore(score: WalletTimingScore): Promise<void> {
+  const key = `${score.address.toLowerCase()}:${score.asset}:${score.lookaheadHours}`;
+  const client = getPool();
+  if (!client) {
+    memoryTimingScores.set(key, score);
+    return;
+  }
+  await ensureTables();
+  await client.query(
+    `
+    insert into wallet_timing_scores (address, asset, lookahead_hours, updated_at, payload)
+    values ($1, $2, $3, $4, $5::jsonb)
+    on conflict (address, asset, lookahead_hours) do update set
+      updated_at = excluded.updated_at,
+      payload = excluded.payload
+  `,
+    [score.address.toLowerCase(), score.asset, score.lookaheadHours, score.updatedAt, JSON.stringify(score)],
+  );
+}
+
 export async function getWhaleWorkerStatus(): Promise<{ updatedAt: number; payload: Record<string, unknown> | null } | null> {
   const client = getPool();
   if (!client) return memoryWorkerStatus;
@@ -256,6 +405,16 @@ export type WhaleFeedFilters = {
   marketType?: string | null;
   riskBucket?: string | null;
   hip3Only?: boolean;
+};
+
+export type PositioningFeedFilters = {
+  severity?: string | null;
+  asset?: string | null;
+  alertType?: string | null;
+  regime?: string | null;
+  timeframeMs?: number;
+  cursor?: number | null;
+  limit?: number;
 };
 
 export async function listWhaleAlerts(filters: WhaleFeedFilters = {}): Promise<WhaleAlert[]> {
@@ -388,6 +547,117 @@ export async function getStoredWhaleProfile(address: string): Promise<WhaleWalle
   await ensureTables();
   const result = await client.query(`select payload from whale_profiles_current where address = $1 limit 1`, [lower]);
   return result.rows[0]?.payload ?? null;
+}
+
+export async function listPositioningAlerts(filters: PositioningFeedFilters = {}): Promise<PositioningAlert[]> {
+  const severity = filters.severity && filters.severity !== "all" ? filters.severity : null;
+  const asset = filters.asset && filters.asset !== "all" ? filters.asset.toUpperCase() : null;
+  const alertType = filters.alertType && filters.alertType !== "all" ? filters.alertType : null;
+  const regime = filters.regime && filters.regime !== "all" ? filters.regime : null;
+  const timeframeFloor = filters.timeframeMs ? Date.now() - filters.timeframeMs : null;
+  const cursor = filters.cursor ?? null;
+  const limit = filters.limit ?? 50;
+
+  const filterMemory = (items: PositioningAlert[]) =>
+    items
+      .filter((item) => (severity ? item.severity === severity : true))
+      .filter((item) => (asset ? item.asset === asset : true))
+      .filter((item) => (alertType ? item.alertType === alertType : true))
+      .filter((item) => (regime ? item.regime === regime : true))
+      .filter((item) => (timeframeFloor ? item.timestamp >= timeframeFloor : true))
+      .filter((item) => (cursor ? item.timestamp < cursor : true))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limit);
+
+  const client = getPool();
+  if (!client) {
+    return filterMemory(Array.from(memoryPositioningAlerts.values()));
+  }
+
+  await ensureTables();
+  const clauses = ["1=1"];
+  const values: unknown[] = [];
+  if (severity) {
+    values.push(severity);
+    clauses.push(`severity = $${values.length}`);
+  }
+  if (asset) {
+    values.push(asset);
+    clauses.push(`asset = $${values.length}`);
+  }
+  if (alertType) {
+    values.push(alertType);
+    clauses.push(`alert_type = $${values.length}`);
+  }
+  if (regime) {
+    values.push(regime);
+    clauses.push(`regime = $${values.length}`);
+  }
+  if (timeframeFloor) {
+    values.push(timeframeFloor);
+    clauses.push(`created_at >= $${values.length}`);
+  }
+  if (cursor) {
+    values.push(cursor);
+    clauses.push(`created_at < $${values.length}`);
+  }
+  values.push(limit);
+  const result = await client.query(
+    `select payload from positioning_alerts where ${clauses.join(" and ")} order by created_at desc limit $${values.length}`,
+    values,
+  );
+  return result.rows.map((row) => row.payload as PositioningAlert);
+}
+
+export async function listPositioningDigests(limit = 12): Promise<PositioningDigestRun[]> {
+  const client = getPool();
+  if (!client) {
+    return Array.from(memoryPositioningDigests.values())
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, limit);
+  }
+  await ensureTables();
+  const result = await client.query(
+    `select payload, telegram_sent_at from positioning_digest_runs order by created_at desc limit $1`,
+    [limit],
+  );
+  return result.rows.map((row) => ({
+    ...(row.payload as PositioningDigestRun),
+    telegramSentAt: row.telegram_sent_at == null ? (row.payload as PositioningDigestRun).telegramSentAt ?? null : Number(row.telegram_sent_at),
+  }));
+}
+
+export async function listPositioningMarketSnapshots(asset: string, limit = 200): Promise<PositioningMarketSnapshot[]> {
+  const normalizedAsset = asset.toUpperCase();
+  const client = getPool();
+  if (!client) {
+    return Array.from(memoryPositioningSnapshots.values())
+      .filter((snapshot) => snapshot.asset === normalizedAsset)
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limit);
+  }
+  await ensureTables();
+  const result = await client.query(
+    `select payload from positioning_market_snapshots where asset = $1 order by created_at desc limit $2`,
+    [normalizedAsset, limit],
+  );
+  return result.rows.map((row) => row.payload as PositioningMarketSnapshot);
+}
+
+export async function getWalletTimingScores(address: string): Promise<WalletTimingScore[]> {
+  const normalized = address.toLowerCase();
+  const client = getPool();
+  if (!client) {
+    return Array.from(memoryTimingScores.values())
+      .filter((score) => score.address.toLowerCase() === normalized)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  await ensureTables();
+  const result = await client.query(
+    `select payload from wallet_timing_scores where address = $1 order by updated_at desc`,
+    [normalized],
+  );
+  return result.rows.map((row) => row.payload as WalletTimingScore);
 }
 
 export async function listWhaleWatchlist(): Promise<WhaleWatchlistEntry[]> {

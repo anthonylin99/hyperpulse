@@ -606,6 +606,10 @@ export interface WhaleWalletProfile {
   medianTradeSize30d: number;
   avgHoldHours30d: number;
   directionalHitRate30d: number;
+  preMoveHitRate1h?: number | null;
+  preMoveHitRate4h?: number | null;
+  preMoveSampleSize?: number | null;
+  repeatedAddCount6h?: number | null;
   bucketExposures: WhaleBucketExposure[];
   narrative: string;
   positions: WhalePositionSnapshot[];
@@ -632,4 +636,75 @@ export interface WhaleWatchlistEntry {
   address: string;
   nickname: string | null;
   createdAt: number;
+}
+
+export type PositioningAlertType =
+  | "crowding"
+  | "liquidation_pressure"
+  | "high_conviction_whale";
+
+export type PositioningRegime =
+  | "crowded_long"
+  | "crowded_short"
+  | "downside_magnet"
+  | "upside_magnet"
+  | "whale_conviction";
+
+export interface PositioningMarketSnapshot {
+  id: string;
+  asset: string;
+  timestamp: number;
+  price: number;
+  marketType: WhaleMarketType;
+  fundingAPR: number | null;
+  openInterestUsd: number | null;
+  oiChange1h: number | null;
+  oiChange4h: number | null;
+  basisBps: number | null;
+  spotProxySource: string | null;
+  priceChange1h?: number | null;
+  priceChange4h?: number | null;
+}
+
+export interface PositioningAlert {
+  id: string;
+  asset: string;
+  alertType: PositioningAlertType;
+  regime: PositioningRegime;
+  severity: WhaleSeverity;
+  timestamp: number;
+  whyItMatters: string;
+  walletAddress?: string | null;
+  walletLabel?: string | null;
+  basisBps?: number | null;
+  fundingApr?: number | null;
+  oiChange1h?: number | null;
+  oiChange4h?: number | null;
+  trackedLiquidationClusterUsd?: number | null;
+  price?: number | null;
+  clusterPrice?: number | null;
+  repeatedAdds6h?: number | null;
+  marketType?: WhaleMarketType | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface PositioningDigestRun {
+  id: string;
+  createdAt: number;
+  periodStart: number;
+  periodEnd: number;
+  headline: string;
+  summaryLines: string[];
+  alertIds: string[];
+  telegramSentAt: number | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface WalletTimingScore {
+  address: string;
+  asset: string;
+  lookaheadHours: number;
+  sampleSize: number;
+  hitRate: number;
+  updatedAt: number;
 }

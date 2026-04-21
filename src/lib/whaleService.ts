@@ -1,6 +1,11 @@
 import { getInfoClient } from "@/lib/hyperliquid";
 import { validateAddress } from "@/lib/security";
-import { getStoredWhaleProfile, getWhaleAlertsForAddress, upsertWhaleProfile } from "@/lib/whaleStore";
+import {
+  getStoredWhaleProfile,
+  getWalletTimingScores,
+  getWhaleAlertsForAddress,
+  upsertWhaleProfile,
+} from "@/lib/whaleStore";
 import {
   buildSpotMarketMap,
   buildWhaleProfile,
@@ -21,7 +26,7 @@ export async function fetchLiveWhaleProfile(address: string): Promise<WhaleWalle
   const now = Date.now();
   const startTime = now - WHALE_PROFILE_LOOKBACK_30D_MS;
 
-  const [perpState, spotState, rawFills, rawFunding, rawLedger, activeAlerts, stored, spotMeta] =
+  const [perpState, spotState, rawFills, rawFunding, rawLedger, activeAlerts, stored, spotMeta, timingScores] =
     await Promise.all([
       info.clearinghouseState({ user: normalized as `0x${string}` }),
       info.spotClearinghouseState({ user: normalized as `0x${string}` }),
@@ -43,6 +48,7 @@ export async function fetchLiveWhaleProfile(address: string): Promise<WhaleWalle
       getWhaleAlertsForAddress(normalized, 12),
       getStoredWhaleProfile(normalized),
       info.spotMetaAndAssetCtxs(),
+      getWalletTimingScores(normalized),
     ]);
 
   const [spotMetaData, spotAssetCtxs] = spotMeta as unknown as [
@@ -66,6 +72,12 @@ export async function fetchLiveWhaleProfile(address: string): Promise<WhaleWalle
     lastSeenAt: stored?.lastSeenAt ?? null,
     spotMarketMap,
   });
+
+  const score1h = timingScores.find((score) => score.lookaheadHours === 1) ?? null;
+  const score4h = timingScores.find((score) => score.lookaheadHours === 4) ?? null;
+  profile.preMoveHitRate1h = score1h?.hitRate ?? null;
+  profile.preMoveHitRate4h = score4h?.hitRate ?? null;
+  profile.preMoveSampleSize = Math.max(score1h?.sampleSize ?? 0, score4h?.sampleSize ?? 0) || null;
 
   await upsertWhaleProfile(profile);
   return profile;

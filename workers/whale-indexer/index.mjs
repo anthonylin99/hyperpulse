@@ -30,6 +30,18 @@ const HIGH_LEVERAGE = envNumber('WHALE_HIGH_LEVERAGE', 10);
 const LIQ_DISTANCE_PCT = envNumber('WHALE_LIQ_DISTANCE_PCT', 10);
 const DEFAULT_WHALE_MIN_REALIZED_PNL_30D = envNumber('WHALE_MIN_REALIZED_PNL_30D', 200_000);
 const TELEGRAM_ALERT_COOLDOWN_MS = envNumber('WHALE_TELEGRAM_ALERT_COOLDOWN_MS', 45 * 60 * 1000);
+const POSITIONING_DIGEST_INTERVAL_MS = envNumber('POSITIONING_DIGEST_INTERVAL_MS', 4 * 60 * 60 * 1000);
+const POSITIONING_SNAPSHOT_INTERVAL_MS = envNumber('POSITIONING_SNAPSHOT_INTERVAL_MS', 5 * 60 * 1000);
+const CROWDING_ALERT_COOLDOWN_MS = envNumber('POSITIONING_CROWDING_ALERT_COOLDOWN_MS', 6 * 60 * 60 * 1000);
+const LIQUIDATION_ALERT_COOLDOWN_MS = envNumber('POSITIONING_LIQUIDATION_ALERT_COOLDOWN_MS', 3 * 60 * 60 * 1000);
+const HIGH_CONVICTION_ALERT_COOLDOWN_MS = envNumber('POSITIONING_HIGH_CONVICTION_ALERT_COOLDOWN_MS', 12 * 60 * 60 * 1000);
+const TRACKED_CLUSTER_MIN_USD = envNumber('POSITIONING_TRACKED_CLUSTER_MIN_USD', 5_000_000);
+const HIGH_CONVICTION_PNL_FLOOR = envNumber('POSITIONING_HIGH_CONVICTION_PNL_FLOOR', 1_000_000);
+const TRACKED_BOOK_PNL_FLOOR = envNumber('POSITIONING_TRACKED_BOOK_PNL_FLOOR', 200_000);
+const CROWDING_POS_FUNDING_APR = envNumber('POSITIONING_CROWDING_POS_FUNDING_APR', 25);
+const CROWDING_NEG_FUNDING_APR_ABS = envNumber('POSITIONING_CROWDING_NEG_FUNDING_APR_ABS', 10);
+const CROWDING_OI_CHANGE_1H_PCT = envNumber('POSITIONING_CROWDING_OI_CHANGE_1H_PCT', 3);
+const CROWDING_OI_CHANGE_4H_PCT = envNumber('POSITIONING_CROWDING_OI_CHANGE_4H_PCT', 8);
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
@@ -50,6 +62,10 @@ const MEME_SYMBOLS = new Set(['DOGE', 'WIF', 'POPCAT', 'FARTCOIN', 'TRUMP', 'BRE
 const CRYPTO_BETA_SYMBOLS = new Set(['BTC', 'ETH', 'SOL', 'HYPE', 'BNB', 'XRP', 'ADA', 'SUI', 'AVAX', 'LINK', 'TRX']);
 const EQUITY_BROAD_SYMBOLS = new Set(['SPY', 'QQQ', 'USPYX']);
 const MAJORS = new Set(['BTC', 'ETH', 'SOL', 'HYPE']);
+const POSITIONING_MAJOR_PERPS = new Set(['BTC', 'ETH', 'SOL', 'HYPE', 'AAVE', 'ZEC', 'XRP', 'LINK', 'AVAX', 'SUI']);
+const POSITIONING_HIP3_ALLOWLIST = new Set([
+  'AAPL', 'MSFT', 'NVDA', 'SPY', 'QQQ', 'GLD', 'SLV', 'PAXG', 'XAU', 'XAUT0', 'USO', 'WTI', 'BRENT', 'BRENTOIL',
+]);
 const TELEGRAM_LARGE_CAP_PERP_ALLOWLIST = new Set([
   'BTC', 'ETH', 'SOL', 'HYPE', 'AAVE', 'LINK', 'AVAX', 'SUI', 'XRP', 'ADA', 'BNB', 'DOGE',
   'TAO', 'NEAR', 'RENDER', 'INJ', 'ONDO', 'UNI', 'CRV', 'GMX', 'JUP', 'PENDLE', 'MORPHO',
@@ -84,6 +100,8 @@ const rpcWs = new SubscriptionClient({
 const recentExplorerFlow = new Map();
 const recentEpisodes = new Map();
 const recentTelegramAlerts = new Map();
+const recentPositioningAlerts = new Map();
+const latestMarketSnapshots = new Map();
 let perpUniverse = [];
 let spotMarketMap = {};
 let spotSubscriptions = [];
@@ -728,6 +746,45 @@ async function ensureTables() {
     );
   `);
   await pool.query(`create table if not exists whale_watchlist (address text primary key, nickname text, created_at bigint not null);`);
+  await pool.query(`
+    create table if not exists positioning_market_snapshots (
+      id text primary key,
+      asset text not null,
+      created_at bigint not null,
+      market_type text not null,
+      payload jsonb not null
+    );
+  `);
+  await pool.query(`
+    create table if not exists positioning_alerts (
+      id text primary key,
+      asset text not null,
+      alert_type text not null,
+      regime text not null,
+      severity text not null,
+      created_at bigint not null,
+      payload jsonb not null
+    );
+  `);
+  await pool.query(`
+    create table if not exists positioning_digest_runs (
+      id text primary key,
+      created_at bigint not null,
+      payload jsonb not null,
+      message_hash text,
+      telegram_sent_at bigint
+    );
+  `);
+  await pool.query(`
+    create table if not exists wallet_timing_scores (
+      address text not null,
+      asset text not null,
+      lookahead_hours integer not null,
+      updated_at bigint not null,
+      payload jsonb not null,
+      primary key (address, asset, lookahead_hours)
+    );
+  `);
   await pool.query(`alter table whale_alerts add column if not exists directionality text;`);
   await pool.query(`alter table whale_alerts add column if not exists market_type text;`);
   await pool.query(`alter table whale_alerts add column if not exists risk_bucket text;`);
@@ -737,6 +794,9 @@ async function ensureTables() {
   await pool.query(`create index if not exists whale_alerts_created_at_idx on whale_alerts (created_at desc);`);
   await pool.query(`create index if not exists whale_alerts_address_idx on whale_alerts (address);`);
   await pool.query(`create index if not exists whale_alerts_directionality_idx on whale_alerts (directionality, created_at desc);`);
+  await pool.query(`create index if not exists positioning_alerts_created_at_idx on positioning_alerts (created_at desc);`);
+  await pool.query(`create index if not exists positioning_alerts_asset_idx on positioning_alerts (asset, created_at desc);`);
+  await pool.query(`create index if not exists positioning_market_snapshots_asset_idx on positioning_market_snapshots (asset, created_at desc);`);
 }
 
 async function persistAlert(alert, profile, episode) {
@@ -876,6 +936,388 @@ function formatSignedUsd(value) {
   return `${sign}$${Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+function formatPct(value) {
+  if (!Number.isFinite(value)) return 'n/a';
+  return `${value >= 0 ? '+' : ''}${Number(value).toFixed(1)}%`;
+}
+
+function percentileRank(values, value) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  let count = 0;
+  for (const entry of sorted) {
+    if (entry <= value) count += 1;
+  }
+  return (count / sorted.length) * 100;
+}
+
+function snapshotAtOrBefore(snapshots, targetTime) {
+  for (const snapshot of snapshots) {
+    if (snapshot.timestamp <= targetTime) return snapshot;
+  }
+  return null;
+}
+
+function formatPositioningRegime(regime) {
+  switch (regime) {
+    case 'crowded_long':
+      return 'Crowded Long';
+    case 'crowded_short':
+      return 'Crowded Short';
+    case 'downside_magnet':
+      return 'Downside Magnet';
+    case 'upside_magnet':
+      return 'Upside Magnet';
+    case 'whale_conviction':
+      return 'Whale Conviction';
+    default:
+      return titleCase(regime || '');
+  }
+}
+
+function severityFromSnapshot(snapshot) {
+  if (Math.abs(snapshot.oiChange4h || 0) >= 12 || Math.abs(snapshot.fundingAPR || 0) >= 50) return 'high';
+  if (Math.abs(snapshot.oiChange4h || 0) >= 8 || Math.abs(snapshot.fundingAPR || 0) >= 25) return 'medium';
+  return 'low';
+}
+
+function buildSnapshotId(asset, timestamp) {
+  return `snap:${asset}:${Math.floor(timestamp / POSITIONING_SNAPSHOT_INTERVAL_MS)}`;
+}
+
+async function persistPositioningSnapshot(snapshot) {
+  await pool.query(
+    `insert into positioning_market_snapshots (id, asset, created_at, market_type, payload)
+     values ($1, $2, $3, $4, $5::jsonb)
+     on conflict (id) do update set created_at = excluded.created_at, payload = excluded.payload`,
+    [snapshot.id, snapshot.asset, snapshot.timestamp, snapshot.marketType, JSON.stringify(snapshot)],
+  );
+}
+
+async function persistPositioningAlert(alert) {
+  await pool.query(
+    `insert into positioning_alerts (id, asset, alert_type, regime, severity, created_at, payload)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+     on conflict (id) do update set created_at = excluded.created_at, payload = excluded.payload, severity = excluded.severity`,
+    [alert.id, alert.asset, alert.alertType, alert.regime, alert.severity, alert.timestamp, JSON.stringify(alert)],
+  );
+}
+
+async function persistPositioningDigest(digest, messageHash = null, telegramSentAt = null) {
+  await pool.query(
+    `insert into positioning_digest_runs (id, created_at, payload, message_hash, telegram_sent_at)
+     values ($1, $2, $3::jsonb, $4, $5)
+     on conflict (id) do update set payload = excluded.payload, message_hash = excluded.message_hash, telegram_sent_at = excluded.telegram_sent_at`,
+    [digest.id, digest.createdAt, JSON.stringify({ ...digest, telegramSentAt }), messageHash, telegramSentAt],
+  );
+}
+
+async function queueTelegramMessage(id, payload) {
+  if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const message = payload.message;
+  const messageHash = createHash('sha256').update(message).digest('hex');
+  await pool.query(
+    `insert into whale_telegram_queue (id, alert_id, created_at, message_hash, payload)
+     values ($1, $2, $3, $4, $5::jsonb)
+     on conflict (alert_id) do nothing`,
+    [`tg:${id}`, id, Date.now(), messageHash, JSON.stringify(payload)],
+  );
+}
+
+async function loadRecentSnapshots(asset, limit = 600) {
+  const result = await pool.query(
+    `select payload from positioning_market_snapshots where asset = $1 order by created_at desc limit $2`,
+    [asset, limit],
+  );
+  return result.rows.map((row) => row.payload).sort((a, b) => b.timestamp - a.timestamp);
+}
+
+async function loadTimingScore(address, asset, lookaheadHours = 4) {
+  const result = await pool.query(
+    `select payload from wallet_timing_scores where address = $1 and asset = $2 and lookahead_hours = $3 limit 1`,
+    [address.toLowerCase(), asset, lookaheadHours],
+  );
+  return result.rows[0]?.payload || null;
+}
+
+async function loadTopDecilePnlCutoff() {
+  const result = await pool.query(`select payload from whale_profiles_current`);
+  const realizedPnls = result.rows
+    .map((row) => Number(row.payload?.realizedPnl30d || 0))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  if (!realizedPnls.length) return HIGH_CONVICTION_PNL_FLOOR;
+  const idx = Math.max(Math.floor(realizedPnls.length * 0.9) - 1, 0);
+  return Math.max(realizedPnls[idx], HIGH_CONVICTION_PNL_FLOOR);
+}
+
+async function loadRepeatedAddCount(address, asset, side) {
+  const result = await pool.query(
+    `select count(*)::int as count
+     from whale_alerts
+     where address = $1
+       and coin = $2
+       and directionality in ('directional_entry', 'directional_add')
+       and created_at >= $3
+       and (payload->>'side') = $4`,
+    [address.toLowerCase(), asset, Date.now() - 6 * 60 * 60 * 1000, side],
+  );
+  return Number(result.rows[0]?.count || 0);
+}
+
+function buildCrowdingAlert(snapshot, history) {
+  const fundingValues = history
+    .map((entry) => Number(entry.fundingAPR))
+    .filter((value) => Number.isFinite(value));
+  const fundingPercentile = percentileRank(fundingValues, snapshot.fundingAPR || 0);
+  const oi1h = snapshot.oiChange1h || 0;
+  const oi4h = snapshot.oiChange4h || 0;
+  const price1h = snapshot.priceChange1h || 0;
+  const basisBps = snapshot.basisBps ?? null;
+
+  const crowdedLong =
+    (snapshot.fundingAPR || 0) >= CROWDING_POS_FUNDING_APR &&
+    (fundingPercentile == null || fundingPercentile >= 85) &&
+    (oi1h >= CROWDING_OI_CHANGE_1H_PCT || oi4h >= CROWDING_OI_CHANGE_4H_PCT) &&
+    price1h <= 1.5;
+  const crowdedShort =
+    (snapshot.fundingAPR || 0) <= -CROWDING_NEG_FUNDING_APR_ABS &&
+    (fundingPercentile == null || fundingPercentile <= 15) &&
+    (oi1h >= CROWDING_OI_CHANGE_1H_PCT || oi4h >= CROWDING_OI_CHANGE_4H_PCT) &&
+    price1h >= -1.5;
+
+  if (!crowdedLong && !crowdedShort) return null;
+
+  const regime = crowdedLong ? 'crowded_long' : 'crowded_short';
+  const divergence =
+    basisBps == null
+      ? ''
+      : basisBps >= 20
+        ? ' · perps leading spot'
+        : basisBps <= -10
+          ? ' · spot leading perp'
+          : '';
+  const directionText = crowdedLong ? 'heavily long' : 'heavily short';
+  const fragilityText = crowdedLong ? 'downside risk' : 'squeeze risk';
+
+  return {
+    id: `pos:crowding:${snapshot.asset}:${regime}:${Math.floor(snapshot.timestamp / CROWDING_ALERT_COOLDOWN_MS)}`,
+    asset: snapshot.asset,
+    alertType: 'crowding',
+    regime,
+    severity: severityFromSnapshot(snapshot),
+    timestamp: snapshot.timestamp,
+    whyItMatters: `${snapshot.asset} is ${directionText} with OI ${formatPct(oi4h)} in 4h while price stayed ${price1h >= 0 ? 'flat-to-up' : 'flat-to-down'}${divergence} -> ${fragilityText}.`,
+    fundingApr: snapshot.fundingAPR,
+    oiChange1h: snapshot.oiChange1h,
+    oiChange4h: snapshot.oiChange4h,
+    basisBps,
+    price: snapshot.price,
+    marketType: snapshot.marketType,
+    payload: { fundingPercentile, priceChange1h: snapshot.priceChange1h, priceChange4h: snapshot.priceChange4h, spotProxySource: snapshot.spotProxySource },
+  };
+}
+
+function clusterTrackedLiquidations(asset, currentPrice, profiles) {
+  const below = new Map();
+  const above = new Map();
+  for (const profile of profiles) {
+    for (const position of profile.positions || []) {
+      if (position.coin !== asset || position.marketType !== 'crypto_perp') continue;
+      if (!position.liquidationPx || position.notionalUsd <= 0) continue;
+      const bucketPrice = Math.round((position.liquidationPx / currentPrice) * 200) / 200;
+      const targetMap = position.side === 'long' ? below : above;
+      const current = targetMap.get(bucketPrice) || { notionalUsd: 0, price: position.liquidationPx };
+      current.notionalUsd += position.notionalUsd;
+      targetMap.set(bucketPrice, current);
+    }
+  }
+  const bestBelow = [...below.values()].sort((a, b) => b.notionalUsd - a.notionalUsd)[0] || null;
+  const bestAbove = [...above.values()].sort((a, b) => b.notionalUsd - a.notionalUsd)[0] || null;
+  return { bestBelow, bestAbove };
+}
+
+function buildLiquidationAlert(asset, currentPrice, cluster, side, timestamp) {
+  if (!cluster || cluster.notionalUsd < TRACKED_CLUSTER_MIN_USD) return null;
+  const regime = side === 'below' ? 'downside_magnet' : 'upside_magnet';
+  return {
+    id: `pos:liquidation:${asset}:${regime}:${Math.floor(timestamp / LIQUIDATION_ALERT_COOLDOWN_MS)}`,
+    asset,
+    alertType: 'liquidation_pressure',
+    regime,
+    severity: cluster.notionalUsd >= TRACKED_CLUSTER_MIN_USD * 2 ? 'high' : 'medium',
+    timestamp,
+    whyItMatters: `Tracked-book ${side === 'below' ? 'long' : 'short'} liquidations cluster at ${cluster.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} with ${formatCompact(cluster.notionalUsd)} at risk -> ${side === 'below' ? 'downside magnet' : 'upside squeeze'} if price drifts there.`,
+    trackedLiquidationClusterUsd: cluster.notionalUsd,
+    clusterPrice: cluster.price,
+    price: currentPrice,
+    marketType: 'crypto_perp',
+  };
+}
+
+function shouldQueuePositioningAlert(alert) {
+  const cooldown =
+    alert.alertType === 'crowding'
+      ? CROWDING_ALERT_COOLDOWN_MS
+      : alert.alertType === 'liquidation_pressure'
+        ? LIQUIDATION_ALERT_COOLDOWN_MS
+        : HIGH_CONVICTION_ALERT_COOLDOWN_MS;
+  const dedupeKey =
+    alert.alertType === 'high_conviction_whale'
+      ? `${alert.walletAddress || 'walletless'}:${alert.asset}:${alert.alertType}`
+      : `${alert.asset}:${alert.regime}:${alert.alertType}`;
+  const lastSentAt = recentPositioningAlerts.get(dedupeKey);
+  if (lastSentAt && Date.now() - lastSentAt < cooldown) return false;
+  recentPositioningAlerts.set(dedupeKey, Date.now());
+  return true;
+}
+
+function buildPositioningTelegramMessage(alert) {
+  const line1 =
+    alert.alertType === 'crowding'
+      ? `🔥 ${alert.asset} ${formatPositioningRegime(alert.regime).toUpperCase()}`
+      : alert.alertType === 'liquidation_pressure'
+        ? `💥 ${alert.asset} ${formatPositioningRegime(alert.regime).toUpperCase()}`
+        : `🐋 ${alert.asset} HIGH-CONVICTION WHALE`;
+  const contextParts = [];
+  if (alert.fundingApr != null) contextParts.push(`Funding ${formatPct(alert.fundingApr)}`);
+  if (alert.oiChange4h != null) contextParts.push(`OI 4h ${formatPct(alert.oiChange4h)}`);
+  if (alert.basisBps != null) contextParts.push(`Basis ${alert.basisBps.toFixed(0)}bps`);
+  if (alert.trackedLiquidationClusterUsd != null) {
+    contextParts.push(`Cluster ${formatCompact(alert.trackedLiquidationClusterUsd)} @ ${alert.clusterPrice?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || 'n/a'}`);
+  }
+  if (alert.repeatedAdds6h != null) contextParts.push(`Adds ${alert.repeatedAdds6h} in 6h`);
+  const walletLine = alert.walletAddress ? `WALLET: ${APP_URL}/whales/${alert.walletAddress}?alert=${alert.id}` : `CHART: ${APP_URL}/?tab=markets&asset=${alert.asset}`;
+  return [line1, contextParts.join(' · '), `WHY IT MATTERS: ${alert.whyItMatters}`, walletLine]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildDigestMessage(digest) {
+  return [
+    `📬 HYPERPULSE POSITIONING DIGEST`,
+    digest.headline,
+    ...digest.summaryLines,
+    `APP: ${APP_URL}/whales`,
+  ].join('\n');
+}
+
+async function emitPositioningAlert(alert, { queueTelegram = true } = {}) {
+  await persistPositioningAlert(alert);
+  if (!queueTelegram || !shouldQueuePositioningAlert(alert)) return;
+  const message = buildPositioningTelegramMessage(alert);
+  await queueTelegramMessage(alert.id, { kind: 'positioning-alert', alert, message });
+}
+
+async function updateWalletTimingScores() {
+  const alertsResult = await pool.query(
+    `select payload from whale_alerts
+     where directionality in ('directional_entry', 'directional_add')
+       and market_type = 'crypto_perp'
+       and created_at >= $1
+     order by created_at desc
+     limit 1500`,
+    [Date.now() - 30 * 24 * 60 * 60 * 1000],
+  );
+
+  const grouped = new Map();
+  for (const row of alertsResult.rows) {
+    const alert = row.payload;
+    if (!POSITIONING_MAJOR_PERPS.has(alert.coin)) continue;
+    const key = `${alert.address.toLowerCase()}:${alert.coin}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(alert);
+  }
+
+  for (const [key, alerts] of grouped.entries()) {
+    const [address, asset] = key.split(':');
+    const snapshots = await loadRecentSnapshots(asset, 800);
+    if (snapshots.length < 12) continue;
+
+    const scored = [1, 4].map((lookaheadHours) => {
+      let sampleSize = 0;
+      let hits = 0;
+      for (const alert of alerts) {
+        const startSnapshot = snapshotAtOrBefore(snapshots, alert.timestamp);
+        const endSnapshot = snapshotAtOrBefore(snapshots, alert.timestamp + lookaheadHours * 60 * 60 * 1000);
+        if (!startSnapshot || !endSnapshot) continue;
+        const returnPct = ((endSnapshot.price - startSnapshot.price) / startSnapshot.price) * 100;
+        const success = alert.side === 'long' ? returnPct > 0 : returnPct < 0;
+        sampleSize += 1;
+        if (success) hits += 1;
+      }
+      return {
+        address,
+        asset,
+        lookaheadHours,
+        sampleSize,
+        hitRate: sampleSize > 0 ? (hits / sampleSize) * 100 : 0,
+        updatedAt: Date.now(),
+      };
+    });
+
+    for (const score of scored) {
+      if (score.sampleSize === 0) continue;
+      await pool.query(
+        `insert into wallet_timing_scores (address, asset, lookahead_hours, updated_at, payload)
+         values ($1, $2, $3, $4, $5::jsonb)
+         on conflict (address, asset, lookahead_hours) do update set updated_at = excluded.updated_at, payload = excluded.payload`,
+        [score.address, score.asset, score.lookaheadHours, score.updatedAt, JSON.stringify(score)],
+      );
+    }
+  }
+}
+
+async function maybeEmitHighConvictionWhale(alert, profile) {
+  if (alert.marketType !== 'crypto_perp' && !POSITIONING_HIP3_ALLOWLIST.has(alert.coin)) return null;
+  if (alert.marketType === 'crypto_perp' && !POSITIONING_MAJOR_PERPS.has(alert.coin)) return null;
+  if (profile.realizedPnl30d < HIGH_CONVICTION_PNL_FLOOR) return null;
+
+  const topDecileCutoff = await loadTopDecilePnlCutoff();
+  if (profile.realizedPnl30d < topDecileCutoff) return null;
+
+  const repeatedAdds6h = await loadRepeatedAddCount(alert.address, alert.coin, alert.side);
+  const timingScore = await loadTimingScore(alert.address, alert.coin, 4);
+  profile.repeatedAddCount6h = repeatedAdds6h;
+  profile.preMoveHitRate4h = timingScore?.hitRate ?? null;
+  profile.preMoveSampleSize = timingScore?.sampleSize ?? null;
+
+  const qualifiesByAdds = repeatedAdds6h >= 4;
+  const qualifiesByTiming = (timingScore?.sampleSize || 0) >= 5 && (timingScore?.hitRate || 0) >= 65;
+  if (!qualifiesByAdds && !qualifiesByTiming) return null;
+
+  const positioningAlert = {
+    id: `pos:whale:${alert.address.toLowerCase()}:${alert.coin}:${Math.floor(alert.timestamp / HIGH_CONVICTION_ALERT_COOLDOWN_MS)}`,
+    asset: alert.coin,
+    alertType: 'high_conviction_whale',
+    regime: 'whale_conviction',
+    severity: profile.realizedPnl30d >= Math.max(topDecileCutoff * 1.25, 2_000_000) ? 'high' : 'medium',
+    timestamp: alert.timestamp,
+    whyItMatters: qualifiesByAdds
+      ? `${shortAddress(alert.address)} has added ${repeatedAdds6h} times in 6h with ${formatSignedUsd(profile.realizedPnl30d)} 30d PnL -> rare conviction signal.`
+      : `${shortAddress(alert.address)} has a ${timingScore.hitRate.toFixed(0)}% pre-move hit rate over ${timingScore.sampleSize} samples and is adding again -> timing edge worth watching.`,
+    walletAddress: alert.address,
+    walletLabel: shortAddress(alert.address),
+    fundingApr: null,
+    oiChange1h: null,
+    oiChange4h: null,
+    basisBps: null,
+    trackedLiquidationClusterUsd: null,
+    repeatedAdds6h,
+    price: alert.markPx ?? null,
+    marketType: alert.marketType,
+    payload: {
+      topDecileCutoff,
+      timingScore,
+      sourceAlertId: alert.id,
+      realizedPnl30d: profile.realizedPnl30d,
+    },
+  };
+
+  await emitPositioningAlert(positioningAlert, { queueTelegram: true });
+  return positioningAlert;
+}
+
 async function enqueueTelegram(alert, profile) {
   if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !shouldSendTelegram(alert, profile)) return;
   const message = buildTelegramMessage(alert, profile);
@@ -907,8 +1349,15 @@ async function flushTelegramQueue() {
       console.error('[whale-indexer] telegram send failed', response.status, body);
       continue;
     }
-    await pool.query(`update whale_telegram_queue set sent_at = $2 where id = $1`, [row.id, Date.now()]);
-    if (payload.alert) await appendAlertToSheet(payload.alert);
+    const sentAt = Date.now();
+    await pool.query(`update whale_telegram_queue set sent_at = $2 where id = $1`, [row.id, sentAt]);
+    if (payload.kind === 'positioning-digest' && payload.digest?.id) {
+      await pool.query(
+        `update positioning_digest_runs set telegram_sent_at = $2 where id = $1`,
+        [payload.digest.id, sentAt],
+      );
+    }
+    if (payload.alert && payload.kind !== 'positioning-alert') await appendAlertToSheet(payload.alert);
   }
 }
 
@@ -966,6 +1415,130 @@ async function refreshUniverse() {
     .filter((market, index, self) => self.findIndex((entry) => entry.marketKey === market.marketKey) === index)
     .map((market) => market.marketKey);
   console.log(`[whale-indexer] loaded ${perpUniverse.length} perps and ${spotSubscriptions.length} spot markets`);
+}
+
+async function loadTrackedProfiles() {
+  const result = await pool.query(`select payload from whale_profiles_current`);
+  return result.rows
+    .map((row) => row.payload)
+    .filter((profile) => Number(profile?.realizedPnl30d || 0) >= TRACKED_BOOK_PNL_FLOOR);
+}
+
+async function runMarketStructureCycle() {
+  const now = Date.now();
+  const [meta, spotMeta] = await Promise.all([info.metaAndAssetCtxs(), info.spotMetaAndAssetCtxs()]);
+  const [perpMeta, perpAssetCtxs] = meta;
+  const [spotMetaData, spotAssetCtxs] = spotMeta;
+  spotMarketMap = buildSpotMarketMap(spotMetaData, spotAssetCtxs);
+
+  const currentPrices = new Map();
+
+  for (const assetName of POSITIONING_MAJOR_PERPS) {
+    const assetIndex = perpMeta.universe.findIndex((asset) => asset.name === assetName && !asset.isDelisted);
+    if (assetIndex === -1) continue;
+    const ctx = perpAssetCtxs[assetIndex];
+    if (!ctx) continue;
+
+    const price = parseNumber(ctx.markPx);
+    const fundingAPR = parseNumber(ctx.funding) * 8760 * 100;
+    const openInterestUsd = parseNumber(ctx.openInterest) * price;
+    const history = await loadRecentSnapshots(assetName, 900);
+    const oneHour = snapshotAtOrBefore(history, now - 60 * 60 * 1000);
+    const fourHours = snapshotAtOrBefore(history, now - 4 * 60 * 60 * 1000);
+    const spotProxy = spotMarketMap[assetName] || null;
+    const basisBps = spotProxy?.markPx ? ((price - spotProxy.markPx) / spotProxy.markPx) * 10_000 : null;
+
+    const snapshot = {
+      id: buildSnapshotId(assetName, now),
+      asset: assetName,
+      timestamp: now,
+      price,
+      marketType: 'crypto_perp',
+      fundingAPR,
+      openInterestUsd,
+      oiChange1h: oneHour?.openInterestUsd ? ((openInterestUsd - oneHour.openInterestUsd) / oneHour.openInterestUsd) * 100 : null,
+      oiChange4h: fourHours?.openInterestUsd ? ((openInterestUsd - fourHours.openInterestUsd) / fourHours.openInterestUsd) * 100 : null,
+      basisBps,
+      spotProxySource: spotProxy?.pair || null,
+      priceChange1h: oneHour?.price ? ((price - oneHour.price) / oneHour.price) * 100 : null,
+      priceChange4h: fourHours?.price ? ((price - fourHours.price) / fourHours.price) * 100 : null,
+    };
+
+    latestMarketSnapshots.set(assetName, snapshot);
+    currentPrices.set(assetName, price);
+    await persistPositioningSnapshot(snapshot);
+
+    const crowdingAlert = buildCrowdingAlert(snapshot, [snapshot, ...history]);
+    if (crowdingAlert) {
+      await emitPositioningAlert(crowdingAlert, { queueTelegram: true });
+    }
+  }
+
+  const trackedProfiles = await loadTrackedProfiles();
+  for (const assetName of POSITIONING_MAJOR_PERPS) {
+    const currentPrice = currentPrices.get(assetName);
+    if (!currentPrice) continue;
+    const clusters = clusterTrackedLiquidations(assetName, currentPrice, trackedProfiles);
+    const downsideAlert = buildLiquidationAlert(assetName, currentPrice, clusters.bestBelow, 'below', now);
+    const upsideAlert = buildLiquidationAlert(assetName, currentPrice, clusters.bestAbove, 'above', now);
+    if (downsideAlert) await emitPositioningAlert(downsideAlert, { queueTelegram: true });
+    if (upsideAlert) await emitPositioningAlert(upsideAlert, { queueTelegram: true });
+  }
+}
+
+async function maybeRunDigest() {
+  const now = Date.now();
+  const periodEnd = Math.floor(now / POSITIONING_DIGEST_INTERVAL_MS) * POSITIONING_DIGEST_INTERVAL_MS;
+  const periodStart = periodEnd - POSITIONING_DIGEST_INTERVAL_MS;
+  const digestId = `digest:${periodEnd}`;
+  const existing = await pool.query(`select id from positioning_digest_runs where id = $1 limit 1`, [digestId]);
+  if (existing.rows[0]) return;
+
+  const alertsResult = await pool.query(
+    `select payload from positioning_alerts where created_at >= $1 and created_at < $2 order by created_at desc limit 12`,
+    [periodStart, periodEnd],
+  );
+  const alerts = alertsResult.rows.map((row) => row.payload);
+  const crowding = alerts.filter((alert) => alert.alertType === 'crowding').slice(0, 3);
+  const liquidation = alerts.filter((alert) => alert.alertType === 'liquidation_pressure').slice(0, 2);
+  const whale = alerts.find((alert) => alert.alertType === 'high_conviction_whale') || null;
+
+  const summaryLines = [];
+  if (crowding.length > 0) {
+    summaryLines.push(...crowding.map((alert) => `CROWDING: ${alert.asset} · ${alert.whyItMatters}`));
+  } else {
+    const latest = [...latestMarketSnapshots.values()]
+      .sort((a, b) => Math.abs(b.oiChange4h || 0) - Math.abs(a.oiChange4h || 0))
+      .slice(0, 2);
+    if (latest.length > 0) {
+      summaryLines.push(...latest.map((snapshot) => `SETUP: ${snapshot.asset} funding ${formatPct(snapshot.fundingAPR)} · OI 4h ${formatPct(snapshot.oiChange4h)}`));
+    } else {
+      summaryLines.push('No major crowding setups crossed the high-confidence threshold in this window.');
+    }
+  }
+  if (liquidation.length > 0) {
+    summaryLines.push(...liquidation.map((alert) => `LIQUIDATION: ${alert.asset} · ${alert.whyItMatters}`));
+  } else {
+    summaryLines.push('No tracked-book liquidation magnets passed the alert threshold in this window.');
+  }
+  if (whale) {
+    summaryLines.push(`RARE WHALE: ${whale.asset} · ${whale.whyItMatters}`);
+  }
+
+  const digest = {
+    id: digestId,
+    createdAt: now,
+    periodStart,
+    periodEnd,
+    headline: `Window ${new Date(periodStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${new Date(periodEnd).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+    summaryLines,
+    alertIds: alerts.map((alert) => alert.id),
+    telegramSentAt: null,
+  };
+
+  const message = buildDigestMessage(digest);
+  await queueTelegramMessage(digest.id, { kind: 'positioning-digest', digest, message });
+  await persistPositioningDigest(digest, createHash('sha256').update(message).digest('hex'), null);
 }
 
 async function enrichWallet(address, trigger) {
@@ -1063,8 +1636,8 @@ async function processTrigger(trigger) {
   if (lastSeen && Date.now() - lastSeen < EPISODE_WINDOW_MS) return;
   recentEpisodes.set(episodeId, Date.now());
   const enriched = await enrichWallet(trigger.address, trigger);
+  await maybeEmitHighConvictionWhale(enriched.alert, enriched.profile);
   await persistAlert(enriched.alert, enriched.profile, enriched.episode);
-  await enqueueTelegram(enriched.alert, enriched.profile);
   await persistWorkerStatus({
     lastAlertAt: enriched.alert.timestamp,
     lastCoin: enriched.alert.coin,
@@ -1153,12 +1726,37 @@ async function main() {
 
   await marketWs.allMids(() => {});
   await subscribeTrades();
+  await runMarketStructureCycle();
+  await updateWalletTimingScores();
+  await maybeRunDigest();
 
   setInterval(() => {
-    persistWorkerStatus({ status: 'running', explorerUsersTracked: recentExplorerFlow.size }).catch((error) => {
+    persistWorkerStatus({
+      status: 'running',
+      explorerUsersTracked: recentExplorerFlow.size,
+      latestPositioningAssets: latestMarketSnapshots.size,
+    }).catch((error) => {
       console.error('[whale-indexer] heartbeat failed', error);
     });
   }, 15_000);
+
+  setInterval(() => {
+    runMarketStructureCycle().catch((error) => {
+      console.error('[whale-indexer] market structure cycle failed', error);
+    });
+  }, POSITIONING_SNAPSHOT_INTERVAL_MS);
+
+  setInterval(() => {
+    updateWalletTimingScores().catch((error) => {
+      console.error('[whale-indexer] timing score refresh failed', error);
+    });
+  }, 60 * 60 * 1000);
+
+  setInterval(() => {
+    maybeRunDigest().catch((error) => {
+      console.error('[whale-indexer] digest scheduler failed', error);
+    });
+  }, 60 * 1000);
 
   if (TELEGRAM_ENABLED) {
     setInterval(() => {

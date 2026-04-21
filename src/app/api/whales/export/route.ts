@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit, jsonError, validateAddress, validateCoin } from "@/lib/security";
-import { getWhaleAlertsForAddress, getWhaleEpisodesForAddress, listWhaleAlerts } from "@/lib/whaleStore";
+import {
+  getWhaleAlertsForAddress,
+  getWhaleEpisodesForAddress,
+  listPositioningAlerts,
+  listPositioningDigests,
+  listPositioningMarketSnapshots,
+  listWhaleAlerts,
+} from "@/lib/whaleStore";
 import type { WhaleAlert } from "@/types";
 
 const TIMEFRAME_TO_MS: Record<string, number> = {
@@ -66,6 +73,9 @@ export async function GET(req: NextRequest) {
   if ((dataset === "wallet-alerts" || dataset === "wallet-episodes") && !address) {
     return jsonError("A valid wallet address is required.", { status: 400 });
   }
+  if (dataset === "positioning-snapshots" && !coin) {
+    return jsonError("A valid asset is required for positioning snapshots.", { status: 400 });
+  }
 
   if (dataset === "wallet-episodes" && address) {
     const episodes = await getWhaleEpisodesForAddress(address, 250);
@@ -81,6 +91,75 @@ export async function GET(req: NextRequest) {
         episode.riskBucket,
         episode.alert.headline,
         episode.alert.confidenceLabel,
+      ]),
+    ]);
+  }
+
+  if (dataset === "positioning-snapshots" && coin) {
+    const snapshots = await listPositioningMarketSnapshots(coin, 500);
+    return csvResponse(`hyperpulse-positioning-snapshots-${coin}.csv`, [
+      ["timestamp", "asset", "price", "funding_apr", "open_interest_usd", "oi_change_1h", "oi_change_4h", "basis_bps", "spot_proxy_source", "market_type"],
+      ...snapshots.map((snapshot) => [
+        new Date(snapshot.timestamp).toISOString(),
+        snapshot.asset,
+        snapshot.price,
+        snapshot.fundingAPR,
+        snapshot.openInterestUsd,
+        snapshot.oiChange1h,
+        snapshot.oiChange4h,
+        snapshot.basisBps,
+        snapshot.spotProxySource,
+        snapshot.marketType,
+      ]),
+    ]);
+  }
+
+  if (dataset === "positioning-digests") {
+    const digests = await listPositioningDigests(100);
+    return csvResponse(`hyperpulse-positioning-digests-${new Date().toISOString().slice(0, 10)}.csv`, [
+      ["created_at", "period_start", "period_end", "headline", "summary"],
+      ...digests.map((digest) => [
+        new Date(digest.createdAt).toISOString(),
+        new Date(digest.periodStart).toISOString(),
+        new Date(digest.periodEnd).toISOString(),
+        digest.headline,
+        digest.summaryLines.join(" | "),
+      ]),
+    ]);
+  }
+
+  if (dataset === "positioning-alerts" || dataset === "alerts") {
+    const alerts = await listPositioningAlerts({
+      severity,
+      asset: coin,
+      alertType:
+        viewFilter === "crowding"
+          ? "crowding"
+          : viewFilter === "liquidation"
+            ? "liquidation_pressure"
+            : viewFilter === "whale"
+              ? "high_conviction_whale"
+              : "all",
+      timeframeMs: TIMEFRAME_TO_MS[timeframe] ?? TIMEFRAME_TO_MS["24h"],
+      limit: 500,
+    });
+
+    return csvResponse(`hyperpulse-positioning-alerts-${new Date().toISOString().slice(0, 10)}.csv`, [
+      ["timestamp", "asset", "alert_type", "regime", "severity", "why_it_matters", "wallet", "funding_apr", "oi_change_1h", "oi_change_4h", "basis_bps", "tracked_liquidation_cluster_usd", "cluster_price"],
+      ...alerts.map((alert) => [
+        new Date(alert.timestamp).toISOString(),
+        alert.asset,
+        alert.alertType,
+        alert.regime,
+        alert.severity,
+        alert.whyItMatters,
+        alert.walletAddress,
+        alert.fundingApr,
+        alert.oiChange1h,
+        alert.oiChange4h,
+        alert.basisBps,
+        alert.trackedLiquidationClusterUsd,
+        alert.clusterPrice,
       ]),
     ]);
   }

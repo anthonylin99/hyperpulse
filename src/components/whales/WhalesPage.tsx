@@ -6,28 +6,26 @@ import { useRouter } from "next/navigation";
 import {
   Activity,
   ArrowRight,
-  Copy,
   Download,
-  Layers3,
   Search,
   ShieldAlert,
-  Wallet,
+  Siren,
+  Waves,
 } from "lucide-react";
-import { cn, formatCompact, truncateAddress } from "@/lib/format";
-import type { WhaleAlert, WhaleWatchlistEntry } from "@/types";
-import toast from "react-hot-toast";
+import { cn } from "@/lib/format";
+import type { PositioningAlert, PositioningDigestRun, WhaleWatchlistEntry } from "@/types";
 
 type FeedResponse = {
-  alerts: WhaleAlert[];
+  alerts: PositioningAlert[];
+  digests: PositioningDigestRun[];
   nextCursor: number | null;
   summary: {
     alertCount: number;
-    uniqueWallets: number;
-    depositLedCount: number;
+    uniqueAssets: number;
+    crowdingCount: number;
+    liquidationCount: number;
+    whaleCount: number;
     highSeverityCount: number;
-    directionalCount: number;
-    hedgeCount: number;
-    hip3Count: number;
     topSeverity: "high" | "medium" | "low";
   };
   workerConfigured: boolean;
@@ -37,14 +35,12 @@ type FeedResponse = {
   } | null;
 };
 
-const TIMEFRAME_OPTIONS = ["1h", "6h", "24h", "7d"] as const;
+const TIMEFRAME_OPTIONS = ["6h", "24h", "7d"] as const;
 const VIEW_FILTERS = [
   { value: "all", label: "All" },
-  { value: "directional", label: "Directional" },
-  { value: "deposit", label: "Flow-led" },
-  { value: "stress", label: "Stress" },
-  { value: "hedges", label: "Hedges" },
-  { value: "hip3", label: "Qualified HIP-3" },
+  { value: "crowding", label: "Crowding" },
+  { value: "liquidation", label: "Liquidation" },
+  { value: "whale", label: "Rare whale" },
 ] as const;
 const SEVERITY_OPTIONS = ["all", "high", "medium", "low"] as const;
 
@@ -56,63 +52,37 @@ function workerFreshness(workerStatus: FeedResponse["workerStatus"]) {
   return `${Math.round(deltaMs / 60_000)}m ago`;
 }
 
-function formatAlertTimestamp(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function formatTimestamp(timestamp: number) {
+  return new Date(timestamp).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-function humanizeBucket(bucket: string) {
-  return bucket.replace(/_/g, " ");
+function formatCompactUsd(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
 }
 
-function formatMultipleLabel(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "n/a";
-  if (value < 0.1) return "<0.1x";
-  return `${value.toFixed(1)}x`;
+function formatPct(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function alertTypeLabel(alert: WhaleAlert) {
-  switch (alert.eventType) {
-    case "deposit-led-long":
-    case "deposit-led-short":
-      return "Flow-led positioning";
-    case "aggressive-add":
-      return "Positioning add";
-    case "flip":
-      return "Flip";
-    case "reduce":
-      return "Reduce";
-    case "underwater-whale":
-      return "Stress";
-    case "liquidation-risk":
-      return "Liquidation risk";
-    default:
-      return alert.headline;
-  }
-}
-
-function displaySide(alert: WhaleAlert) {
-  if (alert.directionality === "stress") return "Stress";
-  return alert.side === "short" ? "Short" : "Long";
-}
-
-function confidenceTone(confidence: WhaleAlert["conviction"]) {
-  if (confidence === "high") return "green";
-  if (confidence === "medium") return "amber";
-  return "neutral";
-}
-
-function directionTone(alert: WhaleAlert) {
-  if (alert.directionality === "stress") return "amber";
-  return alert.side === "short" ? "red" : "green";
-}
-
-function severityAccent(severity: WhaleAlert["severity"]) {
-  if (severity === "high") return "before:bg-rose-400";
-  if (severity === "medium") return "before:bg-amber-400";
-  return "before:bg-emerald-400";
-}
-
-function SmallPill({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "green" | "amber" | "red" }) {
+function SmallPill({
+  label,
+  tone = "neutral",
+}: {
+  label: string;
+  tone?: "neutral" | "green" | "amber" | "red";
+}) {
   return (
     <span
       className={cn(
@@ -159,63 +129,64 @@ function buildFeedExportHref(args: {
   timeframe: string;
   severity: string;
   coin: string;
-  riskBucket: string;
   viewFilter: string;
 }) {
   const params = new URLSearchParams({
-    dataset: "alerts",
+    dataset: "positioning-alerts",
     timeframe: args.timeframe,
     severity: args.severity,
     viewFilter: args.viewFilter,
   });
   if (args.coin.trim()) params.set("coin", args.coin.trim());
-  if (args.riskBucket.trim()) params.set("riskBucket", args.riskBucket.trim());
   return `/api/whales/export?${params.toString()}`;
+}
+
+function alertTypeLabel(alert: PositioningAlert) {
+  switch (alert.alertType) {
+    case "crowding":
+      return "Crowding alert";
+    case "liquidation_pressure":
+      return "Liquidation pressure";
+    case "high_conviction_whale":
+      return "High-conviction whale";
+    default:
+      return alert.alertType;
+  }
+}
+
+function regimeLabel(alert: PositioningAlert) {
+  switch (alert.regime) {
+    case "crowded_long":
+      return "Crowded long";
+    case "crowded_short":
+      return "Crowded short";
+    case "downside_magnet":
+      return "Downside magnet";
+    case "upside_magnet":
+      return "Upside magnet";
+    case "whale_conviction":
+      return "Whale conviction";
+    default:
+      return alert.regime;
+  }
+}
+
+function severityTone(severity: PositioningAlert["severity"]) {
+  if (severity === "high") return "red";
+  if (severity === "medium") return "amber";
+  return "neutral";
 }
 
 function EmptyFeed({ workerConfigured }: { workerConfigured: boolean }) {
   return (
     <div className="rounded-2xl border border-dashed border-zinc-800 bg-[#13171f] p-8 text-center">
       <Activity className="mx-auto h-6 w-6 text-zinc-600" />
-      <div className="mt-3 text-sm font-medium text-zinc-200">No qualified positioning alerts yet.</div>
+      <div className="mt-3 text-sm font-medium text-zinc-200">No positioning alerts in this window.</div>
       <div className="mt-2 text-sm leading-6 text-zinc-500">
         {workerConfigured
-          ? "The worker is live, but no wallets passed the tighter quality and event thresholds in this window."
+          ? "The worker is live, but crowding, liquidation, and rare whale thresholds are keeping the tape intentionally quiet."
           : "The positioning monitor is ready, but the worker is offline right now."}
       </div>
-    </div>
-  );
-}
-
-function WalletCell({ alert }: { alert: WhaleAlert }) {
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(alert.address);
-      toast.success("Wallet copied");
-    } catch {
-      toast.error("Failed to copy wallet");
-    }
-  };
-
-  return (
-    <div className="group/wallet rounded-lg border border-transparent px-2 py-1.5 transition hover:border-zinc-800 hover:bg-zinc-950/60">
-      <div className="flex items-center gap-2">
-        <Link
-          href={`/whales/${alert.address}?alert=${alert.id}`}
-          className="font-mono text-sm text-zinc-100 transition hover:text-emerald-200"
-        >
-          {truncateAddress(alert.address)}
-        </Link>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="text-zinc-500 transition hover:text-emerald-300 md:opacity-0 md:group-hover/wallet:opacity-100"
-          title="Copy wallet"
-        >
-          <Copy className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="mt-1 text-xs text-zinc-500">{humanizeBucket(alert.riskBucket)}</div>
     </div>
   );
 }
@@ -228,7 +199,7 @@ function WatchlistStrip({ watchlist }: { watchlist: WhaleWatchlistEntry[] }) {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Watchlist</div>
-          <div className="mt-1 text-xs text-zinc-500">Pinned wallets for direct review and CSV export.</div>
+          <div className="mt-1 text-xs text-zinc-500">Pinned wallets for conviction review and export.</div>
         </div>
         <div className="flex flex-wrap gap-2">
           {watchlist.slice(0, 8).map((entry) => (
@@ -237,8 +208,10 @@ function WatchlistStrip({ watchlist }: { watchlist: WhaleWatchlistEntry[] }) {
               href={`/whales/${entry.address}`}
               className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-left transition-colors hover:border-zinc-700 hover:text-zinc-100"
             >
-              <div className="text-sm font-medium text-zinc-200">{entry.nickname || truncateAddress(entry.address)}</div>
-              <div className="mt-1 font-mono text-xs text-zinc-500">{truncateAddress(entry.address)}</div>
+              <div className="text-sm font-medium text-zinc-200">{entry.nickname ?? entry.address.slice(0, 6)}</div>
+              <div className="mt-1 font-mono text-xs text-zinc-500">
+                {entry.address.slice(0, 6)}...{entry.address.slice(-4)}
+              </div>
             </Link>
           ))}
         </div>
@@ -247,118 +220,42 @@ function WatchlistStrip({ watchlist }: { watchlist: WhaleWatchlistEntry[] }) {
   );
 }
 
-function OperationalFeed({
-  alerts,
-  workerConfigured,
-  workerStatus,
-  loading,
-  refreshing,
-}: {
-  alerts: WhaleAlert[];
-  workerConfigured: boolean;
-  workerStatus: FeedResponse["workerStatus"];
-  loading: boolean;
-  refreshing: boolean;
-}) {
+function RecentDigests({ digests }: { digests: PositioningDigestRun[] }) {
+  if (digests.length === 0) return null;
+
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-[#13171f]">
-      <div className="border-b border-zinc-800 px-5 py-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Operational Feed</div>
-            <div className="mt-1 text-sm text-zinc-400">
-              Crowding, imbalance, and squeeze context from wallets above the default +$200K 30d gate.
+    <section className="rounded-2xl border border-zinc-800 bg-[#13171f] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Recent Digests</div>
+          <div className="mt-1 text-sm text-zinc-400">Telegram now sends a structured market update every four hours by default.</div>
+        </div>
+        <Link
+          href="/api/whales/export?dataset=positioning-digests"
+          className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
+        >
+          <Download className="h-4 w-4" />
+          Export digests
+        </Link>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        {digests.slice(0, 3).map((digest) => (
+          <div key={digest.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-medium text-zinc-100">{digest.headline}</div>
+              <SmallPill label={digest.telegramSentAt ? "sent" : "queued"} tone={digest.telegramSentAt ? "green" : "neutral"} />
+            </div>
+            <div className="mt-2 text-xs text-zinc-500">{formatTimestamp(digest.createdAt)}</div>
+            <div className="mt-3 space-y-2">
+              {digest.summaryLines.slice(0, 4).map((line, index) => (
+                <div key={`${digest.id}-${index}`} className="text-sm text-zinc-300">
+                  {line}
+                </div>
+              ))}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {refreshing && <SmallPill label="Refreshing" tone="neutral" />}
-            <SmallPill label={workerConfigured ? workerFreshness(workerStatus) : "Worker offline"} tone={workerConfigured ? "green" : "neutral"} />
-          </div>
-        </div>
+        ))}
       </div>
-
-      {loading ? (
-        <div className="space-y-3 p-5">
-          <div className="h-16 rounded-2xl border border-zinc-800 skeleton" />
-          <div className="h-16 rounded-2xl border border-zinc-800 skeleton" />
-          <div className="h-16 rounded-2xl border border-zinc-800 skeleton" />
-        </div>
-      ) : alerts.length === 0 ? (
-        <div className="p-5">
-          <EmptyFeed workerConfigured={workerConfigured} />
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] table-fixed">
-            <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-950/35 text-left text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                <th className="w-[110px] px-5 py-3 font-medium">Time</th>
-                <th className="w-[190px] px-4 py-3 font-medium">Wallet</th>
-                <th className="w-[190px] px-4 py-3 font-medium">Alert</th>
-                <th className="w-[130px] px-4 py-3 font-medium">Confidence</th>
-                <th className="w-[120px] px-4 py-3 font-medium">Asset</th>
-                <th className="w-[110px] px-4 py-3 font-medium">Side</th>
-                <th className="w-[170px] px-4 py-3 font-medium">Size</th>
-                <th className="px-4 py-3 font-medium">Why it matters</th>
-                <th className="w-[130px] px-5 py-3 font-medium text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map((alert) => (
-                <tr
-                  key={alert.id}
-                  className={cn(
-                    "relative border-b border-zinc-800/80 before:absolute before:bottom-0 before:left-0 before:top-0 before:w-1 hover:bg-zinc-950/40",
-                    severityAccent(alert.severity),
-                  )}
-                >
-                  <td className="px-5 py-3 align-top">
-                    <div className="font-mono text-sm text-zinc-100">{formatAlertTimestamp(alert.timestamp)}</div>
-                    <div className="mt-1 text-xs text-zinc-500">{alert.marketType === "hip3_spot" ? "Qualified HIP-3" : "Perp"}</div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <WalletCell alert={alert} />
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="text-sm font-medium text-zinc-100">{alertTypeLabel(alert)}</div>
-                    <div className="mt-1 line-clamp-1 text-xs text-zinc-500">{alert.headline}</div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <SmallPill label={alert.conviction} tone={confidenceTone(alert.conviction)} />
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="text-sm font-medium text-zinc-100">{alert.coin}</div>
-                    <div className="mt-1 text-xs text-zinc-500">{humanizeBucket(alert.riskBucket)}</div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <SmallPill label={displaySide(alert)} tone={directionTone(alert)} />
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="font-mono text-sm text-zinc-100">{formatCompact(alert.notionalUsd)}</div>
-                    <div className="mt-1 text-xs text-zinc-500">
-                      {alert.leverage ? `${alert.leverage.toFixed(1)}x lev` : "spot"} · {formatMultipleLabel(alert.sizeVsWalletAverage)} vs avg
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="line-clamp-1 text-sm text-zinc-300">{alert.confidenceLabel}</div>
-                  </td>
-                  <td className="px-5 py-3 align-top">
-                    <div className="flex justify-end">
-                      <Link
-                        href={`/whales/${alert.address}?alert=${alert.id}`}
-                        className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
-                      >
-                        Open profile
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </section>
   );
 }
@@ -368,9 +265,8 @@ export default function WhalesPage() {
   const router = useRouter();
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAME_OPTIONS)[number]>("24h");
   const [severity, setSeverity] = useState<(typeof SEVERITY_OPTIONS)[number]>("all");
-  const [viewFilter, setViewFilter] = useState<(typeof VIEW_FILTERS)[number]["value"]>("directional");
+  const [viewFilter, setViewFilter] = useState<(typeof VIEW_FILTERS)[number]["value"]>("all");
   const [coin, setCoin] = useState("");
-  const [riskBucket, setRiskBucket] = useState("");
   const [searchAddress, setSearchAddress] = useState("");
   const [feed, setFeed] = useState<FeedResponse | null>(null);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -391,30 +287,19 @@ export default function WhalesPage() {
       try {
         const params = new URLSearchParams({ timeframe, severity });
         if (coin.trim()) params.set("coin", coin.trim().toUpperCase());
-        if (riskBucket.trim()) params.set("riskBucket", riskBucket.trim());
-        if (viewFilter === "stress") params.set("directionality", "stress");
-        if (viewFilter === "hip3") params.set("hip3Only", "true");
+        if (viewFilter === "crowding") params.set("alertType", "crowding");
+        if (viewFilter === "liquidation") params.set("alertType", "liquidation_pressure");
+        if (viewFilter === "whale") params.set("alertType", "high_conviction_whale");
         const response = await fetch(`/api/whales/feed?${params.toString()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Failed to load whale feed");
+        if (!response.ok) throw new Error("Failed to load positioning feed");
         const data = (await response.json()) as FeedResponse;
         if (!mounted) return;
-
         hasLoadedFeedRef.current = true;
-        if (viewFilter === "deposit") {
-          data.alerts = data.alerts.filter((alert) => alert.eventType.startsWith("deposit-led"));
-        } else if (viewFilter === "directional") {
-          data.alerts = data.alerts.filter(
-            (alert) => alert.directionality === "directional_entry" || alert.directionality === "directional_add" || alert.eventType.startsWith("deposit-led"),
-          );
-        } else if (viewFilter === "hedges") {
-          data.alerts = data.alerts.filter((alert) => alert.directionality === "hedge" || alert.directionality === "rotation");
-        }
-
         setFeed(data);
         setError(null);
       } catch (loadError) {
         console.error(loadError);
-        if (mounted) setError("Failed to load whale feed.");
+        if (mounted) setError("Failed to load positioning feed.");
       } finally {
         if (mounted) {
           setFeedLoading(false);
@@ -424,12 +309,12 @@ export default function WhalesPage() {
     };
 
     loadFeed();
-    const interval = setInterval(loadFeed, 20_000);
+    const interval = setInterval(loadFeed, 60_000);
     return () => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [coin, riskBucket, severity, timeframe, viewFilter]);
+  }, [coin, severity, timeframe, viewFilter]);
 
   useEffect(() => {
     const loadWatchlist = async () => {
@@ -446,8 +331,8 @@ export default function WhalesPage() {
   }, []);
 
   const exportHref = useMemo(
-    () => buildFeedExportHref({ timeframe, severity, coin, riskBucket, viewFilter }),
-    [coin, riskBucket, severity, timeframe, viewFilter],
+    () => buildFeedExportHref({ timeframe, severity, coin, viewFilter }),
+    [coin, severity, timeframe, viewFilter],
   );
 
   const onSearch = () => {
@@ -465,9 +350,11 @@ export default function WhalesPage() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
             <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-400/80">HyperPulse Positioning Monitor</div>
-            <h1 className="mt-2 text-[28px] font-semibold tracking-tight text-zinc-100">High-signal whale tape for crowding and imbalance.</h1>
+            <h1 className="mt-2 text-[28px] font-semibold tracking-tight text-zinc-100">
+              Slow, high-signal alerts for crowding, liquidation pressure, and rare whale conviction.
+            </h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-300">
-              Use this to spot crowded trades, squeeze setups, and positioning imbalances. It is intentionally stricter and quieter than a generic smart-money tracker.
+              Telegram is now digest-first: four-hour market updates with rare interrupting alerts when positioning gets fragile or a top wallet shows real conviction.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -500,10 +387,10 @@ export default function WhalesPage() {
 
       {feed && (
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard label="Alerts" value={feed.summary.alertCount.toString()} helper={`${timeframe} qualified window`} icon={Activity} />
-          <SummaryCard label="Wallets" value={feed.summary.uniqueWallets.toString()} helper="30d PnL above $200K" icon={Wallet} />
-          <SummaryCard label="High Priority" value={feed.summary.highSeverityCount.toString()} helper="stress or outsized positioning" icon={ShieldAlert} />
-          <SummaryCard label="Qualified HIP-3" value={feed.summary.hip3Count.toString()} helper="curated stocks, metals, and energy" icon={Layers3} />
+          <SummaryCard label="Active Alerts" value={feed.summary.alertCount.toString()} helper={`${timeframe} live window`} icon={Activity} />
+          <SummaryCard label="Crowding" value={feed.summary.crowdingCount.toString()} helper="funding + OI + weak confirmation" icon={Waves} />
+          <SummaryCard label="Liquidation" value={feed.summary.liquidationCount.toString()} helper="tracked-book liquidation magnets" icon={Siren} />
+          <SummaryCard label="Rare Whale" value={feed.summary.whaleCount.toString()} helper="top-decile PnL wallets only" icon={ShieldAlert} />
         </section>
       )}
 
@@ -550,7 +437,9 @@ export default function WhalesPage() {
               className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300"
             >
               {SEVERITY_OPTIONS.map((option) => (
-                <option key={option} value={option}>{option === "all" ? "All severities" : option}</option>
+                <option key={option} value={option}>
+                  {option === "all" ? "All severities" : option}
+                </option>
               ))}
             </select>
             <input
@@ -558,12 +447,6 @@ export default function WhalesPage() {
               onChange={(event) => setCoin(event.target.value.toUpperCase())}
               placeholder="Asset"
               className="w-24 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-600"
-            />
-            <input
-              value={riskBucket}
-              onChange={(event) => setRiskBucket(event.target.value.toLowerCase().replace(/\s+/g, "_"))}
-              placeholder="Bucket"
-              className="w-32 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-600"
             />
           </div>
         </div>
@@ -574,13 +457,121 @@ export default function WhalesPage() {
           {error}
         </div>
       )}
-      <OperationalFeed
-        alerts={feed?.alerts ?? []}
-        workerConfigured={feed?.workerConfigured ?? false}
-        workerStatus={feed?.workerStatus ?? null}
-        loading={feedLoading}
-        refreshing={feedRefreshing}
-      />
+
+      <section className="rounded-2xl border border-zinc-800 bg-[#13171f]">
+        <div className="border-b border-zinc-800 px-5 py-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Operational Feed</div>
+              <div className="mt-1 text-sm text-zinc-400">
+                Market structure first: crowded longs, crowded shorts, liquidation magnets, then rare top-wallet conviction.
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <SmallPill label="4h digest default" tone="neutral" />
+              {feedRefreshing && <SmallPill label="Refreshing" tone="neutral" />}
+              <SmallPill
+                label={feed?.workerConfigured ? workerFreshness(feed.workerStatus) : "Worker offline"}
+                tone={feed?.workerConfigured ? "green" : "neutral"}
+              />
+            </div>
+          </div>
+        </div>
+
+        {feedLoading ? (
+          <div className="space-y-3 p-5">
+            <div className="h-16 rounded-2xl border border-zinc-800 skeleton" />
+            <div className="h-16 rounded-2xl border border-zinc-800 skeleton" />
+            <div className="h-16 rounded-2xl border border-zinc-800 skeleton" />
+          </div>
+        ) : (feed?.alerts.length ?? 0) === 0 ? (
+          <div className="p-5">
+            <EmptyFeed workerConfigured={feed?.workerConfigured ?? false} />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1180px] table-fixed">
+              <thead>
+                <tr className="border-b border-zinc-800 bg-zinc-950/35 text-left text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                  <th className="w-[120px] px-5 py-3 font-medium">Time</th>
+                  <th className="w-[120px] px-4 py-3 font-medium">Asset</th>
+                  <th className="w-[170px] px-4 py-3 font-medium">Alert type</th>
+                  <th className="w-[150px] px-4 py-3 font-medium">Regime</th>
+                  <th className="px-4 py-3 font-medium">Why it matters</th>
+                  <th className="w-[220px] px-4 py-3 font-medium">Context</th>
+                  <th className="w-[150px] px-5 py-3 font-medium text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feed?.alerts.map((alert) => {
+                  const actionHref =
+                    alert.alertType === "high_conviction_whale" && alert.walletAddress
+                      ? `/whales/${alert.walletAddress}?alert=${alert.id}`
+                      : `/?tab=markets&asset=${alert.asset}`;
+                  const actionLabel = alert.alertType === "high_conviction_whale" ? "Open wallet" : "Open market";
+
+                  return (
+                    <tr key={alert.id} className="border-b border-zinc-800/80 hover:bg-zinc-950/40">
+                      <td className="px-5 py-3 align-top">
+                        <div className="font-mono text-sm text-zinc-100">{formatTimestamp(alert.timestamp)}</div>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="text-sm font-medium text-zinc-100">{alert.asset}</div>
+                        <div className="mt-1 text-xs text-zinc-500">{alert.marketType === "hip3_spot" ? "Qualified HIP-3" : "Perp"}</div>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="text-sm font-medium text-zinc-100">{alertTypeLabel(alert)}</div>
+                        <div className="mt-2">
+                          <SmallPill label={alert.severity} tone={severityTone(alert.severity)} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="text-sm text-zinc-200">{regimeLabel(alert)}</div>
+                        {alert.walletLabel && (
+                          <div className="mt-1 text-xs text-zinc-500">
+                            {alert.walletLabel}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="text-sm text-zinc-300">{alert.whyItMatters}</div>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="space-y-1 text-xs text-zinc-500">
+                          {alert.fundingApr != null && <div>Funding: {formatPct(alert.fundingApr)}</div>}
+                          {alert.oiChange1h != null && <div>OI 1h: {formatPct(alert.oiChange1h)}</div>}
+                          {alert.oiChange4h != null && <div>OI 4h: {formatPct(alert.oiChange4h)}</div>}
+                          {alert.trackedLiquidationClusterUsd != null && (
+                            <div>
+                              Cluster: {formatCompactUsd(alert.trackedLiquidationClusterUsd)}
+                              {alert.clusterPrice != null ? ` near ${alert.clusterPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""}
+                            </div>
+                          )}
+                          {alert.basisBps != null && <div>Basis: {alert.basisBps.toFixed(0)} bps</div>}
+                          {alert.repeatedAdds6h != null && <div>Repeated adds: {alert.repeatedAdds6h} in 6h</div>}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 align-top">
+                        <div className="flex justify-end">
+                          <Link
+                            href={actionHref}
+                            className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
+                          >
+                            {actionLabel}
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <RecentDigests digests={feed?.digests ?? []} />
 
       <WatchlistStrip watchlist={watchlist} />
     </div>
