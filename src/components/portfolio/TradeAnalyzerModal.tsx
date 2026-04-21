@@ -218,7 +218,7 @@ export default function TradeAnalyzerModal({
     return () => {
       cancelled = true;
     };
-  }, [trade]);
+  }, [marketType, trade]);
 
   const analysis = useMemo(() => {
     if (candles.length === 0) return null;

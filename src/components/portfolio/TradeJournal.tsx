@@ -379,9 +379,9 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                     <td className="px-2 py-2 text-zinc-200 font-medium">
                       <button
                         type="button"
-                        onClick={() => setSelectedCoin(trade.coin)}
+                        onClick={() => setAnalyzedTrade(trade)}
                         className="rounded-md border border-transparent px-2 py-1 text-left transition-colors hover:border-teal-500/30 hover:bg-teal-500/10 hover:text-teal-200"
-                        title={`Analyze ${trade.coin}`}
+                        title={`Analyze ${trade.coin} trade`}
                       >
                         {trade.coin}
                       </button>
