@@ -33,8 +33,8 @@ type HeatmapResponse = {
 };
 
 const VIEWBOX_WIDTH = 920;
-const VIEWBOX_HEIGHT = 420;
-const PADDING = { top: 18, right: 18, bottom: 26, left: 68 };
+const VIEWBOX_HEIGHT = 300;
+const PADDING = { top: 14, right: 16, bottom: 24, left: 62 };
 
 function formatCompactUsd(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "n/a";
@@ -114,18 +114,18 @@ export default function TrackedLiquidationHeatmap() {
 
   return (
     <section className="rounded-2xl border border-zinc-800 bg-[#13171f] overflow-hidden">
-      <div className="border-b border-zinc-800 px-5 py-4">
+      <div className="border-b border-zinc-800 px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Tracked-Book Heatmap</div>
-            <div className="mt-1 text-lg font-semibold text-zinc-100">Liquidation ladder for major crypto perps</div>
-            <div className="mt-1 max-w-4xl text-sm text-zinc-400">
+            <div className="mt-1 text-base font-semibold text-zinc-100">Liquidation ladder for major crypto perps</div>
+            <div className="mt-1 max-w-4xl text-xs leading-5 text-zinc-400">
               This is built from the current liquidation prices of the profitable wallets HyperPulse tracks. It is not a full exchange-wide liquidation heatmap.
             </div>
           </div>
           <Link
             href={`/?tab=markets&asset=${selectedAsset}`}
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
+            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
           >
             Open market
             <ArrowRight className="h-4 w-4" />
@@ -133,14 +133,14 @@ export default function TrackedLiquidationHeatmap() {
         </div>
       </div>
 
-      <div className="px-5 py-4">
+      <div className="px-4 py-3">
         <div className="flex flex-wrap gap-2">
           {(data?.assets ?? ["BTC", "ETH", "SOL", "HYPE", "AAVE"]).map((asset) => (
             <button
               key={asset}
               onClick={() => setSelectedAsset(asset)}
               className={cn(
-                "rounded-xl border px-3 py-2 text-sm transition-colors",
+                "rounded-lg border px-3 py-1.5 text-xs transition-colors",
                 selectedAsset === asset
                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
                   : "border-zinc-800 bg-zinc-950/60 text-zinc-500 hover:text-zinc-200",
@@ -158,50 +158,50 @@ export default function TrackedLiquidationHeatmap() {
         )}
 
         {data && (
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
               <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Current price</div>
-              <div className="mt-2 font-mono text-2xl text-zinc-100">{formatPrice(data.currentPrice)}</div>
-              <div className="mt-1 text-xs text-zinc-500">{data.updatedAt ? new Date(data.updatedAt).toLocaleString() : "n/a"}</div>
+              <div className="mt-1.5 font-mono text-lg text-zinc-100">{formatPrice(data.currentPrice)}</div>
+              <div className="mt-1 text-[11px] text-zinc-500">{data.updatedAt ? new Date(data.updatedAt).toLocaleString() : "n/a"}</div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Short pockets</div>
-                  <div className="mt-2 font-mono text-2xl text-amber-300">{formatCompactUsd(data.summary.shortTotalNotionalUsd)}</div>
-                  <div className="mt-1 text-xs text-zinc-500">Nearest pocket {formatPct(data.summary.nearestShortDistancePct)}</div>
+                  <div className="mt-1.5 font-mono text-lg text-amber-300">{formatCompactUsd(data.summary.shortTotalNotionalUsd)}</div>
+                  <div className="mt-1 text-[11px] text-zinc-500">Nearest {formatPct(data.summary.nearestShortDistancePct)}</div>
                 </div>
                 <Flame className="h-4 w-4 text-amber-300" />
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Long pockets</div>
-                  <div className="mt-2 font-mono text-2xl text-teal-300">{formatCompactUsd(data.summary.longTotalNotionalUsd)}</div>
-                  <div className="mt-1 text-xs text-zinc-500">Nearest pocket {formatPct(data.summary.nearestLongDistancePct)}</div>
+                  <div className="mt-1.5 font-mono text-lg text-teal-300">{formatCompactUsd(data.summary.longTotalNotionalUsd)}</div>
+                  <div className="mt-1 text-[11px] text-zinc-500">Nearest {formatPct(data.summary.nearestLongDistancePct)}</div>
                 </div>
                 <Layers3 className="h-4 w-4 text-teal-300" />
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
               <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Tracked scope</div>
-              <div className="mt-2 font-mono text-2xl text-zinc-100">{data.summary.trackedWallets}</div>
-              <div className="mt-1 text-xs text-zinc-500">wallets contributing to current ladder</div>
+              <div className="mt-1.5 font-mono text-lg text-zinc-100">{data.summary.trackedWallets}</div>
+              <div className="mt-1 text-[11px] text-zinc-500">wallets in ladder</div>
             </div>
           </div>
         )}
 
-        <div className="mt-4 rounded-[24px] border border-zinc-800 bg-[linear-gradient(180deg,#160a25,#1d0731_35%,#12061f)] p-3">
+        <div className="mt-3 rounded-[20px] border border-zinc-800 bg-[linear-gradient(180deg,#160a25,#1d0731_35%,#12061f)] p-2.5">
           {loading ? (
-            <div className="h-[420px] rounded-[18px] border border-zinc-800 skeleton" />
+            <div className="h-[300px] rounded-[16px] border border-zinc-800 skeleton" />
           ) : !data || !chart ? (
-            <div className="flex h-[420px] items-center justify-center rounded-[18px] border border-dashed border-zinc-800 text-sm text-zinc-500">
+            <div className="flex h-[300px] items-center justify-center rounded-[16px] border border-dashed border-zinc-800 text-sm text-zinc-500">
               No tracked-book heatmap data yet for this asset.
             </div>
           ) : (
-            <div className="space-y-3">
-              <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full overflow-visible rounded-[18px] bg-transparent">
+            <div className="space-y-2.5">
+              <svg viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`} className="w-full overflow-visible rounded-[16px] bg-transparent">
                 <defs>
                   <linearGradient id="priceGlow" x1="0%" x2="100%" y1="0%" y2="0%">
                     <stop offset="0%" stopColor="#fb7185" />
@@ -263,7 +263,7 @@ export default function TrackedLiquidationHeatmap() {
                       y={chart.yForPrice(data.currentPrice) - 6}
                       textAnchor="end"
                       fill="rgba(255,255,255,0.72)"
-                      fontSize="11"
+                      fontSize="10"
                       fontFamily="monospace"
                     >
                       {data.selectedAsset} now {formatPrice(data.currentPrice)}
@@ -272,7 +272,7 @@ export default function TrackedLiquidationHeatmap() {
                 )}
               </svg>
 
-              <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+              <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-400">
                 <div className="inline-flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
                   Short liquidation pockets above price
@@ -287,8 +287,8 @@ export default function TrackedLiquidationHeatmap() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-400">
-                These horizontal bands show the current liquidation ladder from tracked profitable wallets projected across the last 24h price path. For a true time-evolving heatmap like Coinglass, HyperPulse would need to persist this ladder on a schedule and build historical heatmap snapshots over time.
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[11px] leading-5 text-zinc-400">
+                Current tracked-wallet liquidation ladder projected across the last 24h price path. A true time-evolving Coinglass-style map would require storing ladder snapshots on a schedule.
               </div>
             </div>
           )}
