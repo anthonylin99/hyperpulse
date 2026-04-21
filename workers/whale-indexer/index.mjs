@@ -803,7 +803,7 @@ function telegramHeader(alert) {
   const assetEmoji = TELEGRAM_ASSET_EMOJI.get(alert.coin) || '🐋';
   const convictionLabel = `${titleCase(alert.conviction)} conviction`;
   if (alert.directionality === 'stress') return `${assetEmoji} ⚠️ WHALE UNDER PRESSURE · ${convictionLabel}`;
-  if (alert.eventType.startsWith('deposit-led')) return `${assetEmoji} 💸 DEPOSIT-LED ENTRY · ${convictionLabel}`;
+  if (alert.eventType.startsWith('deposit-led')) return `${assetEmoji} 💸 FLOW-LED ENTRY · ${convictionLabel}`;
   if (alert.directionality === 'directional_add') return `${assetEmoji} 📈 SMART MONEY ADD · ${convictionLabel}`;
   return `${assetEmoji} 🎯 SMART MONEY ENTRY · ${convictionLabel}`;
 }
@@ -811,26 +811,20 @@ function telegramHeader(alert) {
 function buildTelegramMessage(alert, profile) {
   const marketLabel = alert.marketType === 'hip3_spot' ? `HIP-3 ${titleCase(alert.assetClass)}` : 'Perp';
   const leverageLabel = alert.leverage ? `${alert.leverage.toFixed(1)}x` : 'spot';
-  const flowLabel = formatCompact(alert.deposit24h || alert.netFlow24hUsd);
   const sizeVsAvg = formatMultiple(alert.sizeVsWalletAverage);
-  const topTags = [...(profile.styleTags || []), ...(alert.behaviorTags || [])].slice(0, 3).join(' · ');
   const displaySide = inferDisplaySide(alert);
-  const avgSizeLabel = profile.medianTradeSize30d > 0
-    ? `${sizeVsAvg} wallet avg (${formatCompact(profile.medianTradeSize30d)})`
-    : `${sizeVsAvg} wallet avg`;
-  const pnlAndVolume = `30D PNL: ${formatSignedUsd(profile.realizedPnl30d)} · 30D VOL: ${formatCompact(profile.baseline.volume30d)}`;
-  const leverageAndFlow = `NOTIONAL: ${formatCompact(alert.notionalUsd)} · LEVERAGE: ${leverageLabel} · FLOW 24H: ${flowLabel}`;
   const evidenceLine = alert.evidence.summary.replace(/\s+/g, ' ').trim();
+  const walletUrl = `${APP_URL}/?tab=whales&address=${alert.address}`;
+  const chartUrl = `${APP_URL}/?tab=markets&asset=${alert.coin}`;
 
   const line1 = telegramHeader(alert);
   const line2 = `${alert.coin} ${displaySide.toUpperCase()} · ${marketLabel.toUpperCase()}`;
-  const line3 = leverageAndFlow;
-  const line4 = `WALLET: ${alert.address}`;
-  const line5 = `${pnlAndVolume} · SIZE VS AVG: ${avgSizeLabel}`;
-  const line6 = topTags ? `PROFILE: ${topTags}` : '';
-  const line7 = `EVIDENCE: ${evidenceLine}`;
-  const line8 = `${APP_URL}/?tab=whales&address=${alert.address}`;
-  return [line1, line2, line3, line4, line5, line6, line7, line8].filter(Boolean).join('\n');
+  const line3 = `SIZE: ${formatCompact(alert.notionalUsd)} · LEVERAGE: ${leverageLabel} · VS AVG: ${sizeVsAvg}`;
+  const line4 = `30D PNL: ${formatSignedUsd(profile.realizedPnl30d)} · WIN RATE: ${profile.directionalHitRate30d.toFixed(1)}%`;
+  const line5 = `WHY IT PASSED: ${evidenceLine}`;
+  const line6 = `WALLET: ${walletUrl}`;
+  const line7 = `CHART: ${chartUrl}`;
+  return [line1, line2, line3, line4, line5, line6, line7].filter(Boolean).join('\n');
 }
 
 function formatCompact(value) {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import HomePage from "@/components/HomePage";
 import MarketOverviewPanel from "@/components/MarketOverviewPanel";
@@ -27,15 +28,45 @@ const APP_TABS: Array<{ key: Tab; label: string }> = [
   { key: "docs", label: "Docs" },
 ];
 
-export default function Home() {
+function HomeContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { tradingEnabled } = useAppConfig();
   const { isConnected } = useWallet();
   const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
-  const [tab, setTab] = useState<Tab>("home");
+  const requestedTab = useMemo(() => {
+    const raw = searchParams.get("tab");
+    return APP_TABS.some((tab) => tab.key === raw) ? (raw as Tab) : null;
+  }, [searchParams]);
+  const requestedAsset = searchParams.get("asset");
+  const requestedAddress = searchParams.get("address");
+  const [tab, setTab] = useState<Tab>(requestedTab ?? "home");
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
     direction: "long" | "short";
   } | null>(null);
+
+  useEffect(() => {
+    if (requestedTab && requestedTab !== tab) {
+      setTab(requestedTab);
+    }
+  }, [requestedTab, tab]);
+
+  useEffect(() => {
+    if (!requestedAsset) return;
+    setSelectedAsset(requestedAsset.toUpperCase());
+  }, [requestedAsset, setSelectedAsset]);
+
+  const handleTabChange = (nextTab: Tab) => {
+    setTab(nextTab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", nextTab);
+    if (nextTab !== "whales") params.delete("address");
+    if (nextTab !== "markets") params.delete("asset");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -47,7 +78,7 @@ export default function Home() {
             {APP_TABS.map((t) => (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key)}
+                onClick={() => handleTabChange(t.key)}
                 className={cn(
                   "rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
                   tab === t.key
@@ -117,10 +148,18 @@ export default function Home() {
       ) : tab === "factors" ? (
         <FactorsPage />
       ) : tab === "whales" ? (
-        <WhalesPage />
+        <WhalesPage initialAddress={requestedAddress} />
       ) : (
         <DocsPage />
       )}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-950 text-zinc-100" />}>
+      <HomeContent />
+    </Suspense>
   );
 }
