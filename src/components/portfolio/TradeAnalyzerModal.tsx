@@ -128,6 +128,14 @@ export default function TradeAnalyzerModal({
   trade,
   onClose,
 }: TradeAnalyzerModalProps) {
+  const marketType = useMemo<"perp" | "spot">(
+    () =>
+      trade.fills.some((fill) => fill.dir === "Buy" || fill.dir === "Sell")
+        ? "spot"
+        : "perp",
+    [trade.fills],
+  );
+
   const [candles, setCandles] = useState<CandleBar[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +166,7 @@ export default function TradeAnalyzerModal({
 
       try {
         const res = await fetch(
-          `/api/user/candles?coin=${trade.coin}&interval=15m&startTime=${startTime}&endTime=${endTime}`,
+          `/api/user/candles?coin=${encodeURIComponent(trade.coin)}&marketType=${marketType}&interval=15m&startTime=${startTime}&endTime=${endTime}`,
         );
         if (!res.ok) {
           const payload = await res.json().catch(() => null);
@@ -288,6 +296,9 @@ export default function TradeAnalyzerModal({
               <p className="mt-1 text-sm text-zinc-400">
                 Review whether this exit was well-timed or whether the market kept paying after you got out.
               </p>
+              <div className="mt-3 inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                {marketType === "spot" ? "HIP-3 spot" : "Perp"}
+              </div>
             </div>
             <button
               onClick={onClose}

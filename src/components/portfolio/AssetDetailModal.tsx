@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, cn } from "@/lib/format";
 import type { RoundTripTrade } from "@/types";
+import PriceChart from "@/components/PriceChart";
 
 function formatDuration(ms: number): string {
   const mins = ms / (1000 * 60);
@@ -29,6 +30,16 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
   const coinFunding = useMemo(
     () => funding.filter((f) => f.coin === coin),
     [funding, coin],
+  );
+
+  const marketType = useMemo<"perp" | "spot">(
+    () =>
+      coinTrades.some((trade) =>
+        trade.fills.some((fill) => fill.dir === "Buy" || fill.dir === "Sell"),
+      )
+        ? "spot"
+        : "perp",
+    [coinTrades],
   );
 
   const stats = useMemo(() => {
@@ -137,6 +148,20 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
             color={stats.totalFunding >= 0 ? "text-emerald-400" : "text-red-400"}
           />
           <StatCard label="Avg Hold" value={formatDuration(stats.avgHold)} />
+        </div>
+
+        <div className="px-6 pb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+              Price Chart
+            </div>
+            <div className="rounded-full border border-zinc-700 bg-zinc-800/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">
+              {marketType === "spot" ? "HIP-3 spot" : "Perp"}
+            </div>
+          </div>
+          <div className="h-[260px] rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-3">
+            <PriceChart coin={coin} marketType={marketType} />
+          </div>
         </div>
 
         {/* Long vs Short */}

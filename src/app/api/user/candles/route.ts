@@ -10,6 +10,7 @@ import {
   validateCoin,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
+import { resolveSpotCoinForCandles } from "@/lib/spotMarkets";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
   if (limited) return limited;
 
   const coin = validateCoin(req.nextUrl.searchParams.get("coin"));
+  const marketType = req.nextUrl.searchParams.get("marketType") || "perp";
   if (!coin) {
     return jsonError("A valid coin is required.", { status: 400 });
   }
@@ -55,8 +57,11 @@ export async function GET(req: NextRequest) {
 
   const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
   try {
+    const resolvedCoin =
+      marketType === "spot" ? await resolveSpotCoinForCandles(info, coin) : coin;
+
     const candles = await info.candleSnapshot({
-      coin,
+      coin: resolvedCoin,
       interval,
       startTime,
       endTime,

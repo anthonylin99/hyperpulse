@@ -9,6 +9,7 @@ import {
   validateCoin,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
+import { resolveSpotCoinForCandles } from "@/lib/spotMarkets";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const coin = validateCoin(searchParams.get("coin"));
+  const marketType = searchParams.get("marketType") || "perp";
   const interval = parseInterval(searchParams.get("interval"), "1h");
   const now = Date.now();
   const startTime = parseTimestamp(searchParams.get("startTime"), {
@@ -56,8 +58,11 @@ export async function GET(request: Request) {
 
   const info = getInfoClient(resolveNetworkFromRequest(new URL(request.url)));
   try {
+    const resolvedCoin =
+      marketType === "spot" ? await resolveSpotCoinForCandles(info, coin) : coin;
+
     const data = await info.candleSnapshot({
-      coin,
+      coin: resolvedCoin,
       interval,
       startTime,
       endTime,

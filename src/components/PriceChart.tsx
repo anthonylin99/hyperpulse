@@ -13,6 +13,7 @@ import { withNetworkParam } from "@/lib/hyperliquid";
 
 interface PriceChartProps {
   coin: string;
+  marketType?: "perp" | "spot";
 }
 
 const INTERVALS = ["5m", "15m", "1h", "4h", "1d"] as const;
@@ -26,7 +27,10 @@ const LOOKBACK_MS: Record<Interval, number> = {
   "1d": 120 * 24 * 60 * 60 * 1000,
 };
 
-export default function PriceChart({ coin }: PriceChartProps) {
+export default function PriceChart({
+  coin,
+  marketType = "perp",
+}: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,6 +40,7 @@ export default function PriceChart({ coin }: PriceChartProps) {
   const [interval, setInterval_] = useState<Interval>("1h");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasData, setHasData] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -119,11 +124,15 @@ export default function PriceChart({ coin }: PriceChartProps) {
 
         const res = await fetch(
           withNetworkParam(
-            `/api/market/candles?coin=${coin}&interval=${interval}&startTime=${startTime}&endTime=${now}`,
+            `/api/market/candles?coin=${encodeURIComponent(coin)}&marketType=${marketType}&interval=${interval}&startTime=${startTime}&endTime=${now}`,
           )
         );
         if (!res.ok) {
-          throw new Error(`Failed to fetch ${interval} candles`);
+          const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(
+            payload?.error ||
+              `Failed to load ${marketType === "spot" ? "HIP-3" : "perp"} candles.`,
+          );
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const candles: any[] = await res.json();
@@ -147,18 +156,24 @@ export default function PriceChart({ coin }: PriceChartProps) {
 
         seriesRef.current?.setData(ohlc);
         volumeRef.current?.setData(vol);
+        setHasData(ohlc.length > 0);
         chartRef.current?.timeScale().fitContent();
-      } catch {
+      } catch (err) {
+        setHasData(false);
         seriesRef.current?.setData([]);
         volumeRef.current?.setData([]);
-        setError("Unable to load this timeframe");
+        setError(
+          err instanceof Error
+            ? err.message
+            : `Failed to load ${marketType === "spot" ? "HIP-3" : "perp"} candles.`,
+        );
       } finally {
         setLoading(false);
       }
     };
 
     fetchCandles();
-  }, [coin, interval]);
+  }, [coin, interval, marketType]);
 
   return (
     <div className="flex flex-col h-full">
@@ -184,6 +199,12 @@ export default function PriceChart({ coin }: PriceChartProps) {
         )}
       </div>
       <div ref={containerRef} className="flex-1 min-h-0" />
+      {!loading && (error || !hasData) && (
+        <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[11px] text-zinc-500">
+          {error ||
+            `No ${marketType === "spot" ? "HIP-3" : "perp"} candle history is available for ${coin} yet.`}
+        </div>
+      )}
     </div>
   );
 }

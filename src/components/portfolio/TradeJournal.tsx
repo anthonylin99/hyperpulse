@@ -330,31 +330,31 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                 <SortIcon k="coin" />
               </th>
               <th className="text-left px-2 py-2">Dir</th>
-              <th className="text-right px-2 py-2">Entry</th>
-              <th className="text-right px-2 py-2">Exit</th>
-              <th className="text-right px-2 py-2">Size</th>
+              <th className="text-center px-2 py-2">Entry</th>
+              <th className="text-center px-2 py-2">Exit</th>
+              <th className="text-center px-2 py-2">Size</th>
               <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-zinc-300"
+                className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
                 onClick={() => toggleSort("pnl")}
               >
                 P&L
                 <SortIcon k="pnl" />
               </th>
               <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-zinc-300"
+                className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
                 onClick={() => toggleSort("pnlPct")}
               >
                 P&L %
                 <SortIcon k="pnlPct" />
               </th>
               <th
-                className="text-right px-2 py-2 cursor-pointer hover:text-zinc-300"
+                className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
                 onClick={() => toggleSort("duration")}
               >
                 Duration
                 <SortIcon k="duration" />
               </th>
-              <th className="text-right px-2 py-2">Fees</th>
+              <th className="text-center px-2 py-2">Fees</th>
               <th className="text-center px-2 py-2">Analyze</th>
               <th className="w-8 px-1 py-2" />
             </tr>
@@ -377,7 +377,14 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                       })}
                     </td>
                     <td className="px-2 py-2 text-zinc-200 font-medium">
-                      {trade.coin}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCoin(trade.coin)}
+                        className="rounded-md border border-transparent px-2 py-1 text-left transition-colors hover:border-teal-500/30 hover:bg-teal-500/10 hover:text-teal-200"
+                        title={`Analyze ${trade.coin}`}
+                      >
+                        {trade.coin}
+                      </button>
                     </td>
                     <td className="px-2 py-2">
                       <span
@@ -391,26 +398,26 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                         {trade.direction.toUpperCase()}
                       </span>
                     </td>
-                    <td className="px-2 py-2 text-right text-zinc-300 font-mono">
+                    <td className="px-2 py-2 text-center text-zinc-300 font-mono">
                       {trade.entryPx < 1
                         ? trade.entryPx.toPrecision(4)
                         : trade.entryPx.toLocaleString(undefined, {
                             maximumFractionDigits: 2,
                           })}
                     </td>
-                    <td className="px-2 py-2 text-right text-zinc-300 font-mono">
+                    <td className="px-2 py-2 text-center text-zinc-300 font-mono">
                       {trade.exitPx < 1
                         ? trade.exitPx.toPrecision(4)
                         : trade.exitPx.toLocaleString(undefined, {
                             maximumFractionDigits: 2,
                           })}
                     </td>
-                    <td className="px-2 py-2 text-right text-zinc-400 font-mono">
+                    <td className="px-2 py-2 text-center text-zinc-400 font-mono">
                       {formatUSD(trade.notional)}
                     </td>
                     <td
                       className={cn(
-                        "px-2 py-2 text-right font-mono font-medium",
+                        "px-2 py-2 text-center font-mono font-medium",
                         trade.pnl >= 0 ? "text-emerald-400" : "text-red-400",
                       )}
                     >
@@ -419,17 +426,17 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                     </td>
                     <td
                       className={cn(
-                        "px-2 py-2 text-right font-mono",
+                        "px-2 py-2 text-center font-mono",
                         trade.pnlPct >= 0 ? "text-emerald-400" : "text-red-400",
                       )}
                     >
                       {trade.pnlPct >= 0 ? "+" : ""}
                       {trade.pnlPct.toFixed(2)}%
                     </td>
-                    <td className="px-2 py-2 text-right text-zinc-400">
+                    <td className="px-2 py-2 text-center text-zinc-400">
                       {formatDuration(trade.duration)}
                     </td>
-                    <td className="px-4 py-2 text-right text-zinc-500 font-mono">
+                    <td className="px-4 py-2 text-center text-zinc-500 font-mono">
                       {formatUSD(trade.fees)}
                     </td>
                     <td className="px-2 py-2 text-center">
@@ -490,24 +497,24 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                 {summary.count} trade{summary.count !== 1 ? "s" : ""}
               </td>
               <td colSpan={3} />
-              <td className="px-2 py-2 text-right text-xs font-mono text-zinc-400">
+              <td className="px-2 py-2 text-center text-xs font-mono text-zinc-400">
                 {formatUSD(summary.totalVolume)}
               </td>
               <td
                 className={cn(
-                  "px-2 py-2 text-right text-xs font-mono font-medium",
+                  "px-2 py-2 text-center text-xs font-mono font-medium",
                   summary.totalPnl >= 0 ? "text-emerald-400" : "text-red-400",
                 )}
               >
                 {summary.totalPnl >= 0 ? "+" : ""}
                 {formatUSD(summary.totalPnl)}
               </td>
-              <td className="px-2 py-2 text-right text-xs font-mono text-zinc-400">
+              <td className="px-2 py-2 text-center text-xs font-mono text-zinc-400">
                 avg {summary.avgPnl >= 0 ? "+" : ""}
                 {formatUSD(summary.avgPnl)}
               </td>
               <td />
-              <td className="px-4 py-2 text-right text-xs font-mono text-zinc-500">
+              <td className="px-4 py-2 text-center text-xs font-mono text-zinc-500">
                 {formatUSD(summary.totalFees)}
               </td>
               <td />
