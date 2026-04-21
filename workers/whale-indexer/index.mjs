@@ -1217,6 +1217,46 @@ function buildDigestMessage(digest) {
   ].join('\n');
 }
 
+function severityRank(severity) {
+  if (severity === 'high') return 3;
+  if (severity === 'medium') return 2;
+  return 1;
+}
+
+function uniqueBestBy(items, keyFn, compareFn) {
+  const best = new Map();
+  for (const item of items) {
+    const key = keyFn(item);
+    const existing = best.get(key);
+    if (!existing || compareFn(item, existing) < 0) {
+      best.set(key, item);
+    }
+  }
+  return [...best.values()];
+}
+
+function compareAlertsForDigest(a, b) {
+  const severityDelta = severityRank(b.severity) - severityRank(a.severity);
+  if (severityDelta !== 0) return severityDelta;
+
+  const aMagnitude = Math.abs(a.trackedLiquidationClusterUsd || 0) + Math.abs(a.oiChange4h || 0);
+  const bMagnitude = Math.abs(b.trackedLiquidationClusterUsd || 0) + Math.abs(b.oiChange4h || 0);
+  if (bMagnitude !== aMagnitude) return bMagnitude - aMagnitude;
+
+  return b.timestamp - a.timestamp;
+}
+
+function summarizeSnapshotForDigest(snapshot) {
+  const parts = [`SETUP: ${snapshot.asset}`, `funding ${formatPct(snapshot.fundingAPR)}`];
+  if (snapshot.oiChange4h != null && Number.isFinite(snapshot.oiChange4h)) {
+    parts.push(`OI 4h ${formatPct(snapshot.oiChange4h)}`);
+  }
+  if (snapshot.priceChange4h != null && Number.isFinite(snapshot.priceChange4h)) {
+    parts.push(`price 4h ${formatPct(snapshot.priceChange4h)}`);
+  }
+  return parts.join(' · ');
+}
+
 async function emitPositioningAlert(alert, { queueTelegram = true } = {}) {
   await persistPositioningAlert(alert);
   if (!queueTelegram || !shouldQueuePositioningAlert(alert)) return;
@@ -1523,8 +1563,16 @@ async function maybeRunDigest() {
     [periodStart, periodEnd],
   );
   const alerts = alertsResult.rows.map((row) => row.payload);
-  const crowding = alerts.filter((alert) => alert.alertType === 'crowding').slice(0, 3);
-  const liquidation = alerts.filter((alert) => alert.alertType === 'liquidation_pressure').slice(0, 2);
+  const crowding = uniqueBestBy(
+    alerts.filter((alert) => alert.alertType === 'crowding'),
+    (alert) => `${alert.asset}:${alert.regime}`,
+    compareAlertsForDigest,
+  ).slice(0, 3);
+  const liquidation = uniqueBestBy(
+    alerts.filter((alert) => alert.alertType === 'liquidation_pressure'),
+    (alert) => `${alert.asset}:${alert.regime}`,
+    compareAlertsForDigest,
+  ).slice(0, 2);
   const whale = alerts.find((alert) => alert.alertType === 'high_conviction_whale') || null;
 
   const summaryLines = [];
@@ -1532,10 +1580,17 @@ async function maybeRunDigest() {
     summaryLines.push(...crowding.map((alert) => `CROWDING: ${alert.asset} · ${alert.whyItMatters}`));
   } else {
     const latest = [...latestMarketSnapshots.values()]
+      .filter(
+        (snapshot) =>
+          snapshot.oiChange4h != null &&
+          Number.isFinite(snapshot.oiChange4h) &&
+          snapshot.fundingAPR != null &&
+          Number.isFinite(snapshot.fundingAPR),
+      )
       .sort((a, b) => Math.abs(b.oiChange4h || 0) - Math.abs(a.oiChange4h || 0))
       .slice(0, 2);
     if (latest.length > 0) {
-      summaryLines.push(...latest.map((snapshot) => `SETUP: ${snapshot.asset} funding ${formatPct(snapshot.fundingAPR)} · OI 4h ${formatPct(snapshot.oiChange4h)}`));
+      summaryLines.push(...latest.map((snapshot) => summarizeSnapshotForDigest(snapshot)));
     } else {
       summaryLines.push('No major crowding setups crossed the high-confidence threshold in this window.');
     }
@@ -1549,13 +1604,22 @@ async function maybeRunDigest() {
     summaryLines.push(`RARE WHALE: ${whale.asset} · ${whale.whyItMatters}`);
   }
 
+  const dedupedSummaryLines = [];
+  const seenLines = new Set();
+  for (const line of summaryLines) {
+    const normalized = line.replace(/\s+/g, ' ').trim();
+    if (!normalized || seenLines.has(normalized)) continue;
+    seenLines.add(normalized);
+    dedupedSummaryLines.push(line);
+  }
+
   const digest = {
     id: digestId,
     createdAt: now,
     periodStart,
     periodEnd,
     headline: `Window ${new Date(periodStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${new Date(periodEnd).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
-    summaryLines,
+    summaryLines: dedupedSummaryLines,
     alertIds: alerts.map((alert) => alert.id),
     telegramSentAt: null,
   };
