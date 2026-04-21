@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { setMaxListeners } from 'node:events';
 import { Pool } from 'pg';
+import { google } from 'googleapis';
 import {
   HttpTransport,
   InfoClient,
@@ -30,6 +31,10 @@ const LIQ_DISTANCE_PCT = envNumber('WHALE_LIQ_DISTANCE_PCT', 10);
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+const SHEETS_ENABLED = process.env.GOOGLE_SHEETS_ENABLED === 'true';
+const SHEETS_CREDS_B64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 || '';
+const SHEETS_SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || '';
+const SHEETS_TAB = process.env.GOOGLE_SHEET_TAB || 'RAW DATA';
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hyperpulse-gold.vercel.app';
 
 setMaxListeners(0);
@@ -874,6 +879,52 @@ async function flushTelegramQueue() {
       continue;
     }
     await pool.query(`update whale_telegram_queue set sent_at = $2 where id = $1`, [row.id, Date.now()]);
+    if (payload.alert) await appendAlertToSheet(payload.alert);
+  }
+}
+
+let sheetsClient = null;
+async function getSheetsClient() {
+  if (sheetsClient) return sheetsClient;
+  if (!SHEETS_ENABLED || !SHEETS_CREDS_B64 || !SHEETS_SPREADSHEET_ID) return null;
+  const credsJson = Buffer.from(SHEETS_CREDS_B64, 'base64').toString('utf8');
+  const creds = JSON.parse(credsJson);
+  const auth = new google.auth.JWT(creds.client_email, null, creds.private_key, [
+    'https://www.googleapis.com/auth/spreadsheets',
+  ]);
+  await auth.authorize();
+  sheetsClient = google.sheets({ version: 'v4', auth });
+  return sheetsClient;
+}
+
+function shortAddress(addr) {
+  if (!addr || addr.length < 12) return addr || '';
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+async function appendAlertToSheet(alert) {
+  if (!SHEETS_ENABLED) return;
+  try {
+    const sheets = await getSheetsClient();
+    if (!sheets) return;
+    const ts = new Date(alert.timestamp || Date.now()).toISOString().replace('T', ' ').slice(0, 19);
+    const eventLabel = String(alert.eventType || '').replace(/-/g, ' ').toUpperCase();
+    const sideLabel = String(alert.side || '').toUpperCase();
+    const trade = `${eventLabel} ${sideLabel} ${alert.coin}`.trim();
+    const conviction = alert.conviction ? alert.conviction.charAt(0).toUpperCase() + alert.conviction.slice(1) : '';
+    const sizeVsAvg = formatMultiple(alert.sizeVsWalletAverage);
+    const wallet = `${shortAddress(alert.address)}`;
+    const entry = alert.entryPx != null ? Number(alert.entryPx) : '';
+    const current = alert.markPx != null ? Number(alert.markPx) : '';
+    const pnlPct = alert.pnlPct != null ? Number(alert.pnlPct.toFixed(2)) : '';
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEETS_SPREADSHEET_ID,
+      range: `${SHEETS_TAB}!A:H`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[ts, trade, conviction, sizeVsAvg, wallet, entry, current, pnlPct]] },
+    });
+  } catch (err) {
+    console.error('[whale-indexer] sheets append failed', err.message);
   }
 }
 
@@ -938,6 +989,13 @@ async function enrichWallet(address, trigger) {
       : trigger.side,
     notionalUsd: trigger.notionalUsd,
     leverage: focusPosition.leverage,
+    entryPx: focusPosition.entryPx ?? null,
+    markPx: focusPosition.markPx ?? null,
+    positionUnrealizedPnl: focusPosition.unrealizedPnl ?? null,
+    pnlPct:
+      focusPosition.entryPx > 0 && focusPosition.szi
+        ? (focusPosition.unrealizedPnl / (Math.abs(focusPosition.szi) * focusPosition.entryPx)) * 100
+        : null,
     netFlow24hUsd: profile.netFlow24hUsd,
     deposit24h: Math.max(profile.netFlow24hUsd, 0),
     unrealizedPnl: profile.unrealizedPnl,

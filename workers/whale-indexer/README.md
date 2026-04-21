@@ -36,6 +36,18 @@ This worker is the always-on discovery layer for the HyperPulse `Whales` tab.
 - `TELEGRAM_CHAT_ID`
 - `NEXT_PUBLIC_APP_URL` for deep links back into HyperPulse
 
+## Google Sheets mirror env
+Every alert that gets sent to Telegram is also appended as one row to the
+spreadsheet, in the same loop. If the sheet append fails the worker logs
+and continues (Telegram delivery is the source of truth).
+- `GOOGLE_SHEETS_ENABLED=true`
+- `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` — base64 of the service-account JSON.
+  Generate with `base64 -i hyperpulse-google-api.json | tr -d '\n'`
+- `GOOGLE_SHEET_ID` — spreadsheet ID from the URL
+- `GOOGLE_SHEET_TAB` — tab name (defaults to `RAW DATA`)
+
+Sheet column order: `TimeStamp | Trade | Conviction | Size vs Avg | Wallet | Entry Price | Current/Exit | PnL %`. Service account email needs Editor access.
+
 ## Notes
 - v1 intentionally starts indexing from worker cutover onward.
 - Historical wallet drilldowns are still fetched on demand in the app.
