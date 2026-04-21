@@ -683,6 +683,7 @@ export interface PositioningAlert {
   trackedLiquidationClusterUsd?: number | null;
   price?: number | null;
   clusterPrice?: number | null;
+  clusterDistancePct?: number | null;
   repeatedAdds6h?: number | null;
   marketType?: WhaleMarketType | null;
   payload?: Record<string, unknown>;

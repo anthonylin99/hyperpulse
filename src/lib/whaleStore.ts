@@ -15,6 +15,9 @@ import { isQualifiedHip3Symbol } from "@/lib/whaleTaxonomy";
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
 const DEFAULT_WHALE_MIN_REALIZED_PNL_30D = 200_000;
 const DEFAULT_FEED_FETCH_MULTIPLIER = 5;
+const TRACKED_CLUSTER_MAX_DISTANCE_PCT = Number.isFinite(Number(process.env.POSITIONING_TRACKED_CLUSTER_MAX_DISTANCE_PCT))
+  ? Number(process.env.POSITIONING_TRACKED_CLUSTER_MAX_DISTANCE_PCT)
+  : 25;
 
 let pool: Pool | null = null;
 function getPool(): Pool | null {
@@ -34,6 +37,41 @@ const memoryPositioningSnapshots = new Map<string, PositioningMarketSnapshot>();
 const memoryPositioningDigests = new Map<string, PositioningDigestRun>();
 const memoryTimingScores = new Map<string, WalletTimingScore>();
 const memoryWorkerStatus: { updatedAt: number; payload: Record<string, unknown> | null } | null = null;
+
+function normalizePositioningAlert(alert: PositioningAlert): PositioningAlert {
+  const price = alert.price ?? null;
+  const clusterPrice = alert.clusterPrice ?? null;
+  const clusterDistancePct =
+    price != null && clusterPrice != null && Number.isFinite(price) && Number.isFinite(clusterPrice) && price > 0
+      ? ((clusterPrice - price) / price) * 100
+      : alert.clusterDistancePct ?? null;
+
+  const normalized = {
+    ...alert,
+    clusterDistancePct,
+  };
+
+  if (normalized.alertType === "liquidation_pressure" && normalized.trackedLiquidationClusterUsd != null && clusterPrice != null && clusterDistancePct != null) {
+    const liquidationSide = normalized.regime === "downside_magnet" ? "long" : "short";
+    const consequence = normalized.regime === "downside_magnet" ? "downside pressure can accelerate" : "squeeze pressure rises";
+    normalized.whyItMatters =
+      `Tracked-book ${liquidationSide} liquidations sit ${clusterDistancePct > 0 ? "+" : ""}${clusterDistancePct.toFixed(1)}% from price ` +
+      `near ${clusterPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} with ${formatCompactSignedUsd(normalized.trackedLiquidationClusterUsd).replace(/^\+/, "")} at risk. ` +
+      `If price trades into that zone, ${consequence}.`;
+  }
+
+  return normalized;
+}
+
+function qualifiesForPositioningSurface(alert: PositioningAlert): boolean {
+  if (alert.alertType !== "liquidation_pressure") return true;
+  const normalized = normalizePositioningAlert(alert);
+  const distancePct = normalized.clusterDistancePct;
+  if (distancePct == null || !Number.isFinite(distancePct)) return false;
+  if (normalized.regime === "upside_magnet" && distancePct <= 0) return false;
+  if (normalized.regime === "downside_magnet" && distancePct >= 0) return false;
+  return Math.abs(distancePct) <= TRACKED_CLUSTER_MAX_DISTANCE_PCT;
+}
 
 function formatCompactSignedUsd(value: number): string {
   const sign = value >= 0 ? "+" : "-";
@@ -560,6 +598,8 @@ export async function listPositioningAlerts(filters: PositioningFeedFilters = {}
 
   const filterMemory = (items: PositioningAlert[]) =>
     items
+      .map((item) => normalizePositioningAlert(item))
+      .filter((item) => qualifiesForPositioningSurface(item))
       .filter((item) => (severity ? item.severity === severity : true))
       .filter((item) => (asset ? item.asset === asset : true))
       .filter((item) => (alertType ? item.alertType === alertType : true))
@@ -606,7 +646,9 @@ export async function listPositioningAlerts(filters: PositioningFeedFilters = {}
     `select payload from positioning_alerts where ${clauses.join(" and ")} order by created_at desc limit $${values.length}`,
     values,
   );
-  return result.rows.map((row) => row.payload as PositioningAlert);
+  return result.rows
+    .map((row) => normalizePositioningAlert(row.payload as PositioningAlert))
+    .filter((alert) => qualifiesForPositioningSurface(alert));
 }
 
 export async function listPositioningDigests(limit = 12): Promise<PositioningDigestRun[]> {

@@ -309,11 +309,11 @@ export default function DocsPage() {
             </p>
           </Section>
 
-          <Section id="whales" eyebrow="Whales" title="How the Whale tracker works">
+          <Section id="whales" eyebrow="Whales" title="How the positioning monitor works">
             <p>
-              The Whales tab is built as a read-only intelligence surface. It is designed to flag unusual Hyperliquid
-              activity, then turn the address behind that flow into a profile with open positions, recent round trips,
-              ledger movement, and behavior tags.
+              The Whales tab now works as a read-only positioning monitor. It combines three signal families:
+              crowding setups on major perps, nearby tracked-book liquidation pockets, and rare tracked-wallet repeat
+              behavior that can be reviewed on a dedicated wallet page.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
@@ -341,6 +341,14 @@ export default function DocsPage() {
                 <div>3. Join recent net inflow with new exposure to classify deposit-led long or short episodes.</div>
                 <div>4. Compute evidence-first tags such as aggressive leverage, underwater, concentrated book, and funding-sensitive.</div>
                 <div>5. Persist the normalized alert plus the current wallet snapshot for replay over the last 30 days.</div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-300">What this monitor is not</div>
+              <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                <div>Crowding is a structural heuristic on major perps, not a guaranteed predictive model.</div>
+                <div>Liquidation pressure is a tracked-book subset from profitable wallets, not a full exchange-wide liquidation map.</div>
+                <div>Rare whale signals are tracked-wallet behavior screens, not copy-trade recommendations.</div>
               </div>
             </div>
             <p>

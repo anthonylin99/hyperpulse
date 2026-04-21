@@ -12,6 +12,7 @@ import type { WhaleAlert } from "@/types";
 
 const TIMEFRAME_TO_MS: Record<string, number> = {
   "1h": 60 * 60 * 1000,
+  "2h": 2 * 60 * 60 * 1000,
   "6h": 6 * 60 * 60 * 1000,
   "24h": 24 * 60 * 60 * 1000,
   "7d": 7 * 24 * 60 * 60 * 1000,
@@ -145,7 +146,7 @@ export async function GET(req: NextRequest) {
     });
 
     return csvResponse(`hyperpulse-positioning-alerts-${new Date().toISOString().slice(0, 10)}.csv`, [
-      ["timestamp", "asset", "alert_type", "regime", "severity", "why_it_matters", "wallet", "funding_apr", "oi_change_1h", "oi_change_4h", "basis_bps", "tracked_liquidation_cluster_usd", "cluster_price"],
+      ["timestamp", "asset", "alert_type", "regime", "severity", "why_it_matters", "wallet", "funding_apr", "oi_change_1h", "oi_change_4h", "basis_bps", "tracked_liquidation_cluster_usd", "cluster_price", "cluster_distance_pct"],
       ...alerts.map((alert) => [
         new Date(alert.timestamp).toISOString(),
         alert.asset,
@@ -160,6 +161,7 @@ export async function GET(req: NextRequest) {
         alert.basisBps,
         alert.trackedLiquidationClusterUsd,
         alert.clusterPrice,
+        alert.clusterDistancePct,
       ]),
     ]);
   }

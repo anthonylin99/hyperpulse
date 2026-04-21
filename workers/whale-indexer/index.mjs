@@ -35,6 +35,7 @@ const CROWDING_ALERT_COOLDOWN_MS = envNumber('POSITIONING_CROWDING_ALERT_COOLDOW
 const LIQUIDATION_ALERT_COOLDOWN_MS = envNumber('POSITIONING_LIQUIDATION_ALERT_COOLDOWN_MS', 3 * 60 * 60 * 1000);
 const HIGH_CONVICTION_ALERT_COOLDOWN_MS = envNumber('POSITIONING_HIGH_CONVICTION_ALERT_COOLDOWN_MS', 12 * 60 * 60 * 1000);
 const TRACKED_CLUSTER_MIN_USD = envNumber('POSITIONING_TRACKED_CLUSTER_MIN_USD', 5_000_000);
+const TRACKED_CLUSTER_MAX_DISTANCE_PCT = envNumber('POSITIONING_TRACKED_CLUSTER_MAX_DISTANCE_PCT', 25);
 const HIGH_CONVICTION_PNL_FLOOR = envNumber('POSITIONING_HIGH_CONVICTION_PNL_FLOOR', 1_000_000);
 const TRACKED_BOOK_PNL_FLOOR = envNumber('POSITIONING_TRACKED_BOOK_PNL_FLOOR', 200_000);
 const CROWDING_POS_FUNDING_APR = envNumber('POSITIONING_CROWDING_POS_FUNDING_APR', 25);
@@ -1138,7 +1139,15 @@ function clusterTrackedLiquidations(asset, currentPrice, profiles) {
 
 function buildLiquidationAlert(asset, currentPrice, cluster, side, timestamp) {
   if (!cluster || cluster.notionalUsd < TRACKED_CLUSTER_MIN_USD) return null;
+  const clusterDistancePct = ((cluster.price - currentPrice) / currentPrice) * 100;
+  if (!Number.isFinite(clusterDistancePct)) return null;
+  if (side === 'below' && clusterDistancePct >= 0) return null;
+  if (side === 'above' && clusterDistancePct <= 0) return null;
+  if (Math.abs(clusterDistancePct) > TRACKED_CLUSTER_MAX_DISTANCE_PCT) return null;
   const regime = side === 'below' ? 'downside_magnet' : 'upside_magnet';
+  const distanceLabel = `${clusterDistancePct > 0 ? '+' : ''}${clusterDistancePct.toFixed(1)}%`;
+  const liquidationSide = side === 'below' ? 'long' : 'short';
+  const consequence = side === 'below' ? 'downside pressure can accelerate' : 'squeeze pressure rises';
   return {
     id: `pos:liquidation:${asset}:${regime}:${Math.floor(timestamp / LIQUIDATION_ALERT_COOLDOWN_MS)}`,
     asset,
@@ -1146,9 +1155,10 @@ function buildLiquidationAlert(asset, currentPrice, cluster, side, timestamp) {
     regime,
     severity: cluster.notionalUsd >= TRACKED_CLUSTER_MIN_USD * 2 ? 'high' : 'medium',
     timestamp,
-    whyItMatters: `Tracked-book ${side === 'below' ? 'long' : 'short'} liquidations cluster at ${cluster.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} with ${formatCompact(cluster.notionalUsd)} at risk -> ${side === 'below' ? 'downside magnet' : 'upside squeeze'} if price drifts there.`,
+    whyItMatters: `Tracked-book ${liquidationSide} liquidations sit ${distanceLabel} from price near ${cluster.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} with ${formatCompact(cluster.notionalUsd)} at risk. If price trades into that zone, ${consequence}.`,
     trackedLiquidationClusterUsd: cluster.notionalUsd,
     clusterPrice: cluster.price,
+    clusterDistancePct,
     price: currentPrice,
     marketType: 'crypto_perp',
   };
@@ -1176,14 +1186,20 @@ function buildPositioningTelegramMessage(alert) {
     alert.alertType === 'crowding'
       ? `🔥 ${alert.asset} ${formatPositioningRegime(alert.regime).toUpperCase()}`
       : alert.alertType === 'liquidation_pressure'
-        ? `💥 ${alert.asset} ${formatPositioningRegime(alert.regime).toUpperCase()}`
-        : `🐋 ${alert.asset} HIGH-CONVICTION WHALE`;
+        ? `💥 ${alert.asset} TRACKED LIQUIDATION POCKET`
+        : `🐋 ${alert.asset} TOP-WALLET REPEAT`;
   const contextParts = [];
   if (alert.fundingApr != null) contextParts.push(`Funding ${formatPct(alert.fundingApr)}`);
   if (alert.oiChange4h != null) contextParts.push(`OI 4h ${formatPct(alert.oiChange4h)}`);
   if (alert.basisBps != null) contextParts.push(`Basis ${alert.basisBps.toFixed(0)}bps`);
   if (alert.trackedLiquidationClusterUsd != null) {
-    contextParts.push(`Cluster ${formatCompact(alert.trackedLiquidationClusterUsd)} @ ${alert.clusterPrice?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || 'n/a'}`);
+    const distanceLabel =
+      alert.clusterDistancePct == null || !Number.isFinite(alert.clusterDistancePct)
+        ? null
+        : `${alert.clusterDistancePct > 0 ? '+' : ''}${alert.clusterDistancePct.toFixed(1)}%`;
+    contextParts.push(
+      `Tracked book ${formatCompact(alert.trackedLiquidationClusterUsd)}${distanceLabel ? ` · ${distanceLabel}` : ''} @ ${alert.clusterPrice?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || 'n/a'}`,
+    );
   }
   if (alert.repeatedAdds6h != null) contextParts.push(`Adds ${alert.repeatedAdds6h} in 6h`);
   const walletLine = alert.walletAddress ? `WALLET: ${APP_URL}/whales/${alert.walletAddress}?alert=${alert.id}` : `CHART: ${APP_URL}/?tab=markets&asset=${alert.asset}`;
@@ -1293,8 +1309,8 @@ async function maybeEmitHighConvictionWhale(alert, profile) {
     severity: profile.realizedPnl30d >= Math.max(topDecileCutoff * 1.25, 2_000_000) ? 'high' : 'medium',
     timestamp: alert.timestamp,
     whyItMatters: qualifiesByAdds
-      ? `${shortAddress(alert.address)} has added ${repeatedAdds6h} times in 6h with ${formatSignedUsd(profile.realizedPnl30d)} 30d PnL -> rare conviction signal.`
-      : `${shortAddress(alert.address)} has a ${timingScore.hitRate.toFixed(0)}% pre-move hit rate over ${timingScore.sampleSize} samples and is adding again -> timing edge worth watching.`,
+      ? `${shortAddress(alert.address)} has added ${repeatedAdds6h} times in 6h with ${formatSignedUsd(profile.realizedPnl30d)} 30d PnL. Repeat-add behavior worth reviewing.`
+      : `${shortAddress(alert.address)} has a ${timingScore.hitRate.toFixed(0)}% pre-move hit rate over ${timingScore.sampleSize} samples and is adding again. Worth reviewing, not copying blindly.`,
     walletAddress: alert.address,
     walletLabel: shortAddress(alert.address),
     fundingApr: null,

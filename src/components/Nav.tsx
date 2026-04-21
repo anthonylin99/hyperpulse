@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMarket } from "@/context/MarketContext";
 import WalletConnect from "./WalletConnect";
 import NetworkToggle from "./NetworkToggle";
@@ -19,11 +20,13 @@ export default function Nav() {
     <div className="border-b border-[#7dd4c4]/20 bg-gradient-to-r from-[#0f1a1e]/95 via-[#0a0a0a] to-[#141414] backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
         <div>
-          <div className="font-mono text-[22px] font-bold tracking-tight text-white">
-            <span className="bg-gradient-to-r from-white via-[#c9f2ea] to-[#7dd4c4] bg-clip-text text-transparent">
-              HyperPulse
-            </span>
-          </div>
+          <Link href="/" className="block">
+            <div className="font-mono text-[22px] font-bold tracking-tight text-white">
+              <span className="bg-gradient-to-r from-white via-[#c9f2ea] to-[#7dd4c4] bg-clip-text text-transparent">
+                HyperPulse
+              </span>
+            </div>
+          </Link>
           <div className="mt-0.5 text-xs text-zinc-500">
             Hyperliquid portfolio, markets, factors, and methodology in one workspace
           </div>

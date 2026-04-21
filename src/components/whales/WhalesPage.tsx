@@ -148,7 +148,7 @@ function alertTypeLabel(alert: PositioningAlert) {
     case "liquidation_pressure":
       return "Liquidation pressure";
     case "high_conviction_whale":
-      return "High-conviction whale";
+      return "Top-wallet repeat";
     default:
       return alert.alertType;
   }
@@ -354,10 +354,10 @@ export default function WhalesPage() {
           <div className="max-w-4xl">
             <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-400/80">HyperPulse Positioning Monitor</div>
             <h1 className="mt-2 text-[28px] font-semibold tracking-tight text-zinc-100">
-              Slow, high-signal alerts for crowding, liquidation pressure, and rare whale conviction.
+              Major-perp crowding, nearby tracked-book liquidation pockets, and rare tracked-wallet repeats.
             </h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-300">
-              Telegram is now digest-first: two-hour market updates with rare interrupting alerts when positioning gets fragile or a top wallet shows real conviction.
+              Research tape only: this is not a market-wide liquidation map or a copy-trading feed. Telegram is digest-first with rare interrupts when positioning gets fragile.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -391,9 +391,9 @@ export default function WhalesPage() {
       {feed && (
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Active Alerts" value={feed.summary.alertCount.toString()} helper={`${timeframe} live window`} icon={Activity} />
-          <SummaryCard label="Crowding" value={feed.summary.crowdingCount.toString()} helper="funding + OI + weak confirmation" icon={Waves} />
-          <SummaryCard label="Liquidation" value={feed.summary.liquidationCount.toString()} helper="tracked-book liquidation magnets" icon={Siren} />
-          <SummaryCard label="Rare Whale" value={feed.summary.whaleCount.toString()} helper="top-decile PnL wallets only" icon={ShieldAlert} />
+          <SummaryCard label="Crowding" value={feed.summary.crowdingCount.toString()} helper="major perps only" icon={Waves} />
+          <SummaryCard label="Liquidation" value={feed.summary.liquidationCount.toString()} helper="nearby tracked-book pockets only" icon={Siren} />
+          <SummaryCard label="Top-Wallet Repeat" value={feed.summary.whaleCount.toString()} helper="tracked-wallet repeat/timing screen" icon={ShieldAlert} />
         </section>
       )}
 
@@ -465,9 +465,9 @@ export default function WhalesPage() {
         <div className="border-b border-zinc-800 px-5 py-3">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Operational Feed</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Live Signals</div>
               <div className="mt-1 text-sm text-zinc-400">
-                Market structure first: crowded longs, crowded shorts, liquidation magnets, then rare top-wallet conviction.
+                Market structure first: crowding and nearby tracked-book liquidation pockets, then rare tracked-wallet repeats.
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -500,7 +500,7 @@ export default function WhalesPage() {
                   <th className="w-[120px] px-4 py-3 font-medium">Asset</th>
                   <th className="w-[170px] px-4 py-3 font-medium">Alert type</th>
                   <th className="w-[150px] px-4 py-3 font-medium">Regime</th>
-                  <th className="px-4 py-3 font-medium">Why it matters</th>
+                  <th className="px-4 py-3 font-medium">Risk path</th>
                   <th className="w-[220px] px-4 py-3 font-medium">Context</th>
                   <th className="w-[150px] px-5 py-3 font-medium text-right">Action</th>
                 </tr>
@@ -546,10 +546,11 @@ export default function WhalesPage() {
                           {alert.oiChange4h != null && <div>OI 4h: {formatPct(alert.oiChange4h)}</div>}
                           {alert.trackedLiquidationClusterUsd != null && (
                             <div>
-                              Cluster: {formatCompactUsd(alert.trackedLiquidationClusterUsd)}
+                              Tracked book: {formatCompactUsd(alert.trackedLiquidationClusterUsd)}
                               {alert.clusterPrice != null ? ` near ${alert.clusterPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""}
                             </div>
                           )}
+                          {alert.clusterDistancePct != null && <div>Distance: {formatPct(alert.clusterDistancePct)}</div>}
                           {alert.basisBps != null && <div>Basis: {alert.basisBps.toFixed(0)} bps</div>}
                           {alert.repeatedAdds6h != null && <div>Repeated adds: {alert.repeatedAdds6h} in 6h</div>}
                         </div>
