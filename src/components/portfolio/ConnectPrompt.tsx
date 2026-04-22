@@ -1,18 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { type ConnectedWallet } from "@privy-io/react-auth";
+import { ArrowRight, Wallet } from "lucide-react";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useWallet } from "@/context/WalletContext";
-import { getSavedWallets, removeWallet, clearSavedWallets, type SavedWallet } from "@/lib/savedWallets";
-import { truncateAddress, cn } from "@/lib/format";
+import { clearSavedWallets, getSavedWallets, removeWallet, type SavedWallet } from "@/lib/savedWallets";
+import { cn, truncateAddress } from "@/lib/format";
 import PrivyWalletPanel from "@/components/PrivyWalletPanel";
 
 export default function ConnectPrompt() {
   const { tradingEnabled } = useAppConfig();
   const { connectReadOnly, connectWithBrowserWallet, connectWithPrivyWallet, loading } = useWallet();
   const [addressInput, setAddressInput] = useState("");
-  const [mode, setMode] = useState<"main" | "paste">("main");
+  const [addressMode, setAddressMode] = useState<"wallet" | "ens">("wallet");
   const [error, setError] = useState<string | null>(null);
   const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
   const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
@@ -71,176 +72,188 @@ export default function ConnectPrompt() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
-      <div className="max-w-md w-full space-y-8 text-center">
-        <div className="space-y-3">
-          <div className="text-4xl font-bold tracking-tight text-zinc-50">HyperPulse</div>
-          <p className="text-zinc-400 text-sm leading-relaxed">
-            Portfolio analytics and trade insights for Hyperliquid.
+    <div className="min-h-[80vh] px-4 py-12">
+      <div className="mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(460px,520px)] lg:items-center">
+        <div className="max-w-xl">
+          <div className="text-[12px] uppercase tracking-[0.28em] text-zinc-500">Connect wallet</div>
+          <h1 className="mt-5 text-5xl font-semibold tracking-tight text-zinc-100 sm:text-6xl">
+            Link your
             <br />
-            Paste any address to get started. Browser-wallet execution is optional and disabled in the public deployment by default.
+            <span className="text-emerald-300">address.</span>
+          </h1>
+          <p className="mt-6 max-w-lg text-lg leading-8 text-zinc-400">
+            Connect a wallet or enter an address to fetch your Hyperliquid portfolio, fills, funding, and trade review data.
           </p>
+
+          <div className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-950/45 p-5">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Read-only by default</div>
+            <div className="mt-2 text-sm leading-6 text-zinc-400">
+              Analytics only need a public wallet address. Browser-wallet access is optional, and HyperPulse never asks for a seed phrase or manual private key.
+            </div>
+          </div>
+
+          {savedWallets.length > 0 ? (
+            <div className="mt-8">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Recent wallets</div>
+                <button
+                  onClick={handleClearSaved}
+                  className="text-xs text-zinc-500 transition hover:text-rose-300"
+                >
+                  Forget all
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {savedWallets
+                  .sort((a, b) => b.lastUsed - a.lastUsed)
+                  .slice(0, 4)
+                  .map((wallet) => (
+                    <button
+                      key={wallet.address}
+                      onClick={() => handleSavedWalletClick(wallet)}
+                      disabled={loading}
+                      className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/50 px-4 py-3 text-left transition hover:border-zinc-700 hover:bg-zinc-900/80 disabled:opacity-50"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-zinc-200">{wallet.nickname}</div>
+                        <div className="mt-1 font-mono text-xs text-zinc-500">{truncateAddress(wallet.address)}</div>
+                      </div>
+                      <button
+                        onClick={(e) => handleRemoveSaved(e, wallet.address)}
+                        className="ml-3 text-zinc-600 transition hover:text-rose-300"
+                        title="Remove saved wallet"
+                      >
+                        ×
+                      </button>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        {savedWallets.length > 0 && mode === "main" && (
-          <div className="space-y-2">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider">Saved Wallets</div>
-            <div className="space-y-1.5">
-              {savedWallets
-                .sort((a, b) => b.lastUsed - a.lastUsed)
-                .map((wallet) => (
-                  <button
-                    key={wallet.address}
-                    onClick={() => handleSavedWalletClick(wallet)}
-                    disabled={loading}
-                    className={cn(
-                      "w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm transition-all",
-                      "bg-zinc-900 border border-zinc-800 hover:border-teal-600/50 hover:bg-zinc-800/80",
-                      "disabled:opacity-50 disabled:cursor-not-allowed",
-                    )}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0" />
-                      <div className="text-left min-w-0">
-                        <div className="text-zinc-200 font-medium truncate">{wallet.nickname}</div>
-                        <div className="text-zinc-500 font-mono text-xs">{truncateAddress(wallet.address)}</div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => handleRemoveSaved(e, wallet.address)}
-                      className="text-zinc-600 hover:text-red-400 text-xs px-2 py-1 transition-colors flex-shrink-0"
-                      title="Remove saved wallet"
-                    >
-                      ×
-                    </button>
-                  </button>
-                ))}
+        <div className="rounded-[30px] border border-zinc-800 bg-[linear-gradient(180deg,rgba(19,23,31,0.98),rgba(13,16,22,0.96))] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.35)]">
+          <div className="rounded-[24px] border border-emerald-500/35 bg-emerald-500/[0.06] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-200">
+                  <Wallet className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-lg font-medium text-zinc-100">Connect Wallet</div>
+                  <div className="mt-1 text-sm text-zinc-400">
+                    {tradingEnabled ? "MetaMask, WalletConnect, Rabby" : "Read-only analytics with optional wallet auth"}
+                  </div>
+                </div>
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-300">Recommended</div>
             </div>
-            <button
-              onClick={handleClearSaved}
-              className="w-full py-2 px-3 rounded-lg text-xs bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-red-400 hover:border-red-500/40 transition-colors"
-            >
-              Forget All Saved Wallets
-            </button>
+
+            <div className="mt-4">
+              {privyEnabled && privyAllowEmbedded ? (
+                <PrivyWalletPanel
+                  disabled={loading}
+                  onConnectExternal={handleWalletConnect}
+                  onTradeWallet={handlePrivyTradeConnect}
+                  tradingEnabled={tradingEnabled}
+                  onAddress={async (addr) => {
+                    try {
+                      await connectReadOnly(addr);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Failed to load wallet");
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  onClick={handleWalletConnect}
+                  disabled={loading}
+                  className={cn(
+                    "w-full rounded-2xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-left transition",
+                    "hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50",
+                  )}
+                >
+                  <div className="text-sm font-medium text-emerald-100">{loading ? "Connecting..." : "Connect browser wallet"}</div>
+                  <div className="mt-1 text-xs text-emerald-200/80">Use a wallet first if you want the app to discover your account automatically.</div>
+                </button>
+              )}
+            </div>
           </div>
-        )}
 
-        {mode === "main" ? (
-          <div className="space-y-3">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-left">
-              <div className="text-xs text-zinc-400 font-medium mb-1">Read-only by default</div>
-              <div className="text-xs text-zinc-500">
-                Viewing analytics never asks for private keys. Use a public wallet address first; browser-wallet access is optional and deployment-gated.
-              </div>
-            </div>
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-zinc-800" />
+            <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Or paste address</div>
+            <div className="h-px flex-1 bg-zinc-800" />
+          </div>
 
-            {privyEnabled && privyAllowEmbedded ? (
-              <PrivyWalletPanel
-                disabled={loading}
-                onConnectExternal={handleWalletConnect}
-                onTradeWallet={handlePrivyTradeConnect}
-                tradingEnabled={tradingEnabled}
-                onAddress={async (addr) => {
-                  try {
-                    await connectReadOnly(addr);
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : "Failed to load wallet");
-                  }
-                }}
-              />
-            ) : null}
-
-            {privyEnabled && !privyAllowEmbedded && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-left text-xs text-zinc-500">
-                Email login is disabled because Privy can create a fresh embedded wallet. Use external wallet connect or paste your trading address below.
-              </div>
-            )}
-
-            {privyEnabled && (
-              <div className="text-[11px] text-zinc-500">
-                Privy can create an embedded wallet, but Hyperliquid analytics usually belong to your linked external address. If the listed wallet is wrong, paste the exact trading address you use on Hyperliquid.
-              </div>
-            )}
-
-            {tradingEnabled && (
-              <button
-                onClick={handleWalletConnect}
-                disabled={loading}
-                className={cn(
-                  "w-full py-3 px-4 rounded-lg font-medium text-sm transition-all",
-                  "bg-teal-600 hover:bg-teal-500 text-white",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                )}
-              >
-                {loading ? "Connecting..." : "Connect Browser Wallet"}
-              </button>
-            )}
-
-            {tradingEnabled && (
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-zinc-800" />
-                <span className="text-xs text-zinc-500 uppercase tracking-wider">or</span>
-                <div className="flex-1 h-px bg-zinc-800" />
-              </div>
-            )}
-
+          <div className="grid gap-3 sm:grid-cols-2">
             <button
-              onClick={() => setMode("paste")}
+              onClick={() => setAddressMode("wallet")}
               className={cn(
-                "w-full py-3 px-4 rounded-lg font-medium text-sm transition-all",
-                tradingEnabled
-                  ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
-                  : "bg-teal-600 hover:bg-teal-500 text-white",
+                "rounded-2xl border px-4 py-4 text-left transition",
+                addressMode === "wallet"
+                  ? "border-emerald-500/35 bg-zinc-950/80"
+                  : "border-zinc-800 bg-zinc-950/35 hover:border-zinc-700",
               )}
             >
-              {tradingEnabled ? "View Any Wallet Address" : "View Wallet Address"}
+              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Address</div>
+              <div className="mt-2 text-base font-medium text-zinc-100">0x...</div>
+            </button>
+            <button
+              onClick={() => setAddressMode("ens")}
+              className={cn(
+                "rounded-2xl border px-4 py-4 text-left transition",
+                addressMode === "ens"
+                  ? "border-emerald-500/35 bg-zinc-950/80"
+                  : "border-zinc-800 bg-zinc-950/35 hover:border-zinc-700",
+              )}
+            >
+              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">ENS</div>
+              <div className="mt-2 text-base font-medium text-zinc-100">name.eth</div>
             </button>
           </div>
-        ) : (
-          <div className="space-y-3">
+
+          <div className="mt-5">
             <input
               type="text"
               value={addressInput}
               onChange={(e) => setAddressInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handlePasteSubmit()}
-              placeholder="0x..."
+              placeholder={addressMode === "wallet" ? "0x... paste a Hyperliquid wallet address" : "name.eth"}
               autoFocus
               className={cn(
-                "w-full py-3 px-4 rounded-lg text-sm font-mono",
-                "bg-zinc-900 border border-zinc-700 text-zinc-100",
-                "placeholder:text-zinc-600 focus:outline-none focus:border-teal-600",
+                "w-full rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-4 text-sm text-zinc-100",
+                "placeholder:text-zinc-600 focus:border-emerald-500/35 focus:outline-none",
               )}
             />
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setMode("main");
-                  setError(null);
-                }}
-                className="flex-1 py-2.5 px-4 rounded-lg text-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border border-zinc-700"
-              >
-                Back
-              </button>
-              <button
-                onClick={handlePasteSubmit}
-                disabled={loading || !addressInput.trim()}
-                className={cn(
-                  "flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all",
-                  "bg-teal-600 hover:bg-teal-500 text-white",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                )}
-              >
-                {loading ? "Loading..." : "View Analytics"}
-              </button>
-            </div>
           </div>
-        )}
 
-        {error && <p className="text-red-400 text-xs">{error}</p>}
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs leading-5 text-zinc-500">
+              Paste the exact address you trade on Hyperliquid. If a wallet app shows the wrong linked account, this input is the cleanest path.
+            </div>
+            <button
+              onClick={handlePasteSubmit}
+              disabled={loading || !addressInput.trim()}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium transition",
+                "bg-emerald-600 text-white hover:bg-emerald-500",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+              )}
+            >
+              {loading ? "Loading..." : "Continue"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
 
-        <p className="text-zinc-600 text-xs">
-          Read-only by default. We never ask for your seed phrase or manual private key in the public deployment.
-        </p>
+          {privyEnabled && !privyAllowEmbedded ? (
+            <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-3 text-xs leading-5 text-zinc-500">
+              Email-style embedded login is disabled here because it can create a fresh wallet that does not match your actual Hyperliquid trading account.
+            </div>
+          ) : null}
+
+          {error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}
+        </div>
       </div>
     </div>
   );
