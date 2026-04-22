@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BarChart3, BriefcaseBusiness, Layers3, Waves } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  BriefcaseBusiness,
+  Layers3,
+  LayoutGrid,
+  Shield,
+  Waves,
+} from "lucide-react";
 import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
 import { cn, formatFundingAPR, formatPct, formatUSD } from "@/lib/format";
@@ -11,6 +19,27 @@ import { computeHyperPulseVix } from "@/lib/proprietaryIndex";
 interface WhaleHeadline {
   headline: string;
   address: string;
+}
+
+const MENU_ITEMS: Array<{ label: string; icon: typeof LayoutGrid; active?: boolean }> = [
+  { label: "Overview", icon: LayoutGrid, active: true },
+  { label: "Markets", icon: BarChart3 },
+  { label: "Factors", icon: Layers3 },
+  { label: "Whales", icon: Waves },
+  { label: "Portfolio", icon: BriefcaseBusiness },
+  { label: "Docs", icon: Shield },
+] as const;
+
+const EQUITY_POINTS = [38, 39, 41, 42, 44, 47, 51, 49, 52, 56, 59, 57, 60, 64, 66, 63, 67];
+
+function chartPath(points: number[]) {
+  return points
+    .map((point, index) => {
+      const x = (index / (points.length - 1 || 1)) * 100;
+      const y = 100 - point;
+      return `${index === 0 ? "M" : "L"}${x},${y}`;
+    })
+    .join(" ");
 }
 
 function MiniSparkline({ values, tone = "positive" }: { values: number[]; tone?: "positive" | "negative" }) {
@@ -33,9 +62,27 @@ function sparklineValues(seed: number) {
   });
 }
 
+function StatCard({ label, value, helper, tone = "neutral" }: { label: string; value: string; helper: string; tone?: "neutral" | "positive" | "negative" }) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</div>
+      <div
+        className={cn(
+          "mt-3 font-mono text-2xl text-zinc-100",
+          tone === "positive" && "text-emerald-300",
+          tone === "negative" && "text-rose-300",
+        )}
+      >
+        {value}
+      </div>
+      <div className="mt-1 text-xs text-zinc-500">{helper}</div>
+    </div>
+  );
+}
+
 export default function LandingProductPreview() {
   const { assets, lastUpdated, fundingHistories, btcCandles } = useMarket();
-  const { factors, leader } = useFactors();
+  const { leader } = useFactors();
   const [whaleHeadline, setWhaleHeadline] = useState<WhaleHeadline | null>(null);
 
   useEffect(() => {
@@ -65,22 +112,51 @@ export default function LandingProductPreview() {
     [assets, fundingHistories, btcCandles],
   );
 
-  const previewAssets = useMemo(
-    () => [...assets].sort((a, b) => b.openInterest - a.openInterest).slice(0, 6),
+  const majors = useMemo(
+    () => ["BTC", "ETH", "SOL", "HYPE"]
+      .map((coin) => assets.find((asset) => asset.coin === coin))
+      .filter((asset): asset is NonNullable<(typeof assets)[number]> => Boolean(asset)),
     [assets],
   );
-  const topFactorNames = useMemo(() => factors.slice(0, 3), [factors]);
+  const previewAssets = useMemo(
+    () => [...assets].sort((a, b) => b.openInterest - a.openInterest).slice(0, 4),
+    [assets],
+  );
   const leader7d = leader?.windows.find((window) => window.days === 7)?.spreadReturn ?? null;
+  const portfolioPreview = {
+    equity: 1230.51,
+    pnl30d: 559.4,
+    winRate: 63.3,
+    openPositions: 5,
+    unrealized: -69.96,
+  };
 
   return (
-    <div className="overflow-hidden rounded-[30px] border border-zinc-800 bg-[#0e1318] shadow-[0_0_0_1px_rgba(45,212,191,0.04)]">
-      <div className="border-b border-zinc-800 bg-[#111820] px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">HyperPulse Terminal</div>
-            <div className="mt-1 text-sm font-medium text-zinc-100">Markets Overview</div>
+    <div className="overflow-hidden rounded-[34px] border border-zinc-800 bg-[#0d1218] shadow-[0_0_0_1px_rgba(45,212,191,0.05)]">
+      <div className="border-b border-zinc-800 bg-[#0f161d] px-4 py-3">
+        <div className="scrollbar-hide flex items-center gap-4 overflow-x-auto text-[11px] text-zinc-400">
+          {majors.map((asset) => (
+            <div key={asset.coin} className="flex items-center gap-2 whitespace-nowrap border-r border-zinc-800 pr-4">
+              <span className="text-zinc-500">{asset.coin}</span>
+              <span className="font-mono text-zinc-200">{formatUSD(asset.markPx, asset.markPx < 1 ? 4 : 2)}</span>
+              <span className={asset.priceChange24h >= 0 ? "font-mono text-emerald-300" : "font-mono text-rose-300"}>{formatPct(asset.priceChange24h)}</span>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 whitespace-nowrap border-r border-zinc-800 pr-4">
+            <span className="text-zinc-500">Funding (7D)</span>
+            <span className="font-mono text-rose-300">{formatFundingAPR(majors[0]?.fundingAPR ?? 0)}</span>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-[11px] text-zinc-400">
+          <div className="flex items-center gap-2 whitespace-nowrap border-r border-zinc-800 pr-4">
+            <span className="text-zinc-500">Bias</span>
+            <span className={bias.trendScore >= 0 ? "font-mono text-emerald-300" : "font-mono text-rose-300"}>
+              {bias.trendLabel} ({bias.trendScore})
+            </span>
+          </div>
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span className="text-zinc-500">Whale Alert</span>
+            <span className="font-mono text-zinc-200">{whaleHeadline?.headline ?? "Watching tape"}</span>
+          </div>
+          <div className="ml-auto flex items-center gap-2 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-[11px] text-zinc-400">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
             <span>Live</span>
             <span className="font-mono text-zinc-200">
@@ -90,127 +166,194 @@ export default function LandingProductPreview() {
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 xl:grid-cols-[1.45fr_0.75fr] xl:p-5">
-        <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            {previewAssets.slice(0, 3).map((asset) => (
-              <div key={asset.coin} className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[176px]">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{asset.coin}</div>
-                    <div className="mt-2 font-mono text-lg font-semibold text-zinc-100">
-                      {formatUSD(asset.markPx, asset.markPx < 1 ? 4 : 2)}
-                    </div>
-                  </div>
-                  <div className={cn("rounded-full px-2 py-1 text-xs font-medium", asset.priceChange24h >= 0 ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-300")}>
-                    {formatPct(asset.priceChange24h)}
-                  </div>
+      <div className="grid xl:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="border-r border-zinc-800 bg-[#0b1015] p-4">
+          <div className="text-xl font-semibold tracking-tight text-zinc-100">
+            Hyper<span className="text-[#66e0cc]">Pulse</span>
+          </div>
+          <div className="mt-6 space-y-2">
+            {MENU_ITEMS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.label}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm",
+                    item.active
+                      ? "border border-teal-500/20 bg-teal-500/10 text-zinc-100"
+                      : "text-zinc-500",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
                 </div>
-                <div className="mt-3">
-                  <MiniSparkline values={sparklineValues(asset.priceChange24h)} tone={asset.priceChange24h >= 0 ? "positive" : "negative"} />
-                </div>
-                <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-500">
-                  <span>Funding</span>
-                  <span className="font-mono text-zinc-300">{formatFundingAPR(asset.fundingAPR)}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/55">
-            <div className="grid grid-cols-[minmax(120px,1.2fr)_repeat(4,minmax(90px,1fr))] gap-3 border-b border-zinc-800 px-4 py-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-              <div>Asset</div>
-              <div className="text-right">Price</div>
-              <div className="text-right">24h</div>
-              <div className="text-right">Funding APR</div>
-              <div className="text-right">Signal</div>
+          <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Account Equity</div>
+            <div className="mt-3 font-mono text-3xl text-zinc-100">$1,230.51</div>
+            <div className="mt-2 inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300">
+              +$559.40 (63.3%)
             </div>
+          </div>
+        </aside>
+
+        <div className="p-5 xl:p-6">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              {previewAssets.map((asset) => (
-                <div key={asset.coin} className="grid grid-cols-[minmax(120px,1.2fr)_repeat(4,minmax(90px,1fr))] gap-3 border-b border-zinc-800/80 px-4 py-3 last:border-b-0">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300">{asset.coin}</span>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Overview</div>
+              <div className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100">Your live market command center.</div>
+            </div>
+            <Link href="/markets" className="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100">
+              Customize
+            </Link>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <StatCard label="Total Equity" value="$1,219.97" helper="+$559.42 (30D)" tone="positive" />
+            <StatCard label="P&L (30D)" value="+$559.40" helper="+63.3%" tone="positive" />
+            <StatCard label="Win Rate" value="63.3%" helper="31W / 18L" />
+            <StatCard label="Open Positions" value="5" helper="Live exposure" />
+            <StatCard label="Unrealized P&L" value="-$69.96" helper="Current" tone="negative" />
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Portfolio Performance</div>
+                  <div className="mt-1 text-sm text-zinc-400">Account equity vs realized P&L</div>
+                </div>
+                <div className="flex gap-2 text-[11px] text-zinc-500">
+                  {['7D','30D','90D','ALL'].map((window) => (
+                    <div key={window} className={cn('rounded-full border px-2.5 py-1', window === '30D' ? 'border-teal-500/30 bg-teal-500/10 text-zinc-100' : 'border-zinc-800 bg-zinc-950/70')}>
+                      {window}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-5 rounded-2xl border border-zinc-800 bg-[#0c1014] p-4">
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-52 w-full">
+                  <defs>
+                    <linearGradient id="landing-equity" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="rgba(45,212,191,0.3)" />
+                      <stop offset="100%" stopColor="rgba(45,212,191,0.02)" />
+                    </linearGradient>
+                  </defs>
+                  <path d={`${chartPath(EQUITY_POINTS)} L100,100 L0,100 Z`} fill="url(#landing-equity)" />
+                  <path d={chartPath(EQUITY_POINTS)} fill="none" stroke="#5eead4" strokeWidth="2.4" strokeLinecap="round" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-5">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Market Pulse</div>
+                <div className="mt-2 text-2xl font-semibold text-zinc-100">{bias.trendLabel}</div>
+                <div className="mt-1 text-sm text-zinc-400">Bias (Tomorrow)</div>
+                <div className="mt-4 h-2 rounded-full bg-zinc-900">
+                  <div className="h-full bg-gradient-to-r from-rose-500 via-zinc-500 to-emerald-400" />
+                </div>
+                <div className="mt-4 space-y-3 text-sm text-zinc-400">
+                  <div className="flex items-center justify-between"><span>BTC 24H</span><span className="font-mono text-emerald-300">{formatPct(majors[0]?.priceChange24h ?? 0)}</span></div>
+                  <div className="flex items-center justify-between"><span>BTC Funding APR</span><span className="font-mono text-rose-300">{formatFundingAPR(majors[0]?.fundingAPR ?? 0)}</span></div>
+                  <div className="flex items-center justify-between"><span>Factor Leader</span><span className="font-mono text-zinc-200">{leader?.snapshot.name ?? 'Live'}</span></div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Top Factor (7D)</div>
+                  <div className="mt-2 text-lg font-medium text-zinc-100">{leader?.snapshot.name ?? 'Market Risk'}</div>
+                  <div className="mt-2 font-mono text-emerald-300">{leader7d != null ? formatPct(leader7d) : '+0.00%'}</div>
+                </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Whale Alert</div>
+                  <div className="mt-2 text-base font-medium text-zinc-100">{whaleHeadline?.headline ?? 'Watching tape'}</div>
+                  <div className="mt-2 text-xs text-zinc-500">Tracked positioning flow</div>
+                </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Top Movers (24H)</div>
+                  <div className="mt-3 space-y-2">
+                    {previewAssets.slice(0, 3).map((asset) => (
+                      <div key={asset.coin} className="flex items-center justify-between text-sm">
+                        <span className="text-zinc-200">{asset.coin}</span>
+                        <span className={asset.priceChange24h >= 0 ? 'font-mono text-emerald-300' : 'font-mono text-rose-300'}>{formatPct(asset.priceChange24h)}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-right font-mono text-sm text-zinc-200">{formatUSD(asset.markPx, asset.markPx < 1 ? 4 : 2)}</div>
-                  <div className={cn("text-right font-mono text-sm", asset.priceChange24h >= 0 ? "text-emerald-300" : "text-rose-300")}>{formatPct(asset.priceChange24h)}</div>
-                  <div className="text-right font-mono text-sm text-zinc-300">{formatFundingAPR(asset.fundingAPR)}</div>
-                  <div className="text-right text-sm text-zinc-400">{asset.signal.label}</div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[216px]">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Tomorrow Bias</div>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <div>
-                <div className={cn("text-lg font-semibold", bias.trendScore >= 0 ? "text-emerald-300" : "text-rose-300")}>{bias.trendLabel}</div>
-                <div className="mt-1 text-sm text-zinc-400">{bias.trendConfidence} confidence</div>
               </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 font-mono text-xl text-zinc-100">
-                {bias.trendScore}
-              </div>
-            </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-900">
-              <div className="h-full bg-gradient-to-r from-rose-500 via-zinc-500 to-emerald-400" />
-            </div>
-            <div className="mt-4 grid gap-2 text-sm text-zinc-400">
-              <div className="flex items-center justify-between"><span>BTC 24h</span><span className="font-mono text-zinc-200">{bias.trendInputs.momentum24h}%</span></div>
-              <div className="flex items-center justify-between"><span>BTC funding APR</span><span className="font-mono text-zinc-200">{bias.trendInputs.fundingAPR}%</span></div>
-              <div className="flex items-center justify-between"><span>BTC OI change</span><span className="font-mono text-zinc-200">{bias.trendInputs.oiChange}%</span></div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[220px]">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Factor Leader</div>
-            <div className="mt-2 text-lg font-semibold text-zinc-100">{leader?.snapshot.name ?? "Watching live regimes"}</div>
-            <div className="mt-1 text-sm text-zinc-400">{leader7d != null ? `${formatPct(leader7d)} over 7d` : "Artemis baskets + live HL overlay"}</div>
-            <div className="mt-4 space-y-2">
-              {topFactorNames.map((factor) => (
-                <div key={factor.snapshot.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-2">
-                  <span className="text-sm text-zinc-200">{factor.snapshot.name}</span>
-                  <span className={cn("font-mono text-sm", (factor.windows.find((window) => window.days === 7)?.spreadReturn ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300")}>{formatPct(factor.windows.find((window) => window.days === 7)?.spreadReturn ?? 0)}</span>
+          <div className="mt-5 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Markets</div>
+                  <div className="mt-1 text-sm text-zinc-400">Funding, price, and signal context</div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[170px]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Whale Tape</div>
-                <div className="mt-2 text-base font-medium text-zinc-100">{whaleHeadline?.headline ?? "Watching rare repeat-whale conviction"}</div>
+                <Activity className="h-4 w-4 text-teal-300" />
               </div>
-              <Waves className="h-5 w-5 text-teal-300" />
+              <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-800 bg-[#0c1014]">
+                <div className="grid grid-cols-[minmax(110px,1.2fr)_repeat(4,minmax(80px,1fr))] gap-3 border-b border-zinc-800 px-4 py-3 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                  <div>Asset</div>
+                  <div className="text-right">Price</div>
+                  <div className="text-right">24h</div>
+                  <div className="text-right">Funding</div>
+                  <div className="text-right">Signal</div>
+                </div>
+                {previewAssets.map((asset) => (
+                  <div key={asset.coin} className="grid grid-cols-[minmax(110px,1.2fr)_repeat(4,minmax(80px,1fr))] gap-3 border-b border-zinc-800/80 px-4 py-3 last:border-b-0">
+                    <div className="text-sm text-zinc-200">{asset.coin}</div>
+                    <div className="text-right font-mono text-sm text-zinc-200">{formatUSD(asset.markPx, asset.markPx < 1 ? 4 : 2)}</div>
+                    <div className={cn('text-right font-mono text-sm', asset.priceChange24h >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{formatPct(asset.priceChange24h)}</div>
+                    <div className="text-right font-mono text-sm text-zinc-300">{formatFundingAPR(asset.fundingAPR)}</div>
+                    <div className="text-right text-sm text-zinc-400">{asset.signal.label}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="mt-4 flex gap-2">
-              <Link href="/whales" className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100">
-                Open Whales <ArrowRight className="h-4 w-4" />
-              </Link>
-              {whaleHeadline?.address ? (
-                <Link href={`/whales/${whaleHeadline.address}`} className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100">
-                  Latest dossier
+
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-950/55 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Portfolio Sneak Peek</div>
+                  <div className="mt-1 text-sm text-zinc-400">Review layer inside the same shell</div>
+                </div>
+                <Link href="/portfolio" className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100">
+                  Open
                 </Link>
-              ) : null}
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl border border-zinc-800 bg-[#0c1014] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Total Equity</div>
+                  <div className="mt-2 font-mono text-2xl text-zinc-100">${portfolioPreview.equity.toFixed(2)}</div>
+                  <div className="mt-1 text-xs text-emerald-300">+${portfolioPreview.pnl30d.toFixed(2)} (30D)</div>
+                  <div className="mt-4 h-24">
+                    <MiniSparkline values={sparklineValues(8)} tone="positive" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-zinc-800 bg-[#0c1014] p-4">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Win Rate</div>
+                    <div className="mt-2 font-mono text-2xl text-zinc-100">{portfolioPreview.winRate}%</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-800 bg-[#0c1014] p-4">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Open Positions</div>
+                    <div className="mt-2 font-mono text-2xl text-zinc-100">{portfolioPreview.openPositions}</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-800 bg-[#0c1014] p-4">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Unrealized</div>
+                    <div className="mt-2 font-mono text-2xl text-rose-300">{formatUSD(portfolioPreview.unrealized)}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 border-t border-zinc-800 bg-[#0c1014] p-4 md:grid-cols-3">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-          <div className="flex items-center gap-2 text-zinc-200"><BarChart3 className="h-4 w-4 text-teal-300" /> Markets</div>
-          <div className="mt-3 text-sm leading-6 text-zinc-400">Funding, OI, and signal context in one table-first market scanner.</div>
-        </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-          <div className="flex items-center gap-2 text-zinc-200"><BriefcaseBusiness className="h-4 w-4 text-teal-300" /> Portfolio</div>
-          <div className="mt-3 text-sm leading-6 text-zinc-400">Review trade quality, positions, and journal data in a calmer workspace.</div>
-        </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-          <div className="flex items-center gap-2 text-zinc-200"><Layers3 className="h-4 w-4 text-teal-300" /> Factors</div>
-          <div className="mt-3 text-sm leading-6 text-zinc-400">Track factor leadership and see which regimes are actually driving returns.</div>
         </div>
       </div>
     </div>

@@ -6,7 +6,6 @@ import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import LandingProductPreview from "@/components/app/LandingProductPreview";
-import LandingPortfolioPreview from "@/components/app/LandingPortfolioPreview";
 
 const CAPABILITIES = [
   {
@@ -183,16 +182,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="space-y-5">
-        <div className="max-w-3xl">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Portfolio sneak peek</div>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100">The review layer is part of the pitch.</h2>
-          <p className="mt-4 text-sm leading-7 text-zinc-400">
-            HyperPulse is not just a scanner. The portfolio workspace lets you review performance, positions, and trade quality inside the same shell as markets and whales.
-          </p>
-        </div>
-        <LandingPortfolioPreview />
-      </section>
     </div>
   );
 }
