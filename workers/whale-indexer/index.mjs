@@ -1164,17 +1164,75 @@ function buildLiquidationAlert(asset, currentPrice, cluster, side, timestamp) {
   };
 }
 
-function shouldQueuePositioningAlert(alert) {
-  const cooldown =
-    alert.alertType === 'crowding'
-      ? CROWDING_ALERT_COOLDOWN_MS
-      : alert.alertType === 'liquidation_pressure'
-        ? LIQUIDATION_ALERT_COOLDOWN_MS
-        : HIGH_CONVICTION_ALERT_COOLDOWN_MS;
-  const dedupeKey =
-    alert.alertType === 'high_conviction_whale'
-      ? `${alert.walletAddress || 'walletless'}:${alert.asset}:${alert.alertType}`
-      : `${alert.asset}:${alert.regime}:${alert.alertType}`;
+function positioningAlertCooldown(alert) {
+  return alert.alertType === 'crowding'
+    ? CROWDING_ALERT_COOLDOWN_MS
+    : alert.alertType === 'liquidation_pressure'
+      ? LIQUIDATION_ALERT_COOLDOWN_MS
+      : HIGH_CONVICTION_ALERT_COOLDOWN_MS;
+}
+
+function positioningAlertDedupeKey(alert) {
+  return alert.alertType === 'high_conviction_whale'
+    ? `${alert.walletAddress || 'walletless'}:${alert.asset}:${alert.alertType}`
+    : `${alert.asset}:${alert.regime}:${alert.alertType}`;
+}
+
+function isSimilarPositioningAlert(candidate, existing) {
+  if (!existing) return false;
+  if (candidate.alertType !== existing.alertType) return false;
+  if (candidate.asset !== existing.asset || candidate.regime !== existing.regime) return false;
+
+  if (candidate.alertType === 'crowding') {
+    return true;
+  }
+
+  if (candidate.alertType === 'high_conviction_whale') {
+    return candidate.walletAddress && existing.walletAddress && candidate.walletAddress.toLowerCase() === existing.walletAddress.toLowerCase();
+  }
+
+  if (candidate.alertType === 'liquidation_pressure') {
+    const candidatePrice = Number(candidate.clusterPrice);
+    const existingPrice = Number(existing.clusterPrice);
+    const candidateNotional = Number(candidate.trackedLiquidationClusterUsd);
+    const existingNotional = Number(existing.trackedLiquidationClusterUsd);
+    if (!Number.isFinite(candidatePrice) || !Number.isFinite(existingPrice)) return false;
+    if (!Number.isFinite(candidateNotional) || !Number.isFinite(existingNotional)) return false;
+
+    const referencePrice = Math.max(Math.abs(candidate.price || 0), Math.abs(existing.price || 0), 1);
+    const priceDistancePct = Math.abs(candidatePrice - existingPrice) / referencePrice * 100;
+    const largerNotional = Math.max(Math.abs(candidateNotional), Math.abs(existingNotional), 1);
+    const notionalDeltaPct = Math.abs(candidateNotional - existingNotional) / largerNotional * 100;
+    return priceDistancePct <= 0.75 && notionalDeltaPct <= 15;
+  }
+
+  return false;
+}
+
+async function hasRecentSimilarPositioningAlert(alert) {
+  const dedupeKey = positioningAlertDedupeKey(alert);
+  const cooldown = positioningAlertCooldown(alert);
+  const lastSentAt = recentPositioningAlerts.get(dedupeKey);
+  if (lastSentAt && Date.now() - lastSentAt < cooldown) return true;
+
+  const result = await pool.query(
+    `select payload
+     from positioning_alerts
+     where asset = $1
+       and alert_type = $2
+       and regime = $3
+       and created_at >= $4
+     order by created_at desc
+     limit 8`,
+    [alert.asset, alert.alertType, alert.regime, Date.now() - cooldown],
+  );
+
+  return result.rows.some((row) => isSimilarPositioningAlert(alert, row.payload));
+}
+
+async function shouldQueuePositioningAlert(alert) {
+  const cooldown = positioningAlertCooldown(alert);
+  const dedupeKey = positioningAlertDedupeKey(alert);
   const lastSentAt = recentPositioningAlerts.get(dedupeKey);
   if (lastSentAt && Date.now() - lastSentAt < cooldown) return false;
   recentPositioningAlerts.set(dedupeKey, Date.now());
@@ -1258,8 +1316,9 @@ function summarizeSnapshotForDigest(snapshot) {
 }
 
 async function emitPositioningAlert(alert, { queueTelegram = true } = {}) {
+  if (await hasRecentSimilarPositioningAlert(alert)) return;
   await persistPositioningAlert(alert);
-  if (!queueTelegram || !shouldQueuePositioningAlert(alert)) return;
+  if (!queueTelegram || !(await shouldQueuePositioningAlert(alert))) return;
   const message = buildPositioningTelegramMessage(alert);
   await queueTelegramMessage(alert.id, { kind: 'positioning-alert', alert, message });
 }
