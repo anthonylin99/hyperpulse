@@ -6,6 +6,7 @@ import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import LandingProductPreview from "@/components/app/LandingProductPreview";
+import LandingPortfolioPreview from "@/components/app/LandingPortfolioPreview";
 
 const CAPABILITIES = [
   {
@@ -40,17 +41,16 @@ export default function HomePage() {
   const { factors } = useFactors();
 
   const primaryHref = isConnected ? "/portfolio" : "/markets";
-  const primaryLabel = isConnected ? "Enter Terminal" : "Enter Terminal";
 
   return (
-    <div className="mx-auto max-w-7xl space-y-10 px-4 py-8 pb-24">
-      <section className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
-        <div className="max-w-2xl">
+    <div className="mx-auto max-w-[1480px] space-y-12 px-4 py-8 pb-24 sm:px-6 xl:px-8">
+      <section className="grid min-h-[74vh] gap-10 xl:grid-cols-[0.82fr_1.18fr] xl:items-center">
+        <div className="max-w-2xl xl:pr-4">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/70 px-4 py-2 text-xs text-zinc-300">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
             Built for Hyperliquid. Designed for edge.
           </div>
-          <h1 className="mt-6 text-5xl font-semibold tracking-tight text-zinc-50 sm:text-6xl xl:text-7xl">
+          <h1 className="mt-6 text-5xl font-semibold tracking-tight text-zinc-50 sm:text-6xl xl:text-[5.4rem] xl:leading-[0.96]">
             Real-time intelligence.
             <span className="block bg-gradient-to-r from-teal-300 via-emerald-300 to-cyan-200 bg-clip-text text-transparent">
               Smarter perp decisions.
@@ -64,7 +64,7 @@ export default function HomePage() {
               href={primaryHref}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-teal-400 px-6 py-3.5 text-sm font-medium text-zinc-950 transition hover:bg-teal-300"
             >
-              {primaryLabel}
+              Enter Terminal
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
@@ -74,11 +74,29 @@ export default function HomePage() {
               View Live Pulse
             </Link>
           </div>
+          <div className="mt-10 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-800 bg-[#13171f] px-4 py-4">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Perps monitored</div>
+              <div className="mt-2 font-mono text-3xl text-zinc-100">{assets.length || "--"}</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-[#13171f] px-4 py-4">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Factor baskets</div>
+              <div className="mt-2 font-mono text-3xl text-zinc-100">{factors.length || "--"}</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-[#13171f] px-4 py-4">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Last sync</div>
+              <div className="mt-2 font-mono text-xl text-zinc-100">
+                {lastUpdated
+                  ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                  : "--:--:--"}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="relative">
-          <div className="absolute inset-0 rounded-[36px] bg-[radial-gradient(circle_at_top,rgba(45,212,191,0.2),transparent_45%)] blur-3xl" />
-          <div className="relative">
+        <div className="relative xl:-mr-6">
+          <div className="absolute inset-0 rounded-[40px] bg-[radial-gradient(circle_at_top,rgba(45,212,191,0.2),transparent_48%)] blur-3xl" />
+          <div className="relative scale-[1.01] xl:scale-[1.04]">
             <LandingProductPreview />
           </div>
         </div>
@@ -106,13 +124,13 @@ export default function HomePage() {
         })}
       </section>
 
-      <section id="live-pulse" className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-3xl border border-zinc-800 bg-[#13171f] p-6">
+      <section id="live-pulse" className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-3xl border border-zinc-800 bg-[#13171f] p-6 xl:p-7">
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Product proof</div>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100">
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 xl:text-[2.5rem]">
             All the edge. None of the noise.
           </h2>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-400">
+          <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-400">
             HyperPulse brings together the most important market and wallet signals into one consistent shell so you can scan, decide, and review without bouncing between tools.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -134,31 +152,25 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-zinc-800 bg-[#13171f] p-6">
+        <div className="rounded-3xl border border-zinc-800 bg-[#13171f] p-6 xl:p-7">
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Trust layer</div>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-100">Grounded in the actual product</h2>
           <p className="mt-4 text-sm leading-7 text-zinc-400">
-            The homepage now reflects the same shell, data, and workflows you see once you enter the terminal. No fake dashboard shots, no throwaway marketing chrome.
+            The homepage reflects the same shell, data, and workflows you see once you enter the terminal. No fake dashboard shots, no throwaway marketing chrome.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Perps monitored</div>
-              <div className="mt-2 font-mono text-3xl text-zinc-100">{assets.length || "--"}</div>
-            </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Factor baskets</div>
-              <div className="mt-2 font-mono text-3xl text-zinc-100">{factors.length || "--"}</div>
-            </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Core workspaces</div>
               <div className="mt-2 font-mono text-3xl text-zinc-100">5</div>
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Last sync</div>
-              <div className="mt-2 font-mono text-xl text-zinc-100">
-                {lastUpdated
-                  ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                  : "--:--:--"}
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Signals</div>
+              <div className="mt-2 font-mono text-3xl text-zinc-100">Live</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 sm:col-span-2">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Methodology</div>
+              <div className="mt-2 text-sm leading-7 text-zinc-400">
+                Funding signals, factor overlays, whale monitoring, and portfolio analytics all map back to the same product system.
               </div>
             </div>
           </div>
@@ -169,6 +181,17 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
+      </section>
+
+      <section className="space-y-5">
+        <div className="max-w-3xl">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Portfolio sneak peek</div>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100">The review layer is part of the pitch.</h2>
+          <p className="mt-4 text-sm leading-7 text-zinc-400">
+            HyperPulse is not just a scanner. The portfolio workspace lets you review performance, positions, and trade quality inside the same shell as markets and whales.
+          </p>
+        </div>
+        <LandingPortfolioPreview />
       </section>
     </div>
   );

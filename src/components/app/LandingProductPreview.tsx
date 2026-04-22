@@ -90,11 +90,11 @@ export default function LandingProductPreview() {
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 xl:grid-cols-[1.3fr_0.7fr]">
+      <div className="grid gap-4 p-4 xl:grid-cols-[1.45fr_0.75fr] xl:p-5">
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
             {previewAssets.slice(0, 3).map((asset) => (
-              <div key={asset.coin} className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+              <div key={asset.coin} className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[176px]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{asset.coin}</div>
@@ -142,7 +142,7 @@ export default function LandingProductPreview() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[216px]">
             <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Tomorrow Bias</div>
             <div className="mt-2 flex items-center justify-between gap-3">
               <div>
@@ -163,7 +163,7 @@ export default function LandingProductPreview() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[220px]">
             <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Factor Leader</div>
             <div className="mt-2 text-lg font-semibold text-zinc-100">{leader?.snapshot.name ?? "Watching live regimes"}</div>
             <div className="mt-1 text-sm text-zinc-400">{leader7d != null ? `${formatPct(leader7d)} over 7d` : "Artemis baskets + live HL overlay"}</div>
@@ -177,7 +177,7 @@ export default function LandingProductPreview() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 xl:min-h-[170px]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Whale Tape</div>
