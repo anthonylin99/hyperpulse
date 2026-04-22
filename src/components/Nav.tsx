@@ -17,27 +17,23 @@ export default function Nav() {
     : "--:--:--";
 
   return (
-    <div className="border-b border-[#7dd4c4]/20 bg-gradient-to-r from-[#0f1a1e]/95 via-[#0a0a0a] to-[#141414] backdrop-blur-sm">
+    <div className="border-b border-[#7dd4c4]/12 bg-gradient-to-r from-[#10181b]/95 via-[#0a0c10] to-[#111417]/95 backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
-        <div>
-          <Link href="/" className="block">
-            <div className="font-mono text-[22px] font-bold tracking-tight text-white">
-              <span className="bg-gradient-to-r from-white via-[#c9f2ea] to-[#7dd4c4] bg-clip-text text-transparent">
-                HyperPulse
-              </span>
+        <div className="min-w-0">
+          <Link href="/" className="inline-flex items-center gap-2">
+            <div className="font-geist-sans text-[24px] font-semibold tracking-tight text-white">
+              Hyper<span className="text-[#66e0cc]">Pulse</span>
             </div>
           </Link>
-          <div className="mt-0.5 text-xs text-zinc-500">
-            Hyperliquid portfolio, markets, factors, and methodology in one workspace
+          <div className="mt-0.5 hidden text-xs text-zinc-500 md:block">
+            Hyperliquid intelligence across markets, factors, whales, and portfolio review
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full border border-[#7dd4c4]/25 bg-[#0f1a1e]/70 px-3 py-1.5 text-xs text-zinc-500 shadow-[0_0_0_1px_rgba(125,212,196,0.08)]">
+          <div className="hidden items-center gap-2 rounded-full border border-[#7dd4c4]/20 bg-[#0f1a1e]/70 px-3 py-1.5 text-xs text-zinc-500 shadow-[0_0_0_1px_rgba(125,212,196,0.05)] sm:flex">
             <div className={loading ? "live-dot opacity-30" : "live-dot"} />
-            <span className="text-[#b7ece1] font-mono">
-              {loading ? "Connecting..." : "Live"}
-            </span>
+            <span className="font-mono text-[#b7ece1]">{loading ? "Syncing" : "Live"}</span>
             <span className="font-mono text-zinc-300">{timeStr}</span>
           </div>
 
