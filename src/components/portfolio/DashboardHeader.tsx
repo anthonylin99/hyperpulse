@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { Activity, RefreshCw, Wallet2 } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { usePortfolio } from "@/context/PortfolioContext";
@@ -33,6 +34,9 @@ export default function DashboardHeader() {
   const spotWalletValue = accountState?.spotTotalValue ?? 0;
   const unrealizedPnl = accountState?.unrealizedPnl ?? 0;
   const totalPnl = stats?.totalPnl ?? 0;
+  const lastRefreshLabel = lastUpdated
+    ? `${Math.max(0, Math.round((Date.now() - new Date(lastUpdated).getTime()) / 60000))}m ago`
+    : "Waiting for first sync";
 
   useEffect(() => {
     if (address) {
@@ -118,9 +122,9 @@ export default function DashboardHeader() {
   };
 
   return (
-    <section className="rounded-[30px] border border-emerald-900/25 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.10),transparent_28%),linear-gradient(180deg,rgba(8,14,12,0.98),rgba(6,10,9,0.98))] p-5 sm:p-6">
-      <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 flex-1">
+    <section className="rounded-[26px] border border-emerald-900/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_24%),linear-gradient(180deg,rgba(8,14,12,0.98),rgba(6,10,9,0.98))] p-4 sm:p-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_360px]">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-400/75">
               Portfolio
@@ -132,19 +136,76 @@ export default function DashboardHeader() {
             )}
           </div>
 
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-[2.25rem]">
-            Review the account like a trading workspace.
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-400">
-            Performance lives up top, live exposure stays one tab away, and the journal remains close when you need to review execution quality.
-          </p>
+          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-[1.85rem] font-semibold tracking-tight text-zinc-50 sm:text-[2.1rem]">
+                Portfolio review, without the clutter.
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+                Keep the workspace focused on performance, positions, and journal review while the account identity stays compact and close.
+              </p>
+            </div>
 
-          <div className="relative mt-5" ref={switcherRef}>
+            <div className="grid w-full gap-2 sm:grid-cols-3 lg:max-w-[360px] lg:grid-cols-1">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
+                  Identity
+                </div>
+                <div className="mt-2 text-sm font-medium text-zinc-100">
+                  {currentWallet?.nickname || "Unnamed wallet"}
+                </div>
+                <div className="mt-1 text-xs text-zinc-500">
+                  {isReadOnly ? "Read-only analytics session" : "Connected wallet session"}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  <RefreshCw className="h-3.5 w-3.5 text-emerald-300" />
+                  Refresh
+                </div>
+                <div className="mt-2 text-sm font-medium text-zinc-100">{lastRefreshLabel}</div>
+                <div className="mt-1 text-xs text-zinc-500">
+                  {refreshing || portfolioLoading ? "Fetching latest account data…" : "Loaded from Hyperliquid history"}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  <Activity className="h-3.5 w-3.5 text-emerald-300" />
+                  Snapshot
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-zinc-500">Perps</div>
+                    <div className="mt-1 font-medium text-zinc-100">{formatUSD(perpsValue)}</div>
+                  </div>
+                  <div>
+                    <div className="text-zinc-500">Spot</div>
+                    <div className="mt-1 font-medium text-zinc-100">{formatUSD(spotWalletValue)}</div>
+                  </div>
+                  <div>
+                    <div className="text-zinc-500">Realized</div>
+                    <div className={cn("mt-1 font-medium", totalPnl >= 0 ? "text-emerald-400" : "text-red-400")}>
+                      {formatUSD(totalPnl)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-zinc-500">Unrealized</div>
+                    <div className={cn("mt-1 font-medium", unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400")}>
+                      {formatUSD(unrealizedPnl)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative mt-4" ref={switcherRef}>
             {address && (
               <button
                 onClick={() => setShowSwitcher(!showSwitcher)}
                 className={cn(
-                  "flex w-full max-w-xl items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950",
+                  "flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950 sm:max-w-2xl",
                   showSwitcher && "border-emerald-700/40",
                 )}
               >
@@ -273,7 +334,7 @@ export default function DashboardHeader() {
             )}
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
             <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
               {address ? address : "No wallet"}
             </span>
@@ -289,87 +350,33 @@ export default function DashboardHeader() {
           </div>
         </div>
 
-        <div className="w-full max-w-xl xl:max-w-sm">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Portfolio Identity</div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium text-zinc-100">
-                    {currentWallet?.nickname || "Unnamed wallet"}
-                  </div>
-                  <div className="mt-1 text-xs text-zinc-500">
-                    {isReadOnly ? "Read-only analytics session" : "Connected wallet session"}
-                  </div>
-                </div>
-                <div className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Refresh Status</div>
-              <div className="mt-2 text-sm font-medium text-zinc-100">
-                {lastUpdated ? `${Math.max(0, Math.round((Date.now() - lastUpdated) / 60000))}m ago` : "Waiting for first sync"}
-              </div>
-              <div className="mt-1 text-xs text-zinc-500">
-                {refreshing || portfolioLoading ? "Fetching latest account data…" : "Data loaded from Hyperliquid history"}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 sm:col-span-2 xl:col-span-1">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Current Snapshot</div>
-              <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="text-zinc-500">Perps</div>
-                  <div className="mt-1 font-medium text-zinc-100">{formatUSD(perpsValue)}</div>
-                </div>
-                <div>
-                  <div className="text-zinc-500">Spot Wallet</div>
-                  <div className="mt-1 font-medium text-zinc-100">{formatUSD(spotWalletValue)}</div>
-                </div>
-                <div>
-                  <div className="text-zinc-500">Realized</div>
-                  <div className={cn("mt-1 font-medium", totalPnl >= 0 ? "text-emerald-400" : "text-red-400")}>
-                    {formatUSD(totalPnl)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-zinc-500">Unrealized</div>
-                  <div className={cn("mt-1 font-medium", unrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400")}>
-                    {formatUSD(unrealizedPnl)}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 sm:col-span-2 xl:col-span-1">
-              <button
-                onClick={async () => {
-                  setRefreshing(true);
-                  try {
-                    await refresh();
-                  } finally {
-                    setRefreshing(false);
-                  }
-                }}
-                disabled={refreshing || portfolioLoading}
-                className={cn(
-                  "flex-1 rounded-xl border px-3 py-2 text-sm transition-colors",
-                  refreshing || portfolioLoading
-                    ? "cursor-not-allowed border-zinc-800 text-zinc-600"
-                    : "border-emerald-900/30 bg-emerald-500/[0.08] text-emerald-300 hover:bg-emerald-500/[0.14]",
-                )}
-              >
-                {refreshing ? "Refreshing…" : "Refresh Portfolio"}
-              </button>
-              <button
-                onClick={handleDisconnect}
-                className="rounded-xl border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 xl:col-start-2 xl:justify-end">
+          <button
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await refresh();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            disabled={refreshing || portfolioLoading}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors",
+              refreshing || portfolioLoading
+                ? "cursor-not-allowed border-zinc-800 text-zinc-600"
+                : "border-emerald-900/30 bg-emerald-500/[0.08] text-emerald-300 hover:bg-emerald-500/[0.14]",
+            )}
+          >
+            <RefreshCw className={cn("h-4 w-4", (refreshing || portfolioLoading) && "animate-spin")} />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+          <button
+            onClick={handleDisconnect}
+            className="rounded-xl border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            Disconnect
+          </button>
         </div>
       </div>
     </section>

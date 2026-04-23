@@ -19,6 +19,15 @@ export const metadata: Metadata = {
   title: "HyperPulse — Portfolio Analytics for Hyperliquid",
   description:
     "Portfolio analytics, trade journal, and performance insights for Hyperliquid traders",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/icon.png", sizes: "512x512", type: "image/png" }],
+    shortcut: ["/favicon.ico"],
+  },
 };
 
 export default function RootLayout({

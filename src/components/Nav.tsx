@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BrandLogo from "@/components/brand/BrandLogo";
 import { useMarket } from "@/context/MarketContext";
 import WalletConnect from "./WalletConnect";
 import NetworkToggle from "./NetworkToggle";
@@ -26,9 +27,7 @@ export default function Nav() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
         <div className="min-w-0">
           <Link href="/" className="inline-flex items-center gap-2">
-            <div className="font-geist-sans text-[24px] font-semibold tracking-tight text-white">
-              Hyper<span className="text-[#66e0cc]">Pulse</span>
-            </div>
+            <BrandLogo compact markClassName="h-8 w-8" textClassName="text-[24px]" />
           </Link>
           <div className="mt-0.5 hidden text-xs text-zinc-500 md:block">
             Hyperliquid intelligence across {focusAreas.join(", ")}

@@ -11,6 +11,7 @@ import {
   Shield,
   Waves,
 } from "lucide-react";
+import BrandLogo from "@/components/brand/BrandLogo";
 import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -174,9 +175,7 @@ export default function LandingProductPreview() {
 
       <div className="grid xl:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="border-r border-zinc-800 bg-[#0b1015] p-4">
-          <div className="text-xl font-semibold tracking-tight text-zinc-100">
-            Hyper<span className="text-[#66e0cc]">Pulse</span>
-          </div>
+          <BrandLogo compact markClassName="h-8 w-8" textClassName="text-[22px]" />
           <div className="mt-6 space-y-2">
             {MENU_ITEMS.filter((item) => {
               if (!whalesEnabled && item.label === "Whales") return false;

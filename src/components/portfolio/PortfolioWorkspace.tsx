@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BarChart3, CircleDashed, FolderKanban, Rows3, SlidersHorizontal } from "lucide-react";
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import StatsGrid from "@/components/portfolio/StatsGrid";
@@ -26,11 +27,18 @@ type PortfolioSubtab = "overview" | "positions" | "journal" | "details";
 type PortfolioDensity = "compact" | "roomy";
 
 const PORTFOLIO_TABS: Array<{ key: PortfolioSubtab; label: string; helper: string }> = [
-  { key: "overview", label: "01 Overview", helper: "Performance first" },
-  { key: "positions", label: "02 Positions", helper: "Live exposure" },
-  { key: "journal", label: "03 Journal", helper: "Closed trade review" },
-  { key: "details", label: "04 Details", helper: "Deep diagnostics" },
+  { key: "overview", label: "Overview", helper: "Performance first" },
+  { key: "positions", label: "Positions", helper: "Live exposure" },
+  { key: "journal", label: "Journal", helper: "Closed trade review" },
+  { key: "details", label: "Details", helper: "Deep diagnostics" },
 ];
+
+const TAB_ICONS: Record<PortfolioSubtab, typeof BarChart3> = {
+  overview: BarChart3,
+  positions: Rows3,
+  journal: FolderKanban,
+  details: SlidersHorizontal,
+};
 
 function PortfolioEmptyState({ accountValue }: { accountValue: number }) {
   return (
@@ -198,22 +206,54 @@ export default function PortfolioWorkspace() {
         <PortfolioEmptyState accountValue={accountValue} />
       ) : (
         <>
-          <section className="overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950/70">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
-              <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-zinc-500">
-                Portfolio Review Workspace
+          <section className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <aside className="space-y-4 lg:sticky lg:top-28 lg:self-start">
+              <div className="rounded-[24px] border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="flex items-center gap-2 px-2 pb-3">
+                  <CircleDashed className="h-4 w-4 text-emerald-300" />
+                  <div>
+                    <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-zinc-500">
+                      Workspace
+                    </div>
+                    <div className="mt-1 text-sm text-zinc-300">Portfolio review</div>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  {PORTFOLIO_TABS.map((tab) => {
+                    const Icon = TAB_ICONS[tab.key];
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setSubtab(tab.key)}
+                        className={cn(
+                          "flex w-full items-start gap-3 rounded-[18px] px-3 py-3 text-left transition-all",
+                          subtab === tab.key
+                            ? "bg-emerald-500/[0.08] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.16)]"
+                            : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200",
+                        )}
+                      >
+                        <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", subtab === tab.key ? "text-emerald-300" : "text-zinc-500")} />
+                        <div className="min-w-0">
+                          <div className="font-mono text-sm">{tab.label}</div>
+                          <div className="mt-1 text-[11px] text-zinc-500">{tab.helper}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-zinc-600">
+
+              <div className="rounded-[24px] border border-zinc-800 bg-zinc-950/70 p-4">
+                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-zinc-500">
                   Density
-                </span>
-                <div className="inline-flex overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
+                </div>
+                <div className="mt-3 inline-flex w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
                   {(["compact", "roomy"] as PortfolioDensity[]).map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setDensity(mode)}
                       className={cn(
-                        "px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
+                        "flex-1 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
                         density === mode
                           ? "bg-emerald-400 text-[#03221b]"
                           : "text-zinc-500 hover:text-zinc-200",
@@ -224,92 +264,77 @@ export default function PortfolioWorkspace() {
                   ))}
                 </div>
               </div>
-            </div>
-            <div className="flex flex-wrap gap-2 p-2">
-              {PORTFOLIO_TABS.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setSubtab(tab.key)}
-                  className={cn(
-                    "min-w-[168px] rounded-[18px] px-4 py-3 text-left transition-all",
-                    subtab === tab.key
-                      ? "bg-emerald-500/[0.08] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.16)]"
-                      : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200",
+            </aside>
+
+            <div className="min-w-0 space-y-4">
+              {subtab === "overview" && overviewSections}
+
+              {subtab === "positions" && (
+                <div className="space-y-4">
+                  <RiskStrip density={density} />
+                  {hasPositions ? <PositionsTable density={density} /> : <EmptyPositionsState />}
+                </div>
+              )}
+
+              {subtab === "journal" && (
+                <div className="space-y-4">
+                  {hasTrades ? (
+                    <>
+                      <MonthlyPnL />
+                      <TradeJournal density={density} />
+                    </>
+                  ) : (
+                    <EmptyJournalState />
                   )}
-                >
-                  <div className="font-mono text-sm">{tab.label}</div>
-                  <div className="mt-1 text-[11px] text-zinc-500">{tab.helper}</div>
-                </button>
-              ))}
+                </div>
+              )}
+
+              {subtab === "details" && (
+                <div className="space-y-4">
+                  {hasTrades ? (
+                    <>
+                      <DetailSection
+                        title="Performance Diagnostics"
+                        helper="Benchmark the account and inspect where returns are actually coming from."
+                      >
+                        <div className="grid gap-4 xl:grid-cols-2">
+                          <PnLWaterfall />
+                          <BenchmarkPanel />
+                        </div>
+                        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                          <PerformanceHeatmap />
+                          <AssetBreakdown />
+                        </div>
+                      </DetailSection>
+
+                      <DetailSection
+                        title="Trade Tendencies"
+                        helper="System readouts and compact data-backed tendencies from your current trade set."
+                      >
+                        <div className="space-y-4">
+                          <SystemProfile />
+                          <TradeSignals />
+                        </div>
+                      </DetailSection>
+
+                      <DetailSection
+                        title="Funding & Extended Stats"
+                        helper="Secondary analytics that matter in review, but shouldn’t crowd the front page."
+                        defaultOpen={false}
+                      >
+                        <div className="space-y-4">
+                          <FundingAnalysis />
+                          <MoreStats />
+                        </div>
+                      </DetailSection>
+                    </>
+                  ) : (
+                    <EmptyJournalState />
+                  )}
+                </div>
+              )}
             </div>
           </section>
-
-          {subtab === "overview" && overviewSections}
-
-          {subtab === "positions" && (
-            <div className="space-y-4">
-              <RiskStrip density={density} />
-              {hasPositions ? <PositionsTable density={density} /> : <EmptyPositionsState />}
-            </div>
-          )}
-
-          {subtab === "journal" && (
-            <div className="space-y-4">
-              {hasTrades ? (
-                <>
-                  <MonthlyPnL />
-                  <TradeJournal density={density} />
-                </>
-              ) : (
-                <EmptyJournalState />
-              )}
-            </div>
-          )}
-
-          {subtab === "details" && (
-            <div className="space-y-4">
-              {hasTrades ? (
-                <>
-                  <DetailSection
-                    title="Performance Diagnostics"
-                    helper="Benchmark the account and inspect where returns are actually coming from."
-                  >
-                    <div className="grid gap-4 xl:grid-cols-2">
-                      <PnLWaterfall />
-                      <BenchmarkPanel />
-                    </div>
-                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                      <PerformanceHeatmap />
-                      <AssetBreakdown />
-                    </div>
-                  </DetailSection>
-
-                  <DetailSection
-                    title="Trade Tendencies"
-                    helper="System readouts and compact data-backed tendencies from your current trade set."
-                  >
-                    <div className="space-y-4">
-                      <SystemProfile />
-                      <TradeSignals />
-                    </div>
-                  </DetailSection>
-
-                  <DetailSection
-                    title="Funding & Extended Stats"
-                    helper="Secondary analytics that matter in review, but shouldn’t crowd the front page."
-                    defaultOpen={false}
-                  >
-                    <div className="space-y-4">
-                      <FundingAnalysis />
-                      <MoreStats />
-                    </div>
-                  </DetailSection>
-                </>
-              ) : (
-                <EmptyJournalState />
-              )}
-            </div>
-          )}
         </>
       )}
     </div>
