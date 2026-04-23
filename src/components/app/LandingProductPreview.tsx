@@ -24,11 +24,10 @@ interface WhaleHeadline {
 }
 
 const MENU_ITEMS: Array<{ label: string; icon: typeof LayoutGrid; active?: boolean }> = [
-  { label: "Overview", icon: LayoutGrid, active: true },
-  { label: "Markets", icon: BarChart3 },
+  { label: "Markets", icon: BarChart3, active: true },
+  { label: "Portfolio", icon: BriefcaseBusiness },
   { label: "Factors", icon: Layers3 },
   { label: "Whales", icon: Waves },
-  { label: "Portfolio", icon: BriefcaseBusiness },
   { label: "Docs", icon: Shield },
 ] as const;
 
@@ -213,10 +212,10 @@ export default function LandingProductPreview() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Overview</div>
-              <div className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100">Your live market command center.</div>
+              <div className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100">Markets first. Portfolio close behind.</div>
             </div>
             <Link href="/markets" className="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100">
-              Customize
+              Open Markets
             </Link>
           </div>
 

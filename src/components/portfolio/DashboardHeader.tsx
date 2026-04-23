@@ -122,8 +122,8 @@ export default function DashboardHeader() {
   };
 
   return (
-    <section className="rounded-[26px] border border-emerald-900/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_24%),linear-gradient(180deg,rgba(8,14,12,0.98),rgba(6,10,9,0.98))] p-4 sm:p-5">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_360px]">
+    <section className="rounded-[24px] border border-emerald-900/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.07),transparent_22%),linear-gradient(180deg,rgba(8,14,12,0.98),rgba(6,10,9,0.98))] p-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_320px]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-400/75">
@@ -136,18 +136,18 @@ export default function DashboardHeader() {
             )}
           </div>
 
-          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <h1 className="text-[1.85rem] font-semibold tracking-tight text-zinc-50 sm:text-[2.1rem]">
-                Portfolio review, without the clutter.
+              <h1 className="text-[1.45rem] font-semibold tracking-tight text-zinc-50 sm:text-[1.65rem]">
+                Review the account like a live trading workspace.
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                Keep the workspace focused on performance, positions, and journal review while the account identity stays compact and close.
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
+                Performance, positions, and journal review stay in view while identity and sync state stay compact.
               </p>
             </div>
 
-            <div className="grid w-full gap-2 sm:grid-cols-3 lg:max-w-[360px] lg:grid-cols-1">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+            <div className="grid w-full gap-2 sm:grid-cols-3 lg:max-w-[320px] lg:grid-cols-1">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3.5 py-3">
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                   <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
                   Identity
@@ -159,7 +159,7 @@ export default function DashboardHeader() {
                   {isReadOnly ? "Read-only analytics session" : "Connected wallet session"}
                 </div>
               </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3.5 py-3">
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                   <RefreshCw className="h-3.5 w-3.5 text-emerald-300" />
                   Refresh
@@ -169,12 +169,12 @@ export default function DashboardHeader() {
                   {refreshing || portfolioLoading ? "Fetching latest account data…" : "Loaded from Hyperliquid history"}
                 </div>
               </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3.5 py-3">
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                   <Activity className="h-3.5 w-3.5 text-emerald-300" />
                   Snapshot
                 </div>
-                <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+                <div className="mt-2 grid grid-cols-2 gap-2.5 text-sm">
                   <div>
                     <div className="text-zinc-500">Perps</div>
                     <div className="mt-1 font-medium text-zinc-100">{formatUSD(perpsValue)}</div>
@@ -200,12 +200,12 @@ export default function DashboardHeader() {
             </div>
           </div>
 
-          <div className="relative mt-4" ref={switcherRef}>
+          <div className="relative mt-3" ref={switcherRef}>
             {address && (
               <button
                 onClick={() => setShowSwitcher(!showSwitcher)}
                 className={cn(
-                  "flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950 sm:max-w-2xl",
+                  "flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950 lg:max-w-[760px]",
                   showSwitcher && "border-emerald-700/40",
                 )}
               >
@@ -334,7 +334,7 @@ export default function DashboardHeader() {
             )}
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
             <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
               {address ? address : "No wallet"}
             </span>
@@ -350,7 +350,7 @@ export default function DashboardHeader() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 xl:col-start-2 xl:justify-end">
+        <div className="flex items-center gap-2 xl:col-start-2 xl:items-end xl:justify-end">
           <button
             onClick={async () => {
               setRefreshing(true);

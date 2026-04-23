@@ -193,7 +193,7 @@ export default function PortfolioWorkspace() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-6">
+    <div className="space-y-5 pb-4">
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
@@ -206,7 +206,7 @@ export default function PortfolioWorkspace() {
         <PortfolioEmptyState accountValue={accountValue} />
       ) : (
         <>
-          <section className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <section className="grid gap-5 lg:grid-cols-[206px_minmax(0,1fr)]">
             <aside className="space-y-4 lg:sticky lg:top-28 lg:self-start">
               <div className="rounded-[24px] border border-zinc-800 bg-zinc-950/70 p-3">
                 <div className="flex items-center gap-2 px-2 pb-3">

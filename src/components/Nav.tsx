@@ -24,7 +24,7 @@ export default function Nav() {
 
   return (
     <div className="border-b border-[#7dd4c4]/12 bg-gradient-to-r from-[#10181b]/95 via-[#0a0c10] to-[#111417]/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4">
+      <div className="mx-auto flex h-16 max-w-[1520px] items-center justify-between gap-4 px-4 sm:px-6 xl:px-8">
         <div className="min-w-0">
           <Link href="/" className="inline-flex items-center gap-2">
             <BrandLogo compact markClassName="h-8 w-8" textClassName="text-[24px]" />

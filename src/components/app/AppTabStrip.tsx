@@ -16,8 +16,8 @@ export default function AppTabStrip() {
   });
 
   return (
-    <div className="border-b border-zinc-800/80 bg-zinc-950/85 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 py-3">
+    <div className="border-b border-zinc-800/80 bg-zinc-950/85 backdrop-blur lg:hidden">
+      <div className="mx-auto max-w-[1520px] px-4 py-3 sm:px-6 xl:px-8">
         <div className="scrollbar-hide inline-flex max-w-full gap-2 overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 p-1.5">
           {tabs.map((tab) => {
             const active = tab.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

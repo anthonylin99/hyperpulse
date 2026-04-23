@@ -55,8 +55,8 @@ export default function HomePage() {
   const primaryHref = isConnected ? "/portfolio" : "/markets";
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-12 px-4 py-8 pb-24 sm:px-6 xl:px-8">
-      <section className="grid min-h-[74vh] gap-10 xl:grid-cols-[0.82fr_1.18fr] xl:items-center">
+    <div className="mx-auto max-w-[1480px] space-y-8 px-4 py-8 pb-20 sm:px-6 xl:px-8">
+      <section className="grid min-h-[68vh] gap-10 xl:grid-cols-[0.82fr_1.18fr] xl:items-center">
         <div className="max-w-2xl xl:pr-4">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/70 px-4 py-2 text-xs text-zinc-300">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
@@ -143,30 +143,17 @@ export default function HomePage() {
       <section id="live-pulse" className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-3xl border border-zinc-800 bg-[#13171f] p-6 xl:p-7">
           <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Product proof</div>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 xl:text-[2.5rem]">
-            All the edge. None of the noise.
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 xl:text-[2.3rem]">
+            One shell. Faster decisions.
           </h2>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-400">
-            HyperPulse brings together the most important market and wallet signals into one consistent shell so you can scan, decide, and review without bouncing between tools.
+            Markets open with the directory first, portfolio review stays close, and the rest of the product keeps the same compact trading frame.
           </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Link href="/markets" className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 transition hover:border-zinc-700">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Markets</div>
-              <div className="mt-2 text-base font-medium text-zinc-100">Scanner + context</div>
-              <div className="mt-2 text-sm leading-6 text-zinc-400">Funding, OI, signal labels, and fast perp navigation in one table-first view.</div>
-            </Link>
-            <Link href="/portfolio" className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 transition hover:border-zinc-700">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Portfolio</div>
-              <div className="mt-2 text-base font-medium text-zinc-100">Review workspace</div>
-              <div className="mt-2 text-sm leading-6 text-zinc-400">Chart-first performance review, live positions, and a tighter trade journal.</div>
-            </Link>
-            {whalesEnabled ? (
-              <Link href="/whales" className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 transition hover:border-zinc-700">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Whales</div>
-                <div className="mt-2 text-base font-medium text-zinc-100">Live tape + dossiers</div>
-                <div className="mt-2 text-sm leading-6 text-zinc-400">Profile tracked wallets, inspect pressure, and jump from alert feed into full dossiers.</div>
-              </Link>
-            ) : null}
+          <div className="mt-6 flex flex-wrap gap-2 text-sm text-zinc-400">
+            <span className="rounded-full border border-zinc-800 bg-zinc-950/55 px-3 py-1.5">Table-first market scan</span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-950/55 px-3 py-1.5">Read-only wallet review</span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-950/55 px-3 py-1.5">Hyperliquid-native signals</span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-950/55 px-3 py-1.5">Live docs and methodology</span>
           </div>
         </div>
 
