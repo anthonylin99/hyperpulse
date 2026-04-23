@@ -1,16 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0d9488" />
-      <stop offset="100%" stop-color="#14b8a6" />
+    <linearGradient id="hyperpulse-outline" x1="126" y1="114" x2="392" y2="402" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B3FFF3" />
+      <stop offset="1" stop-color="#2EF5CF" />
     </linearGradient>
+    <linearGradient id="hyperpulse-pulse" x1="118" y1="256" x2="394" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#90FFF0" />
+      <stop offset="0.5" stop-color="#38F5D3" />
+      <stop offset="1" stop-color="#64FFE4" />
+    </linearGradient>
+    <radialGradient id="hyperpulse-fill" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 256) rotate(90) scale(160 184)">
+      <stop stop-color="#182028" />
+      <stop offset="1" stop-color="#080B0F" />
+    </radialGradient>
   </defs>
-  <rect width="512" height="512" rx="108" fill="url(#bg)" />
-  <polyline
-    points="80,280 160,280 200,280 230,160 270,360 310,200 340,320 370,250 400,280 432,280"
-    fill="none"
-    stroke="#ffffff"
-    stroke-width="36"
+  <rect width="512" height="512" rx="124" fill="#05070A" />
+  <path
+    d="M98 256C98 185.881 132.528 131 188.5 131C224.773 131 247.283 168.386 256 211.382C264.717 168.386 287.227 131 323.5 131C379.472 131 414 185.881 414 256C414 326.119 379.472 381 323.5 381C287.227 381 264.717 343.614 256 300.618C247.283 343.614 224.773 381 188.5 381C132.528 381 98 326.119 98 256Z"
+    fill="url(#hyperpulse-fill)"
+    stroke="url(#hyperpulse-outline)"
+    stroke-width="9"
+  />
+  <path
+    d="M118 256H200L224 224L252 292L288 168L324 320L352 242L372 256H394"
+    stroke="url(#hyperpulse-pulse)"
+    stroke-width="24"
     stroke-linecap="round"
     stroke-linejoin="round"
   />

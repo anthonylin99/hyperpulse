@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import Nav from "@/components/Nav";
 import AppTabStrip from "@/components/app/AppTabStrip";
-import AppSidebar from "@/components/app/AppSidebar";
 import LiveTickerStrip from "@/components/app/LiveTickerStrip";
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -29,11 +28,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {usesWorkspaceShell ? <AppTabStrip /> : null}
       </div>
       {usesWorkspaceShell ? (
-        <div className="mx-auto max-w-[1520px] px-4 py-6 pb-20 sm:px-6 xl:px-8">
-          <div className="grid gap-6 lg:grid-cols-[216px_minmax(0,1fr)] lg:items-start">
-            <AppSidebar />
-            <div className="min-w-0">{children}</div>
-          </div>
+        <div className="mx-auto max-w-[1480px] px-4 py-5 pb-20 sm:px-6 xl:px-8">
+          <div className="min-w-0">{children}</div>
         </div>
       ) : (
         children

@@ -97,7 +97,7 @@ export default function LiveTickerStrip() {
 
   return (
     <div className="border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 py-2">
+      <div className="mx-auto max-w-[1480px] px-4 py-2 sm:px-6 xl:px-8">
         <div className="scrollbar-hide flex items-center gap-4 overflow-x-auto text-xs">
           <TickerItem
             label="BTC"

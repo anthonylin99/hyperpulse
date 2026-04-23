@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="hyperpulse-outline" x1="112" y1="96" x2="400" y2="416" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B3FFF3" />
+      <stop offset="1" stop-color="#2EF5CF" />
+    </linearGradient>
+    <linearGradient id="hyperpulse-pulse" x1="104" y1="256" x2="408" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#90FFF0" />
+      <stop offset="0.5" stop-color="#38F5D3" />
+      <stop offset="1" stop-color="#64FFE4" />
+    </linearGradient>
+    <radialGradient id="hyperpulse-fill" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 256) rotate(90) scale(164 188)">
+      <stop stop-color="#182028" />
+      <stop offset="1" stop-color="#080B0F" />
+    </radialGradient>
+  </defs>
+  <path
+    d="M92 256C92 183.098 127.765 126 185.5 126C222.913 126 246.134 164.861 256 209.538C265.866 164.861 289.087 126 326.5 126C384.235 126 420 183.098 420 256C420 328.902 384.235 386 326.5 386C289.087 386 265.866 347.139 256 302.462C246.134 347.139 222.913 386 185.5 386C127.765 386 92 328.902 92 256Z"
+    fill="url(#hyperpulse-fill)"
+    stroke="url(#hyperpulse-outline)"
+    stroke-width="8"
+  />
+  <path
+    d="M108 256H196L220 224L248 290L286 166L321 318L352 242L376 256H404"
+    stroke="url(#hyperpulse-pulse)"
+    stroke-width="22"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

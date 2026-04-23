@@ -206,54 +206,23 @@ export default function PortfolioWorkspace() {
         <PortfolioEmptyState accountValue={accountValue} />
       ) : (
         <>
-          <section className="grid gap-5 lg:grid-cols-[206px_minmax(0,1fr)]">
-            <aside className="space-y-4 lg:sticky lg:top-28 lg:self-start">
-              <div className="rounded-[24px] border border-zinc-800 bg-zinc-950/70 p-3">
-                <div className="flex items-center gap-2 px-2 pb-3">
+          <section className="space-y-4">
+            <div className="rounded-[22px] border border-zinc-800 bg-zinc-950/70 p-3 sm:p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex items-center gap-2 px-1">
                   <CircleDashed className="h-4 w-4 text-emerald-300" />
-                  <div>
-                    <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-zinc-500">
-                      Workspace
-                    </div>
-                    <div className="mt-1 text-sm text-zinc-300">Portfolio review</div>
+                  <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-zinc-500">
+                    Portfolio review workspace
                   </div>
                 </div>
-                <div className="space-y-1">
-                  {PORTFOLIO_TABS.map((tab) => {
-                    const Icon = TAB_ICONS[tab.key];
-                    return (
-                      <button
-                        key={tab.key}
-                        onClick={() => setSubtab(tab.key)}
-                        className={cn(
-                          "flex w-full items-start gap-3 rounded-[18px] px-3 py-3 text-left transition-all",
-                          subtab === tab.key
-                            ? "bg-emerald-500/[0.08] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.16)]"
-                            : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200",
-                        )}
-                      >
-                        <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", subtab === tab.key ? "text-emerald-300" : "text-zinc-500")} />
-                        <div className="min-w-0">
-                          <div className="font-mono text-sm">{tab.label}</div>
-                          <div className="mt-1 text-[11px] text-zinc-500">{tab.helper}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
-              <div className="rounded-[24px] border border-zinc-800 bg-zinc-950/70 p-4">
-                <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-zinc-500">
-                  Density
-                </div>
-                <div className="mt-3 inline-flex w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+                <div className="inline-flex overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
                   {(["compact", "roomy"] as PortfolioDensity[]).map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setDensity(mode)}
                       className={cn(
-                        "flex-1 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
+                        "px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
                         density === mode
                           ? "bg-emerald-400 text-[#03221b]"
                           : "text-zinc-500 hover:text-zinc-200",
@@ -264,7 +233,36 @@ export default function PortfolioWorkspace() {
                   ))}
                 </div>
               </div>
-            </aside>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {PORTFOLIO_TABS.map((tab) => {
+                  const Icon = TAB_ICONS[tab.key];
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setSubtab(tab.key)}
+                      className={cn(
+                        "flex min-w-[172px] items-start gap-3 rounded-[18px] border px-4 py-3 text-left transition-all",
+                        subtab === tab.key
+                          ? "border-emerald-500/20 bg-emerald-500/[0.08] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.16)]"
+                          : "border-zinc-800 bg-zinc-950/65 text-zinc-500 hover:border-zinc-700 hover:text-zinc-200",
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "mt-0.5 h-4 w-4 shrink-0",
+                          subtab === tab.key ? "text-emerald-300" : "text-zinc-500"
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <div className="font-mono text-sm">{tab.label}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">{tab.helper}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="min-w-0 space-y-4">
               {subtab === "overview" && overviewSections}

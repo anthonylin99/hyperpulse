@@ -1,47 +1,53 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import BrandLogo from "@/components/brand/BrandLogo";
-import { useMarket } from "@/context/MarketContext";
 import WalletConnect from "./WalletConnect";
-import NetworkToggle from "./NetworkToggle";
 import { useAppConfig } from "@/context/AppConfigContext";
+import { APP_TABS } from "@/lib/appTabs";
+import { cn } from "@/lib/format";
 
 export default function Nav() {
-  const { lastUpdated, loading } = useMarket();
+  const pathname = usePathname();
   const { whalesEnabled, factorsEnabled } = useAppConfig();
-  const focusAreas = ["markets", "portfolio review", "docs"];
-  if (factorsEnabled) focusAreas.splice(1, 0, "factors");
-  if (whalesEnabled) focusAreas.push("whales");
 
-  const timeStr = lastUpdated
-    ? lastUpdated.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : "--:--:--";
+  const tabs = APP_TABS.filter((tab) => {
+    if (!whalesEnabled && tab.key === "whales") return false;
+    if (!factorsEnabled && tab.key === "factors") return false;
+    return true;
+  });
 
   return (
-    <div className="border-b border-[#7dd4c4]/12 bg-gradient-to-r from-[#10181b]/95 via-[#0a0c10] to-[#111417]/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-[1520px] items-center justify-between gap-4 px-4 sm:px-6 xl:px-8">
-        <div className="min-w-0">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <BrandLogo compact markClassName="h-8 w-8" textClassName="text-[24px]" />
-          </Link>
-          <div className="mt-0.5 hidden text-xs text-zinc-500 md:block">
-            Hyperliquid intelligence across {focusAreas.join(", ")}
-          </div>
-        </div>
+    <div className="border-b border-[#7dd4c4]/12 bg-[#0a0c10]/92 backdrop-blur-sm">
+      <div className="mx-auto flex h-14 max-w-[1480px] items-center justify-between gap-4 px-4 sm:px-6 xl:px-8">
+        <Link href="/" className="inline-flex shrink-0 items-center">
+          <BrandLogo compact markClassName="h-8 w-8" textClassName="h-5" />
+        </Link>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-[#7dd4c4]/20 bg-[#0f1a1e]/70 px-3 py-1.5 text-xs text-zinc-500 shadow-[0_0_0_1px_rgba(125,212,196,0.05)] sm:flex">
-            <div className={loading ? "live-dot opacity-30" : "live-dot"} />
-            <span className="font-mono text-[#b7ece1]">{loading ? "Syncing" : "Live"}</span>
-            <span className="font-mono text-zinc-300">{timeStr}</span>
-          </div>
+        <nav className="hidden items-center gap-1 md:flex">
+          {tabs.map((tab) => {
+            const active = tab.match.some(
+              (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+            );
+            return (
+              <Link
+                key={tab.key}
+                href={tab.href}
+                className={cn(
+                  "rounded-xl px-3 py-2 text-sm transition-colors",
+                  active
+                    ? "bg-emerald-500/[0.08] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.14)]"
+                    : "text-zinc-400 hover:text-zinc-100",
+                )}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </nav>
 
-          <NetworkToggle />
+        <div className="flex items-center gap-2">
           <WalletConnect />
         </div>
       </div>

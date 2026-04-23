@@ -39,6 +39,9 @@ interface WalletContextValue {
   connectWithBrowserWallet: (
     preference?: BrowserWalletPreference
   ) => Promise<void>;
+  connectWithBrowserWalletReadOnly: (
+    preference?: BrowserWalletPreference
+  ) => Promise<void>;
   connectWithPrivyWallet: (wallet: PrivyEthereumWallet) => Promise<void>;
   connectReadOnly: (walletAddress: string) => Promise<void>;
   disconnect: () => void;
@@ -369,6 +372,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           throw new Error("No browser wallet found. Install MetaMask or Rabby.");
         }
         const injectedProvider = selectProvider(ethereum, preference);
+        if (!tradingEnabled) {
+          const accounts = (await injectedProvider.request({
+            method: "eth_requestAccounts",
+          })) as unknown;
+          const providerAddr = Array.isArray(accounts)
+            ? accounts.find((value): value is string => typeof value === "string")
+            : null;
+          if (!providerAddr || !MAIN_ADDRESS_REGEX.test(providerAddr)) {
+            throw new Error("Connected wallet did not return a valid wallet address.");
+          }
+          await fetchPortfolio(providerAddr, true);
+          setAddress(providerAddr);
+          setApiAddress(null);
+          setExchangeClient(null);
+          setIsReadOnly(true);
+          sessionStorage.setItem(SESSION_MAIN_ADDR, providerAddr);
+          toast.success(
+            `Viewing: ${providerAddr.slice(0, 6)}...${providerAddr.slice(-4)} (read-only)`
+          );
+          return;
+        }
         await connectWithExecutionProvider(injectedProvider, undefined, "browser wallet");
       } catch (err) {
         const msg =
@@ -381,7 +405,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [connectWithExecutionProvider]
+    [connectWithExecutionProvider, fetchPortfolio, tradingEnabled]
+  );
+
+  const connectWithBrowserWalletReadOnly = useCallback(
+    async (preference: BrowserWalletPreference = "auto") => {
+      await connectWithBrowserWallet(preference);
+    },
+    [connectWithBrowserWallet]
   );
 
   const connectWithPrivyWallet = useCallback(
@@ -519,6 +550,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         exchangeClient,
         loading,
         connectWithBrowserWallet,
+        connectWithBrowserWalletReadOnly,
         connectWithPrivyWallet,
         connectReadOnly,
         disconnect,
