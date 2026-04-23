@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "digest:manual": "node scripts/run-positioning-digest.mjs"
+    "digest:manual": "node scripts/run-positioning-digest.mjs",
+    "worker:start": "node workers/whale-indexer/index.mjs",
+    "railway:start": "npm run worker:start"
   },
   "dependencies": {
     "@farcaster/mini-app-solana": "^1.1.3",

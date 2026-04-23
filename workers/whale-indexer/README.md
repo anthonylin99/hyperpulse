@@ -19,6 +19,9 @@ This worker is the always-on discovery layer for the HyperPulse `Whales` tab.
 - Start command: `npm start`
 - Required variable: `DATABASE_URL` or `POSTGRES_URL`
 
+### Root deploy fallback
+If Railway is pointed at the repo root instead of `workers/whale-indexer`, the repo now includes a root-level `railway.json` and `npm run railway:start` script that boot the whale indexer directly. This makes the worker more forgiving when the service root is misconfigured.
+
 ## Required env
 - `DATABASE_URL` or `POSTGRES_URL`
 - `WHALERPC_URL` optional, defaults to `wss://rpc.hyperliquid.xyz/ws`
