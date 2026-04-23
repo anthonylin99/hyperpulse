@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
 import { cn, formatFundingAPR, formatPct, formatUSD } from "@/lib/format";
 import SentimentSlider from "./SentimentSlider";
@@ -20,6 +21,7 @@ export default function MarketOverviewPanel({
   showHeading = true,
 }: MarketOverviewPanelProps) {
   const { assets, loading, selectedAsset, setSelectedAsset, lastUpdated } = useMarket();
+  const { factorsEnabled } = useAppConfig();
 
   const majors = useMemo(
     () =>
@@ -36,7 +38,11 @@ export default function MarketOverviewPanel({
           <div className="max-w-2xl">
             <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">Pulse</div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-100">{title}</h2>
-            <p className="mt-2 text-sm leading-6 text-zinc-400">{description}</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">
+              {factorsEnabled
+                ? description
+                : "Live Hyperliquid context across tomorrow bias and major perp benchmarks before you scan the full market table."}
+            </p>
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-4 py-3 text-sm text-zinc-400">
             <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Last Sync</div>
@@ -55,10 +61,10 @@ export default function MarketOverviewPanel({
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className={cn("grid gap-4", factorsEnabled ? "xl:grid-cols-[1.15fr_0.85fr]" : "xl:grid-cols-[0.9fr_1.1fr]")}>
         <div className="space-y-4">
           <SentimentSlider variant="hero" />
-          <FactorLeaderStrip variant="hero" />
+          {factorsEnabled ? <FactorLeaderStrip variant="hero" /> : null}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

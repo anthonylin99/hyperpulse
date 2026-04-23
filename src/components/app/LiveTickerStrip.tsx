@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMarket } from "@/context/MarketContext";
 import { useFactors } from "@/context/FactorContext";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { computeHyperPulseVix } from "@/lib/proprietaryIndex";
 import { cn, formatFundingAPR, formatPct, formatUSD } from "@/lib/format";
 
@@ -40,9 +41,14 @@ function TickerItem({ label, value, tone = "neutral", href }: { label: string; v
 export default function LiveTickerStrip() {
   const { assets, loading, lastUpdated, fundingHistories, btcCandles } = useMarket();
   const { leader } = useFactors();
+  const { whalesEnabled, factorsEnabled } = useAppConfig();
   const [whaleHeadline, setWhaleHeadline] = useState<WhaleHeadline | null>(null);
 
   useEffect(() => {
+    if (!whalesEnabled) {
+      setWhaleHeadline(null);
+      return;
+    }
     let mounted = true;
 
     const loadHeadline = async () => {
@@ -67,7 +73,7 @@ export default function LiveTickerStrip() {
       mounted = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [whalesEnabled]);
 
   const btc = assets.find((asset) => asset.coin === "BTC");
   const eth = assets.find((asset) => asset.coin === "ETH");
@@ -117,18 +123,22 @@ export default function LiveTickerStrip() {
             tone={bias.trendScore >= 0 ? "positive" : "negative"}
             href="/markets"
           />
-          <TickerItem
-            label={leader ? "Top Factor" : "Factors"}
-            value={leader7d != null ? `${leader?.snapshot.name ?? "Top factor"} ${formatPct(leader7d)}` : "Live regimes"}
-            tone={leader7d != null ? (leader7d >= 0 ? "positive" : "negative") : "neutral"}
-            href="/factors"
-          />
-          <TickerItem
-            label="Whale Alert"
-            value={whaleHeadline?.headline ?? "Watching live tape"}
-            tone="negative"
-            href={whaleHeadline?.address ? `/whales/${whaleHeadline.address}` : "/whales"}
-          />
+          {factorsEnabled ? (
+            <TickerItem
+              label={leader ? "Top Factor" : "Factors"}
+              value={leader7d != null ? `${leader?.snapshot.name ?? "Top factor"} ${formatPct(leader7d)}` : "Live regimes"}
+              tone={leader7d != null ? (leader7d >= 0 ? "positive" : "negative") : "neutral"}
+              href="/factors"
+            />
+          ) : null}
+          {whalesEnabled ? (
+            <TickerItem
+              label="Whale Alert"
+              value={whaleHeadline?.headline ?? "Watching live tape"}
+              tone="negative"
+              href={whaleHeadline?.address ? `/whales/${whaleHeadline.address}` : "/whales"}
+            />
+          ) : null}
           <div className="ml-auto flex items-center gap-2 whitespace-nowrap pl-2 text-zinc-400">
             <span className={cn("h-2 w-2 rounded-full", loading ? "bg-zinc-600" : "bg-emerald-400")}></span>
             <span>{loading ? "Syncing" : "Live"}</span>

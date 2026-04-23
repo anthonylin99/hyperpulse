@@ -16,6 +16,7 @@ import {
   normalizeArtemisPriceResponse,
   type ArtemisPriceResponse,
 } from "@/lib/factors";
+import { useAppConfig } from "@/context/AppConfigContext";
 import type { FactorSnapshot, LiveFactorState } from "@/types";
 
 interface FactorContextValue {
@@ -33,6 +34,7 @@ const FactorContext = createContext<FactorContextValue | null>(null);
 
 export function FactorProvider({ children }: { children: ReactNode }) {
   const { assets } = useMarket();
+  const { factorsEnabled } = useAppConfig();
   const [snapshots, setSnapshots] = useState<FactorSnapshot[]>([]);
   const [pricePayload, setPricePayload] = useState<ArtemisPriceResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +43,15 @@ export function FactorProvider({ children }: { children: ReactNode }) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!factorsEnabled) {
+      setSnapshots([]);
+      setPricePayload(null);
+      setSourceMode("snapshot");
+      setError(null);
+      setLastUpdated(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/factors");
@@ -58,15 +69,24 @@ export function FactorProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [factorsEnabled]);
 
   useEffect(() => {
+    if (!factorsEnabled) {
+      setLoading(false);
+      setSnapshots([]);
+      setPricePayload(null);
+      setSourceMode("snapshot");
+      setError(null);
+      setLastUpdated(null);
+      return;
+    }
     void refresh();
     const interval = setInterval(() => {
       void refresh();
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [factorsEnabled, refresh]);
 
   const factors = useMemo(() => {
     if (!pricePayload) return [];

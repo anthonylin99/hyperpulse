@@ -156,8 +156,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
               address to view portfolio analytics without exposing private credentials.
             </p>
             <p className="text-zinc-500">
-              The public deployment does not accept manual API private keys. That path is removed
-              intentionally to minimize trust and keep the demo safe to share broadly.
+              The public deployment does not accept manual API private keys. If you ever choose to trade from a browser wallet, signing stays client-side in your wallet and HyperPulse does not custody funds.
             </p>
           </div>
 

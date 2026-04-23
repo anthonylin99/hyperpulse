@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { enforceRateLimit, jsonError, jsonSuccess, validateCoin } from "@/lib/security";
+import { isWhalesEnabled } from "@/lib/appConfig";
 import {
   getWhaleWorkerStatus,
   isWhaleStoreConfigured,
@@ -19,6 +20,9 @@ const TIMEFRAME_TO_MS: Record<string, number> = {
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  if (!isWhalesEnabled()) {
+    return jsonError("Not found.", { status: 404 });
+  }
   const limited = enforceRateLimit(req, {
     key: "api-whales-feed",
     limit: 45,

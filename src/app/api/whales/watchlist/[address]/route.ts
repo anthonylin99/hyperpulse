@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { removeWhaleWatchlist } from "@/lib/whaleStore";
 import { enforceRateLimit, jsonError, jsonSuccess, validateAddress } from "@/lib/security";
+import { isWhalesEnabled } from "@/lib/appConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ address: string }> },
 ) {
+  if (!isWhalesEnabled()) {
+    return jsonError("Not found.", { status: 404 });
+  }
   const limited = enforceRateLimit(req, {
     key: "api-whales-watchlist-delete",
     limit: 12,

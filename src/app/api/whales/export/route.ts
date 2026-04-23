@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit, jsonError, validateAddress, validateCoin } from "@/lib/security";
+import { isWhalesEnabled } from "@/lib/appConfig";
 import {
   getWhaleAlertsForAddress,
   getWhaleEpisodesForAddress,
@@ -56,6 +57,9 @@ function applyViewFilter(alerts: WhaleAlert[], viewFilter: string | null) {
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  if (!isWhalesEnabled()) {
+    return jsonError("Not found.", { status: 404 });
+  }
   const limited = enforceRateLimit(req, {
     key: "api-whales-export",
     limit: 20,

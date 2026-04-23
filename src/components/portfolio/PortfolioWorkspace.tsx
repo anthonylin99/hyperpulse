@@ -17,6 +17,7 @@ import FundingAnalysis from "@/components/portfolio/FundingAnalysis";
 import SystemProfile from "@/components/portfolio/SystemProfile";
 import TradeSignals from "@/components/portfolio/TradeSignals";
 import MoreStats from "@/components/portfolio/MoreStats";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatUSD } from "@/lib/format";
@@ -60,9 +61,9 @@ function PortfolioEmptyState({ accountValue }: { accountValue: number }) {
 function EmptyPositionsState() {
   return (
     <div className="rounded-[26px] border border-zinc-800 bg-zinc-950/80 px-6 py-10 text-center">
-      <div className="text-sm font-medium text-zinc-200">No open positions right now.</div>
+      <div className="text-sm font-medium text-zinc-200">No open holdings right now.</div>
       <div className="mt-2 text-sm text-zinc-500">
-        This tab will show live exposure, leverage, and liquidation distance as soon as you open a perp.
+        This tab will show live perp exposure and non-USDC spot or HIP-3 balances as soon as they exist on the wallet.
       </div>
     </div>
   );
@@ -108,12 +109,16 @@ function DetailSection({
 }
 
 export default function PortfolioWorkspace() {
+  const { factorsEnabled } = useAppConfig();
   const { trades, loading, error } = usePortfolio();
   const { accountState } = useWallet();
   const [subtab, setSubtab] = useState<PortfolioSubtab>("overview");
   const [density, setDensity] = useState<PortfolioDensity>("compact");
 
-  const hasPositions = (accountState?.positions?.length ?? 0) > 0;
+  const perpPositions = accountState?.positions?.length ?? 0;
+  const spotPositions = accountState?.spotPositions?.length ?? 0;
+  const totalHoldings = perpPositions + spotPositions;
+  const hasPositions = totalHoldings > 0;
   const hasTrades = trades.length > 0;
   const hasContent = hasTrades || hasPositions;
   const accountValue = accountState?.accountValue ?? 0;
@@ -138,7 +143,7 @@ export default function PortfolioWorkspace() {
         <StatsGrid density={density} />
         <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
           <div className="space-y-4">
-            <FactorLeaderStrip />
+            {factorsEnabled ? <FactorLeaderStrip /> : null}
             <RiskStrip density={density} />
           </div>
           {hasPositions ? (
@@ -148,8 +153,8 @@ export default function PortfolioWorkspace() {
               </div>
               <div className="mt-3 space-y-3 text-sm text-zinc-300">
                 <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-3">
-                  <span className="text-zinc-500">Open positions</span>
-                  <span className="font-medium text-zinc-100">{accountState?.positions.length ?? 0}</span>
+                  <span className="text-zinc-500">Open holdings</span>
+                  <span className="font-medium text-zinc-100">{totalHoldings}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-3">
                   <span className="text-zinc-500">Account equity</span>
@@ -169,14 +174,14 @@ export default function PortfolioWorkspace() {
                 Today&apos;s Account State
               </div>
               <div className="mt-3 text-sm leading-7 text-zinc-400">
-                No live perp exposure right now. Use the Markets tab to scan setups, then come back here to review how the book evolves.
+                No live perps or spot balances right now. Use the Markets tab to scan setups, then come back here to review how the book evolves.
               </div>
             </section>
           )}
         </div>
       </>
     ),
-    [accountState?.positions.length, accountValue, density, hasPositions, hasTrades],
+    [accountValue, density, factorsEnabled, hasPositions, hasTrades, totalHoldings],
   );
 
   return (

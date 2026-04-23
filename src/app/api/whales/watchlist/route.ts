@@ -1,10 +1,14 @@
 import { NextRequest } from "next/server";
 import { addWhaleWatchlist, listWhaleWatchlist } from "@/lib/whaleStore";
 import { enforceRateLimit, jsonError, jsonSuccess, validateAddress } from "@/lib/security";
+import { isWhalesEnabled } from "@/lib/appConfig";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  if (!isWhalesEnabled()) {
+    return jsonError("Not found.", { status: 404 });
+  }
   const limited = enforceRateLimit(req, {
     key: "api-whales-watchlist-get",
     limit: 40,
@@ -17,6 +21,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isWhalesEnabled()) {
+    return jsonError("Not found.", { status: 404 });
+  }
   const limited = enforceRateLimit(req, {
     key: "api-whales-watchlist-post",
     limit: 12,

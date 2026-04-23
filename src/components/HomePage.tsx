@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { ArrowRight, BarChart3, BookOpenText, BriefcaseBusiness, Layers3, Waves } from "lucide-react";
 import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
+import { useAppConfig } from "@/context/AppConfigContext";
 import LandingProductPreview from "@/components/app/LandingProductPreview";
 
 const CAPABILITIES = [
@@ -36,8 +38,19 @@ const CAPABILITIES = [
 
 export default function HomePage() {
   const { isConnected } = useWallet();
+  const { whalesEnabled, factorsEnabled } = useAppConfig();
   const { assets, lastUpdated } = useMarket();
   const { factors } = useFactors();
+  const workspaceCount = 3 + (factorsEnabled ? 1 : 0) + (whalesEnabled ? 1 : 0);
+  const capabilities = useMemo(
+    () =>
+      CAPABILITIES.filter((item) => {
+        if (!whalesEnabled && item.title === "Smart Money Tracking") return false;
+        if (!factorsEnabled && item.title === "Factor Intelligence") return false;
+        return true;
+      }),
+    [factorsEnabled, whalesEnabled],
+  );
 
   const primaryHref = isConnected ? "/portfolio" : "/markets";
 
@@ -56,7 +69,7 @@ export default function HomePage() {
             </span>
           </h1>
           <p className="mt-6 max-w-xl text-base leading-8 text-zinc-400 sm:text-lg">
-            HyperPulse unifies live market data, factor regimes, whale activity, and portfolio review so you can see the market before it moves.
+            HyperPulse unifies live market data, portfolio review, and plain-English docs so you can assess the tape without bouncing across tabs.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
@@ -79,8 +92,12 @@ export default function HomePage() {
               <div className="mt-2 font-mono text-3xl text-zinc-100">{assets.length || "--"}</div>
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-[#13171f] px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Factor baskets</div>
-              <div className="mt-2 font-mono text-3xl text-zinc-100">{factors.length || "--"}</div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                {factorsEnabled ? "Factor baskets" : "Launch mode"}
+              </div>
+              <div className="mt-2 font-mono text-3xl text-zinc-100">
+                {factorsEnabled ? factors.length || "--" : "BETA"}
+              </div>
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-[#13171f] px-4 py-4">
               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Last sync</div>
@@ -102,7 +119,7 @@ export default function HomePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {CAPABILITIES.map((item) => {
+        {capabilities.map((item) => {
           const Icon = item.icon;
           return (
             <Link
@@ -143,11 +160,13 @@ export default function HomePage() {
               <div className="mt-2 text-base font-medium text-zinc-100">Review workspace</div>
               <div className="mt-2 text-sm leading-6 text-zinc-400">Chart-first performance review, live positions, and a tighter trade journal.</div>
             </Link>
-            <Link href="/whales" className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 transition hover:border-zinc-700">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Whales</div>
-              <div className="mt-2 text-base font-medium text-zinc-100">Live tape + dossiers</div>
-              <div className="mt-2 text-sm leading-6 text-zinc-400">Profile tracked wallets, inspect pressure, and jump from alert feed into full dossiers.</div>
-            </Link>
+            {whalesEnabled ? (
+              <Link href="/whales" className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 transition hover:border-zinc-700">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Whales</div>
+                <div className="mt-2 text-base font-medium text-zinc-100">Live tape + dossiers</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">Profile tracked wallets, inspect pressure, and jump from alert feed into full dossiers.</div>
+              </Link>
+            ) : null}
           </div>
         </div>
 
@@ -160,7 +179,7 @@ export default function HomePage() {
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Core workspaces</div>
-              <div className="mt-2 font-mono text-3xl text-zinc-100">5</div>
+              <div className="mt-2 font-mono text-3xl text-zinc-100">{workspaceCount}</div>
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Signals</div>
@@ -169,14 +188,14 @@ export default function HomePage() {
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 sm:col-span-2">
               <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Methodology</div>
               <div className="mt-2 text-sm leading-7 text-zinc-400">
-                Funding signals, factor overlays, whale monitoring, and portfolio analytics all map back to the same product system.
+                Funding signals, portfolio analytics, and market review all map back to the same product system.
               </div>
             </div>
           </div>
           <div className="mt-6 flex items-center gap-2 text-sm text-zinc-400">
             <BookOpenText className="h-4 w-4 text-teal-300" />
             <Link href="/docs" className="text-zinc-200 transition hover:text-white">
-              Read how signals, factors, and portfolio analytics are calculated.
+              Read how signals, portfolio analytics, and risk context are calculated.
             </Link>
           </div>
         </div>

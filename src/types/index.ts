@@ -66,6 +66,7 @@ export interface Position {
   leverage: number;
   liquidationPx: number | null;
   returnOnEquity: number;
+  marketType?: "perp" | "hip3_spot";
 }
 
 export interface AccountState {
@@ -76,8 +77,12 @@ export interface AccountState {
   withdrawable: number;
   spotUsdcTotal: number;
   spotUsdcHold: number;
+  spotAssetValue: number;
+  spotTotalValue: number;
+  spotUnrealizedPnl: number;
   unrealizedPnl: number;
   positions: Position[];
+  spotPositions: Position[];
 }
 
 // ─── Portfolio Analytics Types ───────────────────────────────────

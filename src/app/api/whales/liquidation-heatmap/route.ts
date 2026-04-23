@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { enforceRateLimit, jsonError, jsonSuccess, validateCoin } from "@/lib/security";
+import { isWhalesEnabled } from "@/lib/appConfig";
 import { listPositioningMarketSnapshots, listTrackedWhaleProfiles } from "@/lib/whaleStore";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,9 @@ function roundBucket(distancePct: number) {
 }
 
 export async function GET(req: NextRequest) {
+  if (!isWhalesEnabled()) {
+    return jsonError("Not found.", { status: 404 });
+  }
   const limited = enforceRateLimit(req, {
     key: "api-whales-liquidation-heatmap",
     limit: 30,

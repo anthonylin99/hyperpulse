@@ -1,6 +1,7 @@
 import https from "node:https";
 import fallbackPrices from "@/lib/factors/fallbackPrices.json";
 import { FACTOR_SNAPSHOTS } from "@/lib/factors/snapshots";
+import { isFactorsEnabled } from "@/lib/appConfig";
 import {
   enforceRateLimit,
   jsonError,
@@ -72,6 +73,12 @@ function isoDaysAgo(days: number): string {
 }
 
 export async function GET(request: Request) {
+  if (!isFactorsEnabled()) {
+    return jsonError("Factors are not available on this deployment.", {
+      status: 404,
+    });
+  }
+
   const limited = enforceRateLimit(request, {
     key: "api-factors",
     limit: 60,

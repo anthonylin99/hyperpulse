@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppConfig } from "@/context/AppConfigContext";
 import { useFactors } from "@/context/FactorContext";
 import { formatPct } from "@/lib/format";
 import { cn } from "@/lib/format";
@@ -9,9 +10,14 @@ export default function FactorLeaderStrip({
 }: {
   variant?: "default" | "hero" | "compact";
 }) {
+  const { factorsEnabled } = useAppConfig();
   const { leader, leaderText, loading, error } = useFactors();
   const isHero = variant === "hero";
   const isCompact = variant === "compact";
+
+  if (!factorsEnabled) {
+    return null;
+  }
 
   if (loading && !leader) {
     return <div className={`${isHero ? "h-40" : "h-16"} rounded-xl border border-zinc-800 skeleton`} />;

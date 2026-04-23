@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import {
   enforceRateLimit,
-  enforceTimeRange,
   jsonError,
   jsonSuccess,
   logServerError,
@@ -34,17 +33,6 @@ export async function GET(req: NextRequest) {
   const aggregateByTime = parseBoolean(
     req.nextUrl.searchParams.get("aggregateByTime"),
   );
-
-  if (
-    startTime != null &&
-    !enforceTimeRange({
-      startTime,
-      endTime: now,
-      maxLookbackMs: 90 * 24 * 60 * 60 * 1000,
-    })
-  ) {
-    return jsonError("Requested history window is not allowed.", { status: 400 });
-  }
 
   const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
   try {

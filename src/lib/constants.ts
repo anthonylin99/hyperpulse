@@ -14,7 +14,7 @@ export const MAJOR_ASSETS = [
 ] as const;
 
 export const POLL_INTERVAL_MARKET = 30_000; // 30s
-export const POLL_INTERVAL_PORTFOLIO = 15_000; // 15s
+export const POLL_INTERVAL_PORTFOLIO = 300_000; // 5m
 export const WS_DEBOUNCE_MS = 1_000;
 export const WHALE_THRESHOLD_USD = 500_000;
 export const OI_SPIKE_THRESHOLD_PCT = 5;

@@ -30,7 +30,7 @@ export default function DashboardHeader() {
   const switcherRef = useRef<HTMLDivElement>(null);
 
   const perpsValue = accountState?.isolatedAccountValue ?? 0;
-  const spotUsdc = accountState?.spotUsdcTotal ?? 0;
+  const spotWalletValue = accountState?.spotTotalValue ?? 0;
   const unrealizedPnl = accountState?.unrealizedPnl ?? 0;
   const totalPnl = stats?.totalPnl ?? 0;
 
@@ -278,11 +278,11 @@ export default function DashboardHeader() {
               {address ? address : "No wallet"}
             </span>
             <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
-              Perps + spot USDC
+              Perps + full spot wallet
             </span>
             <span
               className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1"
-              title="Perps equity + spot USDC. Staked HYPE not included."
+              title="Perps equity plus the full marked spot wallet. Staked HYPE not included."
             >
               Staked HYPE excluded
             </span>
@@ -324,8 +324,8 @@ export default function DashboardHeader() {
                   <div className="mt-1 font-medium text-zinc-100">{formatUSD(perpsValue)}</div>
                 </div>
                 <div>
-                  <div className="text-zinc-500">Spot USDC</div>
-                  <div className="mt-1 font-medium text-zinc-100">{formatUSD(spotUsdc)}</div>
+                  <div className="text-zinc-500">Spot Wallet</div>
+                  <div className="mt-1 font-medium text-zinc-100">{formatUSD(spotWalletValue)}</div>
                 </div>
                 <div>
                   <div className="text-zinc-500">Realized</div>

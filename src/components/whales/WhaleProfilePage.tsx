@@ -476,7 +476,7 @@ export default function WhaleProfilePage({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard label="Realized P&L" value={formatCompact(profile.realizedPnl30d)} helper="30d closed performance" icon={BarChart3 as typeof Activity} tone={profile.realizedPnl30d >= 0 ? "green" : "red"} />
         <KpiCard label="30D Volume" value={formatCompact(profile.baseline.volume30d)} helper="public fills" icon={Waves as typeof Activity} />
-        <KpiCard label="Equity" value={formatCompact(profile.accountEquity)} helper="perps + spot USDC" icon={Wallet as typeof Activity} />
+        <KpiCard label="Equity" value={formatCompact(profile.accountEquity)} helper="perps + full spot wallet" icon={Wallet as typeof Activity} />
         <KpiCard label="Open Notional" value={formatCompact(profile.totalOpenNotionalUsd)} helper={`${profile.openPositionsCount} live positions`} icon={Layers3 as typeof Activity} />
         <KpiCard label="Median Size" value={formatCompact(profile.medianTradeSize30d)} helper={`${profile.avgHoldHours30d.toFixed(1)}h avg hold`} icon={Target as typeof Activity} />
       </div>

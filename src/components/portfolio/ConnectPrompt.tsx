@@ -88,7 +88,7 @@ export default function ConnectPrompt() {
           <div className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-950/45 p-5">
             <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Read-only by default</div>
             <div className="mt-2 text-sm leading-6 text-zinc-400">
-              Analytics only need a public wallet address. Browser-wallet access is optional, and HyperPulse never asks for a seed phrase or manual private key.
+              Analytics only need a public wallet address. Browser-wallet access is optional, signatures stay in your wallet, and HyperPulse never asks for a seed phrase or manual private key.
             </div>
           </div>
 

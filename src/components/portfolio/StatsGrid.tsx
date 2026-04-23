@@ -35,8 +35,10 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
   const metrics = useMemo<RailMetric[]>(() => {
     const accountValue = accountState?.accountValue ?? 0;
     const perpsValue = accountState?.isolatedAccountValue ?? 0;
-    const spotUsdc = accountState?.spotUsdcTotal ?? 0;
-    const openPositions = accountState?.positions.length ?? 0;
+    const spotWalletValue = accountState?.spotTotalValue ?? 0;
+    const perpPositions = accountState?.positions.length ?? 0;
+    const spotPositions = accountState?.spotPositions.length ?? 0;
+    const openPositions = perpPositions + spotPositions;
     const unrealizedPnl = accountState?.unrealizedPnl ?? 0;
 
     const netPnl =
@@ -46,7 +48,7 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
       {
         label: "Account Equity",
         value: formatUSD(accountValue),
-        subValue: `Perps ${formatUSD(perpsValue)} • Spot ${formatUSD(spotUsdc)}`,
+        subValue: `Perps ${formatUSD(perpsValue)} • Spot wallet ${formatUSD(spotWalletValue)}`,
         tone: "neutral",
       },
       {
@@ -65,9 +67,12 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
           !stats ? "neutral" : stats.winRate > 0.5 ? "positive" : stats.winRate < 0.4 ? "negative" : "neutral",
       },
       {
-        label: "Open Positions",
+        label: "Open Holdings",
         value: openPositions.toString(),
-        subValue: openPositions > 0 ? "Live perp exposure" : "Flat right now",
+        subValue:
+          openPositions > 0
+            ? `${perpPositions} perp • ${spotPositions} spot`
+            : "No live perps or spot holdings",
         tone: "neutral",
       },
       {
@@ -121,7 +126,7 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
         ))}
       </div>
       <div className="border-t border-zinc-800 bg-emerald-500/[0.04] px-4 py-2 text-[11px] text-zinc-500">
-        Equity reflects perps plus spot USDC. Staked HYPE remains excluded from this workspace by design.
+        Equity reflects perps plus the full spot wallet. Staked HYPE remains excluded from this workspace by design.
       </div>
     </section>
   );

@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import {
   enforceRateLimit,
-  enforceTimeRange,
   jsonError,
   jsonSuccess,
   logServerError,
@@ -40,15 +39,6 @@ export async function GET(req: NextRequest) {
 
   if (startTime == null || endTime == null) {
     return jsonError("A valid time range is required.", { status: 400 });
-  }
-
-  const valid = enforceTimeRange({
-    startTime,
-    endTime,
-    maxLookbackMs: 90 * 24 * 60 * 60 * 1000,
-  });
-  if (!valid) {
-    return jsonError("Requested history window is not allowed.", { status: 400 });
   }
 
   const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));

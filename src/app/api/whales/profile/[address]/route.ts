@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { enforceRateLimit, jsonError, jsonSuccess, logServerError, validateAddress } from "@/lib/security";
+import { isWhalesEnabled } from "@/lib/appConfig";
 import { isWhaleStoreConfigured } from "@/lib/whaleStore";
 import { fetchLiveWhaleProfile } from "@/lib/whaleService";
 
@@ -9,6 +10,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ address: string }> },
 ) {
+  if (!isWhalesEnabled()) {
+    return jsonError("Not found.", { status: 404 });
+  }
   const limited = enforceRateLimit(req, {
     key: "api-whales-profile",
     limit: 25,

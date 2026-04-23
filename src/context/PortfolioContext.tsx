@@ -119,12 +119,12 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
     try {
       // Fetch all-time history — Hyperliquid blockchain is the source of truth
-      const fillsStartTime = 0;
+      const fillsStartTime = 1;
       const fundingStartTime = Math.max(
         Date.now() - 90 * 24 * 60 * 60 * 1000,
         1,
       );
-      const [fillsRes, fundingRes] = await Promise.all([
+      const [fillsRes, fundingRes, spotRes] = await Promise.all([
         fetch(
           withNetworkParam(
             `/api/user/fills?address=${address}&startTime=${fillsStartTime}&aggregateByTime=true`,
@@ -135,12 +135,23 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
             `/api/user/funding?address=${address}&startTime=${fundingStartTime}`,
           ),
         ),
+        fetch(withNetworkParam("/api/spot")),
       ]);
 
       if (!fillsRes.ok) throw new Error("Failed to fetch trade history");
 
       const rawFills = await fillsRes.json();
       const rawFunding = fundingRes.ok ? await fundingRes.json() : [];
+      const rawSpot = spotRes.ok ? await spotRes.json() : null;
+
+      const coinAliasMap = new Map<string, string>();
+      for (const asset of Array.isArray(rawSpot?.assets) ? rawSpot.assets : []) {
+        const symbol = String(asset.symbol ?? "").toUpperCase();
+        const marketIndex = Number(asset.marketIndex);
+        if (!symbol || !Number.isFinite(marketIndex)) continue;
+        coinAliasMap.set(`@${marketIndex}`, symbol);
+        coinAliasMap.set(symbol, symbol);
+      }
 
       if (!fundingRes.ok) {
         console.warn("Funding history unavailable; continuing without funding merge.");
@@ -150,7 +161,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       const normalizedFills: Fill[] = (
         Array.isArray(rawFills) ? rawFills : []
       ).map((f: Record<string, unknown>) => ({
-        coin: String(f.coin ?? ""),
+        coin: coinAliasMap.get(String(f.coin ?? "").toUpperCase()) ?? String(f.coin ?? ""),
         side: String(f.side ?? "A") as "A" | "B",
         dir: String(f.dir ?? "") as Fill["dir"],
         px: parseFloat(String(f.px ?? "0")),
@@ -202,7 +213,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       let startBal = 1000; // fallback
       try {
         const ledgerRes = await fetch(
-          withNetworkParam(`/api/user/ledger?address=${address}&startTime=0`),
+          withNetworkParam(`/api/user/ledger?address=${address}&startTime=1`),
         );
         if (ledgerRes.ok) {
           const ledgerData = await ledgerRes.json();

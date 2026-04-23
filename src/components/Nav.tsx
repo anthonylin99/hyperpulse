@@ -4,9 +4,14 @@ import Link from "next/link";
 import { useMarket } from "@/context/MarketContext";
 import WalletConnect from "./WalletConnect";
 import NetworkToggle from "./NetworkToggle";
+import { useAppConfig } from "@/context/AppConfigContext";
 
 export default function Nav() {
   const { lastUpdated, loading } = useMarket();
+  const { whalesEnabled, factorsEnabled } = useAppConfig();
+  const focusAreas = ["markets", "portfolio review", "docs"];
+  if (factorsEnabled) focusAreas.splice(1, 0, "factors");
+  if (whalesEnabled) focusAreas.push("whales");
 
   const timeStr = lastUpdated
     ? lastUpdated.toLocaleTimeString("en-US", {
@@ -26,7 +31,7 @@ export default function Nav() {
             </div>
           </Link>
           <div className="mt-0.5 hidden text-xs text-zinc-500 md:block">
-            Hyperliquid intelligence across markets, factors, whales, and portfolio review
+            Hyperliquid intelligence across {focusAreas.join(", ")}
           </div>
         </div>
 

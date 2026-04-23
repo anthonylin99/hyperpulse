@@ -31,11 +31,13 @@ export default function PortfolioPanel() {
     isolatedAccountValue,
     totalMarginUsed,
     withdrawable,
-    spotUsdcTotal,
+    spotTotalValue,
     spotUsdcHold,
     unrealizedPnl,
     positions,
+    spotPositions,
   } = accountState;
+  const allPositions = [...positions, ...spotPositions];
   const marginPct =
     accountValue > 0 ? (totalMarginUsed / accountValue) * 100 : 0;
   const pnlColor = unrealizedPnl >= 0 ? "text-green-500" : "text-red-500";
@@ -125,13 +127,13 @@ export default function PortfolioPanel() {
         </div>
         <div className="flex justify-between text-[10px] font-mono text-zinc-500">
           <span
-            title="Hyperliquid spot wallet USDC balance and held amount"
+            title="Hyperliquid marked spot wallet value plus any held USDC"
           >
-            Spot USDC
+            Spot Wallet
           </span>
           <span className="flex items-baseline gap-2">
             <span>
-              {formatUSD(spotUsdcTotal)}{" "}
+              {formatUSD(spotTotalValue)}{" "}
               {spotUsdcHold > 0 ? `(hold ${formatUSD(spotUsdcHold)})` : ""}
             </span>
             <span
@@ -144,7 +146,7 @@ export default function PortfolioPanel() {
         </div>
         <p className="text-[9px] text-zinc-600 font-sans">
           Perp withdrawable is the current USDC available on the perp side.
-          Spot USDC may need a transfer before it can be used for perp orders.
+          Spot wallet balances may need a transfer or conversion before they can be used for perp orders.
         </p>
         <div className="flex justify-between text-[11px] font-mono">
           <span className="text-zinc-500">Unrealized PnL</span>
@@ -166,21 +168,22 @@ export default function PortfolioPanel() {
       {/* Positions */}
       <div className="flex-1 overflow-auto">
         <div className="px-3 py-1.5 text-[9px] uppercase tracking-wider text-zinc-500">
-          Open Positions ({positions.length})
+          Open Holdings ({allPositions.length})
         </div>
-        {positions.length === 0 ? (
+        {allPositions.length === 0 ? (
           <div className="px-3 py-4 text-center text-[11px] text-zinc-600">
-            No open positions
+            No open holdings
           </div>
         ) : (
           <div className="space-y-0">
-            {positions.map((pos) => {
+            {allPositions.map((pos) => {
               const isLong = pos.szi > 0;
+              const isSpot = pos.marketType === "hip3_spot";
               const sideColor = isLong ? "text-green-500" : "text-red-500";
               const positionPnlColor =
                 pos.unrealizedPnl >= 0 ? "text-green-500" : "text-red-500";
               const marketAsset = assets.find((a) => a.coin === pos.coin);
-              const markPx = marketAsset?.markPx ?? pos.entryPx;
+              const markPx = marketAsset?.markPx ?? pos.markPx ?? pos.entryPx;
 
               return (
                 <div
@@ -195,15 +198,17 @@ export default function PortfolioPanel() {
                       <span
                         className={`text-[9px] font-mono font-medium ${sideColor}`}
                       >
-                        {isLong ? "LONG" : "SHORT"} {pos.leverage}x
+                        {isSpot ? "SPOT" : `${isLong ? "LONG" : "SHORT"} ${pos.leverage}x`}
                       </span>
                     </div>
-                    <button
-                      onClick={() => handleClose(pos.coin, pos.szi)}
-                      className="px-1.5 py-0.5 text-[9px] text-red-400 border border-red-500/20 rounded hover:bg-red-500/10 transition-colors"
-                    >
-                      Close
-                    </button>
+                    {!isSpot && (
+                      <button
+                        onClick={() => handleClose(pos.coin, pos.szi)}
+                        className="px-1.5 py-0.5 text-[9px] text-red-400 border border-red-500/20 rounded hover:bg-red-500/10 transition-colors"
+                      >
+                        Close
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 text-[10px] font-mono text-zinc-400">
                     <div>

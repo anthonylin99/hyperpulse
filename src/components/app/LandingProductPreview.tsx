@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
+import { useAppConfig } from "@/context/AppConfigContext";
 import { cn, formatFundingAPR, formatPct, formatUSD } from "@/lib/format";
 import { computeHyperPulseVix } from "@/lib/proprietaryIndex";
 
@@ -83,9 +84,14 @@ function StatCard({ label, value, helper, tone = "neutral" }: { label: string; v
 export default function LandingProductPreview() {
   const { assets, lastUpdated, fundingHistories, btcCandles } = useMarket();
   const { leader } = useFactors();
+  const { whalesEnabled, factorsEnabled } = useAppConfig();
   const [whaleHeadline, setWhaleHeadline] = useState<WhaleHeadline | null>(null);
 
   useEffect(() => {
+    if (!whalesEnabled) {
+      setWhaleHeadline(null);
+      return;
+    }
     let mounted = true;
 
     const loadHeadline = async () => {
@@ -105,7 +111,7 @@ export default function LandingProductPreview() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [whalesEnabled]);
 
   const bias = useMemo(
     () => computeHyperPulseVix({ assets, fundingHistories, btcCandles }),
@@ -153,8 +159,8 @@ export default function LandingProductPreview() {
             </span>
           </div>
           <div className="flex items-center gap-2 whitespace-nowrap">
-            <span className="text-zinc-500">Whale Alert</span>
-            <span className="font-mono text-zinc-200">{whaleHeadline?.headline ?? "Watching tape"}</span>
+            <span className="text-zinc-500">{whalesEnabled ? "Whale Alert" : "Portfolio"}</span>
+            <span className="font-mono text-zinc-200">{whalesEnabled ? whaleHeadline?.headline ?? "Watching tape" : "Read-only by default"}</span>
           </div>
           <div className="ml-auto flex items-center gap-2 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-[11px] text-zinc-400">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
@@ -172,7 +178,11 @@ export default function LandingProductPreview() {
             Hyper<span className="text-[#66e0cc]">Pulse</span>
           </div>
           <div className="mt-6 space-y-2">
-            {MENU_ITEMS.map((item) => {
+            {MENU_ITEMS.filter((item) => {
+              if (!whalesEnabled && item.label === "Whales") return false;
+              if (!factorsEnabled && item.label === "Factors") return false;
+              return true;
+            }).map((item) => {
               const Icon = item.icon;
               return (
                 <div
@@ -259,20 +269,29 @@ export default function LandingProductPreview() {
                 <div className="mt-4 space-y-3 text-sm text-zinc-400">
                   <div className="flex items-center justify-between"><span>BTC 24H</span><span className="font-mono text-emerald-300">{formatPct(majors[0]?.priceChange24h ?? 0)}</span></div>
                   <div className="flex items-center justify-between"><span>BTC Funding APR</span><span className="font-mono text-rose-300">{formatFundingAPR(majors[0]?.fundingAPR ?? 0)}</span></div>
-                  <div className="flex items-center justify-between"><span>Factor Leader</span><span className="font-mono text-zinc-200">{leader?.snapshot.name ?? 'Live'}</span></div>
+                  <div className="flex items-center justify-between">
+                    <span>{factorsEnabled ? "Factor Leader" : "Mode"}</span>
+                    <span className="font-mono text-zinc-200">{factorsEnabled ? leader?.snapshot.name ?? "Live" : "Read-only"}</span>
+                  </div>
                 </div>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Top Factor (7D)</div>
-                  <div className="mt-2 text-lg font-medium text-zinc-100">{leader?.snapshot.name ?? 'Market Risk'}</div>
-                  <div className="mt-2 font-mono text-emerald-300">{leader7d != null ? formatPct(leader7d) : '+0.00%'}</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                    {factorsEnabled ? "Top Factor (7D)" : "Funding Regime"}
+                  </div>
+                  <div className="mt-2 text-lg font-medium text-zinc-100">
+                    {factorsEnabled ? leader?.snapshot.name ?? "Market Risk" : bias.trendLabel}
+                  </div>
+                  <div className="mt-2 font-mono text-emerald-300">
+                    {factorsEnabled ? leader7d != null ? formatPct(leader7d) : "+0.00%" : formatFundingAPR(majors[0]?.fundingAPR ?? 0)}
+                  </div>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Whale Alert</div>
-                  <div className="mt-2 text-base font-medium text-zinc-100">{whaleHeadline?.headline ?? 'Watching tape'}</div>
-                  <div className="mt-2 text-xs text-zinc-500">Tracked positioning flow</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{whalesEnabled ? "Whale Alert" : "Portfolio Mode"}</div>
+                  <div className="mt-2 text-base font-medium text-zinc-100">{whalesEnabled ? whaleHeadline?.headline ?? 'Watching tape' : 'Paste any public wallet'}</div>
+                  <div className="mt-2 text-xs text-zinc-500">{whalesEnabled ? "Tracked positioning flow" : "No seed phrase, no manual private key"}</div>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4">
                   <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Top Movers (24H)</div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAppConfig } from "@/context/AppConfigContext";
+
 const quickLinks = [
   { href: "#overview", label: "Overview" },
   { href: "#data-sources", label: "Data Sources" },
@@ -40,9 +42,9 @@ const portfolioMetrics = [
   },
   {
     name: "Equity / Account Value",
-    formula: "Perps equity + spot USDC",
+    formula: "Perps equity + full marked spot wallet",
     detail:
-      "Perps equity comes from Hyperliquid margin account value. Spot USDC is added if it is sitting idle in the spot wallet. Staked HYPE is not included.",
+      "Perps equity comes from Hyperliquid margin account value. The spot wallet adds idle USDC plus marked non-USDC balances such as HIP-3 spot holdings. Staked HYPE is not included.",
   },
   {
     name: "Drawdown",
@@ -99,7 +101,7 @@ const faqs = [
   },
   {
     q: "Does HyperPulse include staked HYPE in equity?",
-    a: "No. The current production calculation uses perps equity plus spot USDC. Staked HYPE is excluded so the trading balance stays interpretable.",
+    a: "No. The current production calculation uses perps equity plus the full marked spot wallet. Staked HYPE is excluded so the trading balance stays interpretable.",
   },
   {
     q: "When are AI Insights hidden?",
@@ -132,6 +134,13 @@ function Section({
 }
 
 export default function DocsPage() {
+  const { factorsEnabled, whalesEnabled } = useAppConfig();
+  const visibleQuickLinks = quickLinks.filter((item) => {
+    if (!factorsEnabled && item.href === "#factors") return false;
+    if (!whalesEnabled && item.href === "#whales") return false;
+    return true;
+  });
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20">
       <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
@@ -141,7 +150,7 @@ export default function DocsPage() {
               Docs
             </div>
             <div className="mt-3 space-y-1">
-              {quickLinks.map((item) => (
+              {visibleQuickLinks.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
@@ -171,7 +180,7 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
-              {quickLinks.map((item) => (
+              {visibleQuickLinks.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
@@ -209,7 +218,7 @@ export default function DocsPage() {
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
                 <div className="text-xs font-medium text-zinc-100">Portfolio inputs</div>
                 <div className="mt-2 text-sm text-zinc-400">
-                  Wallet account state, spot USDC balances, open positions, fills, realized fees, and funding cash
+                  Wallet account state, marked spot balances, open positions, fills, realized fees, and funding cash
                   flows.
                 </div>
               </div>
@@ -243,7 +252,7 @@ export default function DocsPage() {
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
               <div className="font-medium text-amber-200">Accounting note</div>
               <div className="mt-1 text-amber-100/80">
-                HyperPulse currently defines displayed trading equity as <span className="font-medium">perps equity + spot USDC</span>.
+                HyperPulse currently defines displayed trading equity as <span className="font-medium">perps equity + the full marked spot wallet</span>.
                 Staked HYPE is intentionally excluded from this number so the dashboard stays aligned with immediately
                 usable trading capital.
               </div>
@@ -280,82 +289,86 @@ export default function DocsPage() {
             </p>
           </Section>
 
-          <Section id="factors" eyebrow="Factors" title="How the Factors tab is calculated">
-            <p>
-              HyperPulse uses Artemis as the canonical research layer for factor definitions and monthly basket
-              commentary. The app then combines those factor snapshots with live Hyperliquid market state so traders can
-              see which regimes are actually tradable right now.
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Historical factor performance</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Computed from Artemis daily <code>price</code> data across the tracked long and short baskets. Long
-                  legs and short legs are equal-weighted unless the public report publishes explicit weights.
+          {factorsEnabled ? (
+            <Section id="factors" eyebrow="Factors" title="How the Factors tab is calculated">
+              <p>
+                HyperPulse uses Artemis as the canonical research layer for factor definitions and monthly basket
+                commentary. The app then combines those factor snapshots with live Hyperliquid market state so traders can
+                see which regimes are actually tradable right now.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <div className="text-xs font-medium text-zinc-100">Historical factor performance</div>
+                  <div className="mt-2 text-sm text-zinc-400">
+                    Computed from Artemis daily <code>price</code> data across the tracked long and short baskets. Long
+                    legs and short legs are equal-weighted unless the public report publishes explicit weights.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <div className="text-xs font-medium text-zinc-100">Hyperliquid trade view</div>
+                  <div className="mt-2 text-sm text-zinc-400">
+                    Built from live Hyperliquid prices, funding, open interest, and existing signal confidence. This is
+                    the layer that turns factor research into actual trade candidates such as TAO or NEAR.
+                  </div>
                 </div>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Hyperliquid trade view</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Built from live Hyperliquid prices, funding, open interest, and existing signal confidence. This is
-                  the layer that turns factor research into actual trade candidates such as TAO or NEAR.
-                </div>
-              </div>
-            </div>
-            <p>
-              Factor cards are intentionally labeled as HyperPulse-tracked Artemis baskets. HyperPulse does not claim
-              to reproduce private rebalance files; it shows the public factor logic, public report holdings, and the
-              live Hyperliquid overlay built on top.
-            </p>
-          </Section>
+              <p>
+                Factor cards are intentionally labeled as HyperPulse-tracked Artemis baskets. HyperPulse does not claim
+                to reproduce private rebalance files; it shows the public factor logic, public report holdings, and the
+                live Hyperliquid overlay built on top.
+              </p>
+            </Section>
+          ) : null}
 
-          <Section id="whales" eyebrow="Whales" title="How the positioning monitor works">
-            <p>
-              The Whales tab now works as a read-only positioning monitor. It combines three signal families:
-              crowding setups on major perps, nearby tracked-book liquidation pockets, and rare tracked-wallet repeat
-              behavior that can be reviewed on a dedicated wallet page.
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Live profile lookup</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Today&apos;s production app can already look up any whale wallet on demand from public Hyperliquid
-                  state, fills, funding, and ledger updates. That makes the right-side profile pane useful even before a
-                  background worker is configured.
+          {whalesEnabled ? (
+            <Section id="whales" eyebrow="Whales" title="How the positioning monitor works">
+              <p>
+                The Whales tab now works as a read-only positioning monitor. It combines three signal families:
+                crowding setups on major perps, nearby tracked-book liquidation pockets, and rare tracked-wallet repeat
+                behavior that can be reviewed on a dedicated wallet page.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <div className="text-xs font-medium text-zinc-100">Live profile lookup</div>
+                  <div className="mt-2 text-sm text-zinc-400">
+                    Today&apos;s production app can already look up any whale wallet on demand from public Hyperliquid
+                    state, fills, funding, and ledger updates. That makes the right-side profile pane useful even before a
+                    background worker is configured.
+                  </div>
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <div className="text-xs font-medium text-zinc-100">Always-on alert feed</div>
+                  <div className="mt-2 text-sm text-zinc-400">
+                    The alert feed becomes durable when a background worker writes episodes into Neon Postgres. That
+                    worker watches large fills, recent deposit flow, leverage, and liquidation distance so repeated
+                    partial fills collapse into one cleaner alert instead of spamming the UI.
+                  </div>
                 </div>
               </div>
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Always-on alert feed</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  The alert feed becomes durable when a background worker writes episodes into Neon Postgres. That
-                  worker watches large fills, recent deposit flow, leverage, and liquidation distance so repeated
-                  partial fills collapse into one cleaner alert instead of spamming the UI.
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Detection logic</div>
+                <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                  <div>1. Watch large perp trades and explorer flow for candidate wallets.</div>
+                  <div>2. Enrich candidate wallets with current state, recent fills, funding, and non-funding ledger events.</div>
+                  <div>3. Join recent net inflow with new exposure to classify deposit-led long or short episodes.</div>
+                  <div>4. Compute evidence-first tags such as aggressive leverage, underwater, concentrated book, and funding-sensitive.</div>
+                  <div>5. Persist the normalized alert plus the current wallet snapshot for replay over the last 30 days.</div>
                 </div>
               </div>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Detection logic</div>
-              <div className="mt-3 space-y-2 text-sm text-zinc-300">
-                <div>1. Watch large perp trades and explorer flow for candidate wallets.</div>
-                <div>2. Enrich candidate wallets with current state, recent fills, funding, and non-funding ledger events.</div>
-                <div>3. Join recent net inflow with new exposure to classify deposit-led long or short episodes.</div>
-                <div>4. Compute evidence-first tags such as aggressive leverage, underwater, concentrated book, and funding-sensitive.</div>
-                <div>5. Persist the normalized alert plus the current wallet snapshot for replay over the last 30 days.</div>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-300">What this monitor is not</div>
+                <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                  <div>Crowding is a structural heuristic on major perps, not a guaranteed predictive model.</div>
+                  <div>Liquidation pressure is a tracked-book subset from profitable wallets, not a full exchange-wide liquidation map.</div>
+                  <div>Rare whale signals are tracked-wallet behavior screens, not copy-trade recommendations.</div>
+                </div>
               </div>
-            </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-              <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-300">What this monitor is not</div>
-              <div className="mt-3 space-y-2 text-sm text-zinc-300">
-                <div>Crowding is a structural heuristic on major perps, not a guaranteed predictive model.</div>
-                <div>Liquidation pressure is a tracked-book subset from profitable wallets, not a full exchange-wide liquidation map.</div>
-                <div>Rare whale signals are tracked-wallet behavior screens, not copy-trade recommendations.</div>
-              </div>
-            </div>
-            <p>
-              HyperPulse intentionally uses deterministic templates for whale alerts in v1. That keeps the feed cheap,
-              explainable, and suitable for always-on monitoring without burning model credits.
-            </p>
-          </Section>
+              <p>
+                HyperPulse intentionally uses deterministic templates for whale alerts in v1. That keeps the feed cheap,
+                explainable, and suitable for always-on monitoring without burning model credits.
+              </p>
+            </Section>
+          ) : null}
 
           <Section id="sentiment" eyebrow="Sentiment" title="How HyperPulse estimates tomorrow&apos;s bias">
             <p>

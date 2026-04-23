@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
+import { isFactorsEnabled } from "@/lib/appConfig";
 import {
   enforceRateLimit,
   jsonError,
@@ -192,6 +193,12 @@ function coerceBrief(raw: unknown): FactorAiBrief | null {
 }
 
 export async function POST(request: Request) {
+  if (!isFactorsEnabled()) {
+    return jsonError("Factors are not available on this deployment.", {
+      status: 404,
+    });
+  }
+
   const limited = enforceRateLimit(request, {
     key: "api-factors-insights",
     limit: 20,

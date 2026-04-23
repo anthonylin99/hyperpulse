@@ -4,15 +4,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { APP_TABS } from "@/lib/appTabs";
 import { cn } from "@/lib/format";
+import { useAppConfig } from "@/context/AppConfigContext";
 
 export default function AppTabStrip() {
   const pathname = usePathname();
+  const { whalesEnabled, factorsEnabled } = useAppConfig();
+  const tabs = APP_TABS.filter((tab) => {
+    if (!whalesEnabled && tab.key === "whales") return false;
+    if (!factorsEnabled && tab.key === "factors") return false;
+    return true;
+  });
 
   return (
     <div className="border-b border-zinc-800/80 bg-zinc-950/85 backdrop-blur">
       <div className="mx-auto max-w-7xl px-4 py-3">
         <div className="scrollbar-hide inline-flex max-w-full gap-2 overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 p-1.5">
-          {APP_TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active = tab.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
             return (
               <Link

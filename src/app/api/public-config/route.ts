@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
-import { ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
+import { isFactorsEnabled, isTradingEnabled, isWhalesEnabled } from "@/lib/appConfig";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const tradingEnabled =
-    process.env.ENABLE_TRADING === "true" ||
-    process.env.NEXT_PUBLIC_ENABLE_TRADING === "true" ||
-    ENABLE_TRADING_DEFAULT;
+  const tradingEnabled = isTradingEnabled();
+  const whalesEnabled = isWhalesEnabled();
+  const factorsEnabled = isFactorsEnabled();
 
   return NextResponse.json(
     {
       tradingEnabled,
+      whalesEnabled,
+      factorsEnabled,
       deploymentMode: tradingEnabled ? "trading" : "read-only",
     },
     {

@@ -15,6 +15,7 @@ import { HttpTransport, InfoClient, ExchangeClient } from "@nktkas/hyperliquid";
 import { POLL_INTERVAL_PORTFOLIO } from "@/lib/constants";
 import { isNetworkTestnet, onNetworkChange } from "@/lib/hyperliquid";
 import { useAppConfig } from "@/context/AppConfigContext";
+import { buildSpotMarketMap } from "@/lib/whaleTaxonomy";
 import type { AccountState, Position } from "@/types";
 import toast from "react-hot-toast";
 
@@ -141,8 +142,52 @@ function parsePositions(
         leverage: p.leverage.value,
         liquidationPx: p.liquidationPx ? parseFloat(p.liquidationPx) : null,
         returnOnEquity: parseFloat(p.returnOnEquity),
+        marketType: "perp",
       };
     });
+}
+
+function parseNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseSpotPositions(
+  balances: Array<Record<string, unknown>>,
+  spotMarketMap: ReturnType<typeof buildSpotMarketMap>,
+): Position[] {
+  return balances
+    .map((balance): Position | null => {
+      const coin = String(balance.coin ?? "").toUpperCase();
+      if (!coin || coin === "USDC") return null;
+
+      const total = parseNumber(balance.total);
+      if (!Number.isFinite(total) || total <= 0) return null;
+
+      const market = spotMarketMap[coin];
+      if (!market || market.markPx <= 0) return null;
+
+      const entryNtl = parseNumber(balance.entryNtl);
+      const entryPx = total > 0 && entryNtl > 0 ? entryNtl / total : market.markPx;
+      const notionalUsd = total * market.markPx;
+      const unrealizedPnl = entryNtl > 0 ? notionalUsd - entryNtl : 0;
+      const returnOnEquity = entryNtl > 0 ? unrealizedPnl / entryNtl : 0;
+
+      return {
+        coin: market.symbol,
+        szi: total,
+        entryPx,
+        markPx: market.markPx,
+        unrealizedPnl,
+        marginUsed: 0,
+        leverage: 1,
+        liquidationPx: null,
+        returnOnEquity,
+        marketType: "hip3_spot",
+      };
+    })
+    .filter((position): position is Position => position != null)
+    .sort((a, b) => Math.abs(b.szi) * b.markPx - Math.abs(a.szi) * a.markPx);
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
@@ -170,31 +215,50 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (mainAddress: string, throwOnError = false) => {
       try {
         const info = getInfo();
-        const [state, spotState] = await Promise.all([
+        const [state, spotState, spotMeta] = await Promise.all([
           info.clearinghouseState({
             user: mainAddress as `0x${string}`,
           }),
           info.spotClearinghouseState({
             user: mainAddress as `0x${string}`,
           }),
+          info.spotMetaAndAssetCtxs(),
         ]);
 
         const positions = parsePositions(state.assetPositions);
-        const totalUnrealizedPnl = positions.reduce(
+        const [spotMetaData, spotAssetCtxs] = spotMeta as unknown as [
+          { universe: Array<{ index: number; tokens: number[] }>; tokens: Array<{ index: number; name: string; fullName?: string }> },
+          Array<{ markPx: string; midPx: string | null; prevDayPx: string }>,
+        ];
+        const spotMarketMap = buildSpotMarketMap(spotMetaData, spotAssetCtxs);
+        const balances = (spotState.balances as Array<Record<string, unknown>> | undefined) ?? [];
+        const spotPositions = parseSpotPositions(balances, spotMarketMap);
+
+        const perpUnrealizedPnl = positions.reduce(
           (sum, p) => sum + p.unrealizedPnl,
           0
         );
-        const usdcBalance = spotState.balances.find((b) => b.coin === "USDC");
-        const spotUsdcTotal = usdcBalance ? parseFloat(usdcBalance.total) : 0;
-        const spotUsdcHold = usdcBalance ? parseFloat(usdcBalance.hold) : 0;
+        const spotUnrealizedPnl = spotPositions.reduce(
+          (sum, p) => sum + p.unrealizedPnl,
+          0,
+        );
+        const usdcBalance = balances.find((b) => String(b.coin ?? "").toUpperCase() === "USDC");
+        const spotUsdcTotal = usdcBalance ? parseNumber(usdcBalance.total) : 0;
+        const spotUsdcHold = usdcBalance ? parseNumber(usdcBalance.hold) : 0;
+        const spotAssetValue = spotPositions.reduce(
+          (sum, p) => sum + Math.abs(p.szi) * p.markPx,
+          0,
+        );
+        const spotTotalValue = spotUsdcTotal + spotAssetValue;
         const crossAccountValue = parseFloat(state.crossMarginSummary.accountValue);
         const isolatedAccountValue = parseFloat(state.marginSummary.accountValue);
         const crossMarginUsed = parseFloat(state.crossMarginSummary.totalMarginUsed);
         const totalMarginUsed = parseFloat(state.marginSummary.totalMarginUsed);
+        const totalUnrealizedPnl = perpUnrealizedPnl + spotUnrealizedPnl;
 
         // marginSummary.accountValue is the total perps equity (cross + isolated).
-        // spotUsdcTotal is USDC sitting in the spot wallet (NOT deposited to perps).
-        const totalAccountValue = isolatedAccountValue + spotUsdcTotal;
+        // Spot wallet value includes idle USDC plus marked non-USDC balances.
+        const totalAccountValue = isolatedAccountValue + spotTotalValue;
 
         // Available for new orders = cross account value - cross margin used
         // This matches Hyperliquid UI "Available Balance"
@@ -208,8 +272,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           withdrawable: availableForTrading,
           spotUsdcTotal,
           spotUsdcHold,
+          spotAssetValue,
+          spotTotalValue,
+          spotUnrealizedPnl,
           unrealizedPnl: totalUnrealizedPnl,
           positions,
+          spotPositions,
         });
       } catch (err) {
         console.error("Failed to fetch portfolio:", err);
