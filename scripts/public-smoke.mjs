@@ -51,4 +51,27 @@ for (const check of checks) {
   console.log(`ok ${check.path}`);
 }
 
+if (expectPublicFlags) {
+  for (const path of ["/factors", "/whales"]) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: { "user-agent": "HyperPulse public smoke/1.0" },
+      redirect: "manual",
+    });
+    if (![302, 303, 307, 308].includes(response.status)) {
+      throw new Error(`${path} expected disabled redirect, got ${response.status}`);
+    }
+    console.log(`ok ${path} disabled redirect`);
+  }
+
+  for (const path of ["/api/factors", "/api/whales/feed"]) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: { "user-agent": "HyperPulse public smoke/1.0" },
+    });
+    if (response.status !== 404) {
+      throw new Error(`${path} expected 404 while disabled, got ${response.status}`);
+    }
+    console.log(`ok ${path} disabled 404`);
+  }
+}
+
 console.log(`public smoke passed for ${baseUrl}`);

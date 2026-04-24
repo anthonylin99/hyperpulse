@@ -37,7 +37,7 @@ export function getPositionNotes(address: string): Record<string, PositionNote> 
   }
 }
 
-export function setPositionNote(address: string, key: string, note: PositionNote): void {
+export function setPositionNote(address: string, key: string, note: PositionNote): boolean {
   try {
     const notes = getPositionNotes(address);
     const cleaned: PositionNote = {
@@ -52,7 +52,9 @@ export function setPositionNote(address: string, key: string, note: PositionNote
       notes[key] = cleaned;
     }
     localStorage.setItem(storageKey(address), JSON.stringify(notes));
+    return true;
   } catch {
     // localStorage may be unavailable or full; notes are a convenience layer only.
+    return false;
   }
 }

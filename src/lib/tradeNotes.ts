@@ -14,7 +14,7 @@ export function getNotes(address: string): Record<string, string> {
   }
 }
 
-export function setNote(address: string, tradeId: string, note: string): void {
+export function setNote(address: string, tradeId: string, note: string): boolean {
   try {
     const notes = getNotes(address);
     if (note.trim() === "") {
@@ -23,8 +23,10 @@ export function setNote(address: string, tradeId: string, note: string): void {
       notes[tradeId] = note;
     }
     localStorage.setItem(storageKey(address), JSON.stringify(notes));
+    return true;
   } catch {
     // localStorage full or unavailable — silently fail
+    return false;
   }
 }
 

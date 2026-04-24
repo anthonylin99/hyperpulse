@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import BrandLogo from "@/components/brand/BrandLogo";
 import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -106,7 +105,10 @@ export default function LandingProductPreview() {
 
       <div className="border-b border-zinc-800 bg-[#0c1117] px-5 py-4">
         <div className="flex items-center justify-between gap-4">
-          <BrandLogo compact markClassName="h-8 w-8" textClassName="h-5" />
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-teal-300">
+            <span className="h-2 w-2 rounded-full bg-teal-300" />
+            Live terminal preview
+          </div>
           <div className="hidden items-center gap-1 text-sm md:flex">
             <span className="rounded-xl bg-emerald-500/[0.08] px-3 py-2 text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.14)]">
               Markets

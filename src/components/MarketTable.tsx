@@ -214,8 +214,8 @@ export default function MarketTable({
   return (
     <>
       <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 border-b border-zinc-800 bg-zinc-950">
-          <div className="relative">
+        <div className="flex-shrink-0 flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 border-b border-zinc-800 bg-zinc-950">
+          <div className="relative shrink-0">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
             <input
               type="text"
@@ -226,7 +226,7 @@ export default function MarketTable({
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               onClick={() => setMode("perps")}
               className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
@@ -251,7 +251,7 @@ export default function MarketTable({
 
           {mode === "perps" ? (
             <>
-              <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+              <div className="min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-hide">
                 <button
                   onClick={() => setCategoryFilter("All")}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
@@ -292,7 +292,7 @@ export default function MarketTable({
               </div>
             </>
           ) : (
-            <div className="ml-auto flex items-center gap-1 overflow-x-auto scrollbar-hide">
+            <div className="min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-hide">
               {SPOT_FILTERS.map((cat) => (
                 <button
                   key={cat}

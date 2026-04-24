@@ -76,8 +76,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
     if (trades.length === 0) return [];
     const now = Date.now();
     const cutoff = range === "all" ? 0 : now - RANGE_MS[range];
-    const scopedTrades = trades.filter((trade) => trade.exitTime >= cutoff);
-    const visibleTrades = scopedTrades.length > 0 ? scopedTrades : trades;
+    const visibleTrades = trades.filter((trade) => trade.exitTime >= cutoff);
     const weekly = range === "90d" || range === "all";
     const grouped = new Map<number, { time: number; label: string; pnl: number; trades: number }>();
 
@@ -207,8 +206,18 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
       </div>
 
       <div className={cn(density === "roomy" ? "h-[420px] px-4 py-5 sm:px-5" : "h-[380px] px-3 py-4 sm:px-4")}>
-        <ResponsiveContainer width="100%" height="100%">
-          {chartMode === "line" ? (
+        {chartMode === "bars" && pnlBars.length === 0 ? (
+          <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-zinc-800 bg-zinc-950/45 px-4 text-center">
+            <div>
+              <div className="text-sm font-medium text-zinc-200">No closed-trade P&amp;L in this range.</div>
+              <div className="mt-2 text-xs text-zinc-500">
+                Switch ranges or use the line view to inspect the account curve.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            {chartMode === "line" ? (
             <ComposedChart data={chartData} margin={{ top: 10, right: 22, left: 0, bottom: 8 }}>
               <defs>
                 <linearGradient id="portfolioEquityFill" x1="0" y1="0" x2="0" y2="1">
@@ -279,7 +288,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
                 activeDot={{ r: 3.5, fill: "#f4f4f5" }}
               />
             </ComposedChart>
-          ) : (
+            ) : (
             <ComposedChart data={pnlBars} margin={{ top: 10, right: 22, left: 0, bottom: 8 }}>
               <XAxis
                 dataKey="label"
@@ -323,8 +332,9 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
                 ))}
               </Bar>
             </ComposedChart>
-          )}
-        </ResponsiveContainer>
+            )}
+          </ResponsiveContainer>
+        )}
       </div>
     </section>
   );

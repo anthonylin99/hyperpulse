@@ -61,14 +61,17 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [analyzedTrade, setAnalyzedTrade] = useState<RoundTripTrade | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [noteWarning, setNoteWarning] = useState<string | null>(null);
   const pageSize = 25;
 
   // Load notes from localStorage when address changes
   useEffect(() => {
     if (address) {
       setNotes(getNotes(address));
+      setNoteWarning(null);
     } else {
       setNotes({});
+      setNoteWarning(null);
     }
   }, [address]);
 
@@ -76,7 +79,12 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
     (tradeId: string, text: string) => {
       if (!address) return;
       const trimmed = text.trim();
-      setNote(address, tradeId, trimmed);
+      const saved = setNote(address, tradeId, trimmed);
+      if (!saved) {
+        setNoteWarning("Trade note could not be saved in this browser session.");
+        return;
+      }
+      setNoteWarning(null);
       setNotes((prev) => {
         const next = { ...prev };
         if (trimmed === "") {
@@ -309,6 +317,11 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
             </select>
           </div>
         </div>
+        {noteWarning ? (
+          <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {noteWarning}
+          </div>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto">

@@ -34,6 +34,8 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
   const { assets } = useMarket();
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, PositionNote>>({});
+  const [notesAddress, setNotesAddress] = useState<string | null>(null);
+  const [noteWarning, setNoteWarning] = useState<string | null>(null);
   const positions = useMemo(
     () => [...(accountState?.positions ?? []), ...(accountState?.spotPositions ?? [])],
     [accountState?.positions, accountState?.spotPositions],
@@ -67,28 +69,42 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
   useEffect(() => {
     if (!address) {
       setNotes({});
+      setNotesAddress(null);
+      setExpandedNote(null);
+      setNoteWarning(null);
       return;
     }
     setNotes(getPositionNotes(address));
+    setNotesAddress(address);
+    setExpandedNote(null);
+    setNoteWarning(null);
   }, [address]);
+
+  const effectiveNotes = useMemo(
+    () => (notesAddress === address ? notes : {}),
+    [address, notes, notesAddress],
+  );
 
   const handleNoteChange = useCallback(
     (key: string, field: keyof Omit<PositionNote, "updatedAt">, value: string) => {
-      if (!address) return;
-      setNotes((prev) => {
-        const nextNote: PositionNote = {
-          ...(prev[key] ?? emptyPositionNote()),
-          [field]: value,
-          updatedAt: Date.now(),
-        };
-        setPositionNote(address, key, nextNote);
-        return {
-          ...prev,
-          [key]: nextNote,
-        };
-      });
+      if (!address || notesAddress !== address) return;
+      const nextNote: PositionNote = {
+        ...(effectiveNotes[key] ?? emptyPositionNote()),
+        [field]: value,
+        updatedAt: Date.now(),
+      };
+      const saved = setPositionNote(address, key, nextNote);
+      if (!saved) {
+        setNoteWarning("Notes could not be saved in this browser session.");
+        return;
+      }
+      setNoteWarning(null);
+      setNotes((prev) => ({
+        ...prev,
+        [key]: nextNote,
+      }));
     },
-    [address],
+    [address, effectiveNotes, notesAddress],
   );
 
   if (sorted.length === 0) return null;
@@ -107,6 +123,11 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
             {sorted.length} position{sorted.length === 1 ? "" : "s"} • {formatUSD(totals.notional)} value • 5m snapshot
           </div>
         </div>
+        {noteWarning ? (
+          <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {noteWarning}
+          </div>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto">
@@ -131,7 +152,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
               const tone = riskTone(dist);
               const isSpot = position.marketType === "hip3_spot";
               const noteKey = positionNoteKey(position);
-              const note = notes[noteKey] ?? emptyPositionNote();
+              const note = effectiveNotes[noteKey] ?? emptyPositionNote();
               const hasNote = !!(note.thesis || note.invalidation || note.review);
               const isExpanded = expandedNote === noteKey;
               const marketAsset = assetByCoin.get(position.coin);

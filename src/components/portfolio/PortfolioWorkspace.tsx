@@ -198,7 +198,7 @@ export default function PortfolioWorkspace() {
                 <div className="flex items-center gap-2 px-1">
                   <CircleDashed className="h-4 w-4 text-emerald-300" />
                   <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-zinc-500">
-                    Portfolio review workspace
+                    Review sections
                   </div>
                 </div>
               </div>

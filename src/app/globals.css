@@ -133,8 +133,16 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hp-ticker-viewport {
+    overflow-x: auto;
+  }
+
   .hp-ticker-track {
     animation: none;
+  }
+
+  .hp-ticker-group[aria-hidden="true"] {
+    display: none;
   }
 }
 

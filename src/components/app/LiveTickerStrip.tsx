@@ -71,7 +71,7 @@ export default function LiveTickerStrip() {
     <div className="border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur">
       <div className="mx-auto max-w-[1480px] px-4 py-2 sm:px-6 xl:px-8">
         <div className="flex items-center gap-4 text-xs">
-          <div className="relative min-w-0 flex-1 overflow-hidden">
+          <div className="hp-ticker-viewport relative min-w-0 flex-1 overflow-hidden">
             <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-zinc-950 to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-zinc-950 to-transparent" />
             <div className="hp-ticker-track">

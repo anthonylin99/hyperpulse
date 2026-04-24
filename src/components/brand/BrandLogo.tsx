@@ -37,7 +37,7 @@ export default function BrandLogo({
         <Image
           src="/brand/hyperpulse-lockup.svg"
           alt="HyperPulse"
-          width={760}
+          width={574}
           height={168}
           className={cn(
             "w-auto",
