@@ -1,9 +1,6 @@
 import type { AccountState, Position, TradeSizingSnapshot } from "@/types";
 
-export const SIZING_TARGET_MIN_PCT = 5;
-export const SIZING_TARGET_MAX_PCT = 12;
-
-export function getDeployableCapital(accountState: AccountState | null): number {
+export function getTradeableUsdcCapital(accountState: AccountState | null): number {
   if (!accountState) return 0;
   return Math.max(accountState.withdrawable + accountState.totalMarginUsed, 0);
 }
@@ -14,16 +11,9 @@ export function getPositionSide(position: Position): "long" | "short" {
 
 export function positionSizingPct(position: Position, accountState: AccountState | null): number | null {
   if (position.marketType === "hip3_spot") return null;
-  const deployableCapital = getDeployableCapital(accountState);
-  if (deployableCapital <= 0 || position.marginUsed <= 0) return null;
-  return (position.marginUsed / deployableCapital) * 100;
-}
-
-export function sizingTone(sizingPct: number | null): "under" | "target" | "over" | "unknown" {
-  if (sizingPct == null || !Number.isFinite(sizingPct)) return "unknown";
-  if (sizingPct > SIZING_TARGET_MAX_PCT) return "over";
-  if (sizingPct >= SIZING_TARGET_MIN_PCT) return "target";
-  return "under";
+  const tradeableCapital = getTradeableUsdcCapital(accountState);
+  if (tradeableCapital <= 0 || position.marginUsed <= 0) return null;
+  return (position.marginUsed / tradeableCapital) * 100;
 }
 
 export function positionKey(position: Position): string {

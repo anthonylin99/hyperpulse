@@ -241,7 +241,7 @@ export interface TradeSizingSnapshot {
   notionalUsd: number;
   marginUsedUsd: number;
   accountEquityUsd: number;
-  deployableCapitalUsd: number;
+  tradeableCapitalUsd: number;
   leverage: number;
   sizingPct: number;
   status: "open" | "closed" | "unknown";

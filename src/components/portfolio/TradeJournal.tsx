@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { formatUSD, cn } from "@/lib/format";
-import { findSizingForTrade, sizingTone } from "@/lib/portfolioSizing";
+import { findSizingForTrade } from "@/lib/portfolioSizing";
 import { getNotes, setNote } from "@/lib/tradeNotes";
 import type { RoundTripTrade } from "@/types";
 import TradeAnalyzerModal from "./TradeAnalyzerModal";
@@ -393,7 +393,6 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               const hasNote = !!notes[trade.id];
               const isExpanded = expandedNote === trade.id;
               const sizing = findSizingForTrade(trade, sizingSnapshots);
-              const sizingStatus = sizingTone(sizing?.sizingPct ?? null);
               return (
                 <Fragment key={trade.id}>
                   <tr
@@ -449,10 +448,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                     <td
                       className={cn(
                         "px-2 py-2 text-center font-mono text-xs",
-                        sizingStatus === "target" && "text-emerald-300",
-                        sizingStatus === "over" && "text-red-300",
-                        sizingStatus === "under" && "text-amber-300",
-                        sizingStatus === "unknown" && "text-zinc-600",
+                        sizing ? "text-emerald-300" : "text-zinc-600",
                       )}
                     >
                       {sizing ? `${sizing.sizingPct.toFixed(1)}%` : "Not captured"}

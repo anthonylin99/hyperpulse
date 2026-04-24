@@ -40,7 +40,7 @@ function deriveSnapshots(args: {
   address: string;
   rawPositions: RawAssetPosition[];
   accountEquityUsd: number;
-  deployableCapitalUsd: number;
+  tradeableCapitalUsd: number;
   existingPositionKeys: Set<string>;
 }): TradeSizingSnapshot[] {
   const capturedAt = fiveMinuteBucket(Date.now());
@@ -64,8 +64,8 @@ function deriveSnapshots(args: {
     const notionalUsd = Math.abs(szi) * Math.max(markPrice, 0);
     const leverage = parseNumber(position.leverage?.value);
     const sizingPct =
-      args.deployableCapitalUsd > 0 && marginUsedUsd > 0
-        ? (marginUsedUsd / args.deployableCapitalUsd) * 100
+      args.tradeableCapitalUsd > 0 && marginUsedUsd > 0
+        ? (marginUsedUsd / args.tradeableCapitalUsd) * 100
         : 0;
     const positionKey = `perp:${asset}:${side}`;
     const source = args.existingPositionKeys.has(positionKey) ? "snapshot" : "first_captured";
@@ -85,7 +85,7 @@ function deriveSnapshots(args: {
       notionalUsd,
       marginUsedUsd,
       accountEquityUsd: args.accountEquityUsd,
-      deployableCapitalUsd: args.deployableCapitalUsd,
+      tradeableCapitalUsd: args.tradeableCapitalUsd,
       leverage,
       sizingPct,
       status: "open",
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     const crossMarginUsed = parseNumber(state.crossMarginSummary.totalMarginUsed);
     const totalMarginUsed = parseNumber(state.marginSummary.totalMarginUsed);
     const withdrawable = Math.max(crossAccountValue - crossMarginUsed, 0);
-    const deployableCapitalUsd = Math.max(withdrawable + totalMarginUsed, 0);
+    const tradeableCapitalUsd = Math.max(withdrawable + totalMarginUsed, 0);
 
     let existingPositionKeys = new Set<string>();
     if (isResearchStoreConfigured()) {
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       address,
       rawPositions: state.assetPositions as RawAssetPosition[],
       accountEquityUsd: isolatedAccountValue,
-      deployableCapitalUsd,
+      tradeableCapitalUsd,
       existingPositionKeys,
     });
 
