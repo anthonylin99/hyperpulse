@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { withNetworkParam } from "@/lib/hyperliquid";
-import { formatChartPrice } from "@/lib/format";
+import { cn, formatChartPrice } from "@/lib/format";
 import { calculateSupportResistanceLevels, nearestLevel } from "@/lib/supportResistance";
 import { FilterChip, SectionEyebrow } from "@/components/trading-ui";
 
@@ -267,7 +267,13 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
               {widgetError}
             </div>
           ) : (
-            <div id={widgetContainerId} className="absolute inset-0 overflow-hidden" />
+            <div
+              id={widgetContainerId}
+              className={cn(
+                "absolute inset-0 overflow-hidden",
+                compact && "pointer-events-none",
+              )}
+            />
           )}
         </div>
       </div>
