@@ -51,8 +51,10 @@ function normalizeSymbol(symbol: string): string {
 
 export function inferSpotCategory(symbol: string): SpotCategory {
   const normalized = normalizeSymbol(symbol);
+  if (EQUITY_BROAD_SYMBOLS.has(normalized)) return "Indices/ETFs";
   if (STOCK_SYMBOLS.has(normalized)) return "Stocks";
-  if (OIL_SYMBOLS.has(normalized) || METAL_SYMBOLS.has(normalized)) return "Commodities";
+  if (OIL_SYMBOLS.has(normalized)) return "Energy";
+  if (METAL_SYMBOLS.has(normalized)) return "Metals";
   if (/USD|USDC/.test(normalized)) return "Other";
   if (/^[A-Z0-9]{2,16}$/.test(normalized)) return "Crypto";
   return "Other";
@@ -90,7 +92,7 @@ export function classifyWhaleAsset(
       };
     }
 
-    if (category === "Stocks") {
+    if (category === "Stocks" || category === "Indices/ETFs") {
       return {
         symbol,
         displayCoin: symbol,
@@ -101,7 +103,7 @@ export function classifyWhaleAsset(
       };
     }
 
-    if (category === "Commodities") {
+    if (category === "Commodities" || category === "Metals" || category === "Energy") {
       return {
         symbol,
         displayCoin: symbol,

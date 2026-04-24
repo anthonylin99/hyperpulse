@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { BarChart3, CircleDashed, FolderKanban, Rows3, SlidersHorizontal } from "lucide-react";
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import EquityCurve from "@/components/portfolio/EquityCurve";
@@ -24,7 +24,6 @@ import { useWallet } from "@/context/WalletContext";
 import { cn, formatUSD } from "@/lib/format";
 
 type PortfolioSubtab = "overview" | "positions" | "journal" | "details";
-type PortfolioDensity = "compact" | "roomy";
 
 const PORTFOLIO_TABS: Array<{ key: PortfolioSubtab; label: string; helper: string }> = [
   { key: "overview", label: "Overview", helper: "Performance first" },
@@ -121,7 +120,7 @@ export default function PortfolioWorkspace() {
   const { trades, loading, error } = usePortfolio();
   const { accountState } = useWallet();
   const [subtab, setSubtab] = useState<PortfolioSubtab>("overview");
-  const [density, setDensity] = useState<PortfolioDensity>("compact");
+  const density = "compact" as const;
 
   const perpPositions = accountState?.positions?.length ?? 0;
   const spotPositions = accountState?.spotPositions?.length ?? 0;
@@ -130,19 +129,6 @@ export default function PortfolioWorkspace() {
   const hasTrades = trades.length > 0;
   const hasContent = hasTrades || hasPositions;
   const accountValue = accountState?.accountValue ?? 0;
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem("hp_portfolio_density");
-    if (saved === "compact" || saved === "roomy") {
-      setDensity(saved);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("hp_portfolio_density", density);
-  }, [density]);
 
   const overviewSections = useMemo(
     () => (
@@ -189,7 +175,7 @@ export default function PortfolioWorkspace() {
         </div>
       </>
     ),
-    [accountValue, density, factorsEnabled, hasPositions, hasTrades, totalHoldings],
+    [accountValue, factorsEnabled, hasPositions, hasTrades, totalHoldings],
   );
 
   return (
@@ -214,23 +200,6 @@ export default function PortfolioWorkspace() {
                   <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-zinc-500">
                     Portfolio review workspace
                   </div>
-                </div>
-
-                <div className="inline-flex overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                  {(["compact", "roomy"] as PortfolioDensity[]).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setDensity(mode)}
-                      className={cn(
-                        "px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
-                        density === mode
-                          ? "bg-emerald-400 text-[#03221b]"
-                          : "text-zinc-500 hover:text-zinc-200",
-                      )}
-                    >
-                      {mode}
-                    </button>
-                  ))}
                 </div>
               </div>
 

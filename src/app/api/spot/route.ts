@@ -5,20 +5,26 @@ import {
   logServerError,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
+import type { SpotCategory } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-type SpotCategory = "Stocks" | "Commodities" | "Crypto" | "Other";
-
 function classifySpot(symbol: string): SpotCategory {
-  const stocks = new Set(["TSLA", "NVDA", "AAPL", "MSFT", "SPY", "QQQ", "USPYX"]);
-  const commodities = new Set(["XAUT0", "HOLD", "PAXG", "XAU", "WTI", "BRENT"]);
+  const normalized = symbol.toUpperCase().replace(/\/USDC$/, "");
+  const stocks = new Set(["TSLA", "NVDA", "AAPL", "AMZN", "GOOGL", "META", "MSFT", "NFLX"]);
+  const indices = new Set(["SPY", "QQQ", "USPYX", "DIA", "IWM", "US500", "NDX", "NASDAQ"]);
+  const metals = new Set(["XAUT0", "HOLD", "PAXG", "XAU", "XAG", "SLV", "GLD"]);
+  const energy = new Set(["WTI", "BRENT", "BRENTOIL", "USO", "XBR", "XTI", "OIL"]);
+  const commodities = new Set(["CORN", "WHEAT", "SOY", "COFFEE", "COCOA", "SUGAR"]);
 
-  if (stocks.has(symbol)) return "Stocks";
-  if (commodities.has(symbol)) return "Commodities";
+  if (indices.has(normalized)) return "Indices/ETFs";
+  if (stocks.has(normalized)) return "Stocks";
+  if (metals.has(normalized)) return "Metals";
+  if (energy.has(normalized)) return "Energy";
+  if (commodities.has(normalized)) return "Commodities";
 
-  if (/USD|USDC/.test(symbol)) return "Other";
-  if (/^[A-Z0-9]{2,12}$/.test(symbol)) return "Crypto";
+  if (/USD|USDC/.test(normalized)) return "Other";
+  if (/^[A-Z0-9]{2,12}$/.test(normalized)) return "Crypto";
 
   return "Other";
 }

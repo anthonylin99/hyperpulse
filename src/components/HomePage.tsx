@@ -39,7 +39,7 @@ const CAPABILITIES = [
 export default function HomePage() {
   const { isConnected } = useWallet();
   const { whalesEnabled, factorsEnabled } = useAppConfig();
-  const { assets, lastUpdated } = useMarket();
+  const { assets } = useMarket();
   const { factors } = useFactors();
   const workspaceCount = 3 + (factorsEnabled ? 1 : 0) + (whalesEnabled ? 1 : 0);
   const capabilities = useMemo(
@@ -100,12 +100,8 @@ export default function HomePage() {
               </div>
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-[#13171f] px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Last sync</div>
-              <div className="mt-2 font-mono text-xl text-zinc-100">
-                {lastUpdated
-                  ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                  : "--:--:--"}
-              </div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Wallet posture</div>
+              <div className="mt-2 font-mono text-3xl text-zinc-100">READ</div>
             </div>
           </div>
         </div>

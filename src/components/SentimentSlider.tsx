@@ -43,13 +43,13 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
         className={
           isHero
             ? "rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4"
-            : "flex-shrink-0 min-w-[320px] h-[56px] rounded-md border border-zinc-800 bg-gradient-to-r from-zinc-900/90 via-zinc-900/70 to-zinc-950/80 px-3 py-2"
+            : "h-auto min-h-[64px] w-full min-w-0 rounded-xl border border-zinc-800 bg-gradient-to-r from-zinc-900/90 via-zinc-900/70 to-zinc-950/80 px-3 py-2"
         }
         title={hoverSummary}
         onDoubleClick={() => setShowInfo(true)}
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div>
               <div className={isHero ? "text-[11px] uppercase tracking-[0.18em] text-zinc-500" : "text-[9px] uppercase tracking-wider text-zinc-500"}>
                 Tomorrow Bias
@@ -65,7 +65,7 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
               {result.trendConfidence} confidence
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5">
             <span className={`inline-flex ${isHero ? "h-7 min-w-[42px] text-xs" : "h-5 min-w-[30px] text-[10px]"} items-center justify-center rounded border px-1.5 font-mono font-semibold ${sentimentBadge}`}>
               {result.score}
             </span>

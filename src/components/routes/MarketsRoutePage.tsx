@@ -9,7 +9,7 @@ import { useMarket } from "@/context/MarketContext";
 
 export default function MarketsRoutePage({ initialAsset = null }: { initialAsset?: string | null }) {
   const { tradingEnabled } = useAppConfig();
-  const { selectedAsset, setSelectedAsset, error: marketError, lastUpdated } = useMarket();
+  const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
     direction: "long" | "short";
@@ -31,27 +31,13 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
           <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-900/75">
-            <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
+              <div className="flex flex-col gap-1">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">Markets</div>
-                  <div className="mt-2 text-lg font-semibold text-zinc-100">
-                    Market directory first.
-                  </div>
+                  <div className="mt-1 text-lg font-semibold text-zinc-100">Market directory</div>
                   <div className="mt-1 text-sm text-zinc-400">
-                    Search, filter, and inspect Hyperliquid perps and HIP-3 spot markets without scrolling through a hero stack first.
-                  </div>
-                </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3 text-sm text-zinc-400">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Last Sync</div>
-                  <div className="mt-1 font-mono text-zinc-100">
-                    {lastUpdated
-                      ? lastUpdated.toLocaleTimeString([], {
-                          hour: "numeric",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        })
-                      : "--:--:--"}
+                    Search, filter, and inspect Hyperliquid perps plus HIP-3 spot markets.
                   </div>
                 </div>
               </div>

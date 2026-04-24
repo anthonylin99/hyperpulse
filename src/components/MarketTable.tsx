@@ -17,6 +17,7 @@ import {
 } from "@/lib/constants";
 import { formatCompact, formatPct, formatUSD } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
+import { reportClientError } from "@/lib/clientErrorReporter";
 
 type Mode = "perps" | "spot";
 
@@ -60,6 +61,9 @@ const SPOT_COLUMNS: { key: SpotSortKey; label: string; align: string }[] = [
 const SPOT_FILTERS: Array<SpotCategory | "All"> = [
   "All",
   "Stocks",
+  "Indices/ETFs",
+  "Metals",
+  "Energy",
   "Commodities",
   "Crypto",
   "Other",
@@ -110,11 +114,13 @@ export default function MarketTable({
     try {
       setSpotLoading(true);
       const res = await fetch(withNetworkParam("/api/spot"));
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`Spot HTTP ${res.status}`);
       const data = await res.json();
       if (Array.isArray(data.assets)) {
         setSpotAssets(data.assets as SpotAsset[]);
       }
+    } catch (err) {
+      reportClientError("spot.fetch", err);
     } finally {
       setSpotLoading(false);
     }
@@ -438,8 +444,11 @@ export default function MarketTable({
           )}
 
           {mode === "spot" && spotFiltered.length === 0 && (
-            <div className="flex items-center justify-center h-32 text-sm text-zinc-600 font-mono">
-              No HIP-3 spot assets match your filters
+            <div className="flex h-32 flex-col items-center justify-center gap-1 px-4 text-center font-mono text-sm text-zinc-600">
+              <div>No HIP-3 spot assets match your filters</div>
+              <div className="max-w-xl text-[11px] font-sans text-zinc-500">
+                HyperPulse only shows commodities, metals, energy, stock, and index-like spot markets that Hyperliquid currently exposes.
+              </div>
             </div>
           )}
         </div>

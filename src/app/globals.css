@@ -105,6 +105,39 @@ body {
   animation: fade-in 0.2s ease-out;
 }
 
+.hp-ticker-track {
+  display: flex;
+  width: max-content;
+  gap: 0.5rem;
+  animation: hp-ticker-marquee 55s linear infinite;
+}
+
+.hp-ticker-track:hover {
+  animation-play-state: paused;
+}
+
+.hp-ticker-group {
+  display: flex;
+  min-width: max-content;
+  gap: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+@keyframes hp-ticker-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-ticker-track {
+    animation: none;
+  }
+}
+
 /* Pulsing live dot */
 .live-dot {
   width: 8px;

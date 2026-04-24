@@ -37,7 +37,14 @@ export interface MarketAsset {
   maxLeverage: number;
 }
 
-export type SpotCategory = "Stocks" | "Commodities" | "Crypto" | "Other";
+export type SpotCategory =
+  | "Stocks"
+  | "Indices/ETFs"
+  | "Metals"
+  | "Energy"
+  | "Commodities"
+  | "Crypto"
+  | "Other";
 
 export interface SpotAsset {
   marketIndex: number;

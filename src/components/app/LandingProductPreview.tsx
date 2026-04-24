@@ -50,7 +50,7 @@ function MiniCard({
 }
 
 export default function LandingProductPreview() {
-  const { assets, lastUpdated, fundingHistories, btcCandles } = useMarket();
+  const { assets, fundingHistories, btcCandles } = useMarket();
   const { leader } = useFactors();
   const { factorsEnabled } = useAppConfig();
 
@@ -237,10 +237,8 @@ export default function LandingProductPreview() {
             <span className="rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-1.5">Read-only Wallet Review</span>
             <span className="rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-1.5">Built for Traders</span>
           </div>
-          <div className="font-mono text-zinc-400">
-            {lastUpdated
-              ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-              : "--:--:--"}
+          <div className="hidden font-mono text-zinc-400 sm:block">
+            Live data shell
           </div>
         </div>
       </div>

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "digest:manual": "node scripts/run-positioning-digest.mjs",
+    "smoke:public": "node scripts/public-smoke.mjs",
     "worker:start": "node workers/whale-indexer/index.mjs",
     "railway:start": "npm run worker:start"
   },

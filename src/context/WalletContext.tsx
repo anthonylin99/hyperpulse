@@ -16,6 +16,7 @@ import { POLL_INTERVAL_PORTFOLIO } from "@/lib/constants";
 import { isNetworkTestnet, onNetworkChange } from "@/lib/hyperliquid";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { buildSpotMarketMap } from "@/lib/whaleTaxonomy";
+import { reportClientError } from "@/lib/clientErrorReporter";
 import type { AccountState, Position } from "@/types";
 import toast from "react-hot-toast";
 
@@ -283,7 +284,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           spotPositions,
         });
       } catch (err) {
-        console.error("Failed to fetch portfolio:", err);
+        reportClientError("portfolio.fetch", err, { address: mainAddress });
         if (throwOnError) {
           throw err;
         }

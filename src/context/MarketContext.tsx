@@ -11,6 +11,7 @@ import {
 } from "react";
 import { getSubscriptionClient, withNetworkParam, getStoredNetwork } from "@/lib/hyperliquid";
 import { fundingToSignal, computeFundingSignal } from "@/lib/signals";
+import { reportClientError } from "@/lib/clientErrorReporter";
 import {
   POLL_INTERVAL_MARKET,
   WHALE_THRESHOLD_USD,
@@ -310,7 +311,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       fetchSignalData(parsed);
       fetchBtcCandles();
     } catch (err) {
-      console.error("Failed to fetch market data:", err);
+      reportClientError("market.fetch", err);
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     } finally {
       setLoading(false);
