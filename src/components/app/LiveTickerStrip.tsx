@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useMarket } from "@/context/MarketContext";
-import { cn, formatCompact, formatFundingAPR, formatPct, formatUSD } from "@/lib/format";
+import { cn, formatFundingRate, formatPct, formatUSD } from "@/lib/format";
 import type { MarketAsset } from "@/types";
 
 const FALLBACK_TICKERS = ["BTC", "ETH", "SOL", "HYPE", "AAVE", "ZEC"] as const;
@@ -29,16 +29,13 @@ function TickerItem({ asset }: { asset: MarketAsset }) {
       >
         {formatPct(asset.priceChange24h)}
       </span>
-      <span className="hidden font-mono text-[11px] text-zinc-500 sm:inline">
-        OI {formatCompact(asset.openInterest)}
-      </span>
       <span
         className={cn(
           "font-mono text-[11px]",
-          asset.fundingAPR <= 0 ? "text-emerald-300" : "text-rose-300",
+          asset.fundingRate <= 0 ? "text-emerald-300" : "text-rose-300",
         )}
       >
-        FND {formatFundingAPR(asset.fundingAPR)}
+        Funding {formatFundingRate(asset.fundingRate)}
       </span>
     </Link>
   );
@@ -58,7 +55,7 @@ function PlaceholderTickerItem({ label }: { label: string }) {
 export default function LiveTickerStrip() {
   const { assets, loading, lastUpdated } = useMarket();
   const tickerAssets = useMemo(
-    () => [...assets].sort((a, b) => b.openInterest - a.openInterest).slice(0, 14),
+    () => [...assets].sort((a, b) => b.dayVolume - a.dayVolume).slice(0, 10),
     [assets],
   );
   const hasLiveAssets = tickerAssets.length > 0;

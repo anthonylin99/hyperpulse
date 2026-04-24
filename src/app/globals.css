@@ -109,7 +109,7 @@ body {
   display: flex;
   width: max-content;
   gap: 0.5rem;
-  animation: hp-ticker-marquee 55s linear infinite;
+  animation: hp-ticker-marquee 150s linear infinite;
 }
 
 .hp-ticker-track:hover {

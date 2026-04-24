@@ -37,9 +37,6 @@ export default function WalletModal({ onClose }: WalletModalProps) {
   const trimmedAddress = address.trim();
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
@@ -48,7 +45,6 @@ export default function WalletModal({ onClose }: WalletModalProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
@@ -128,11 +124,11 @@ export default function WalletModal({ onClose }: WalletModalProps) {
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[110] bg-transparent" onClick={onClose} />
 
-      {/* Modal */}
+      {/* Wallet panel */}
       <div
-        className="fixed left-1/2 top-1/2 z-[120] max-h-[calc(100vh-4rem)] w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[24px] border border-zinc-800 bg-[#0b1015] shadow-2xl"
+        className="fixed right-3 top-[6.75rem] z-[120] max-h-[calc(100vh-8rem)] w-[min(420px,calc(100vw-1.5rem))] overflow-y-auto rounded-[22px] border border-zinc-800 bg-[#0b1015]/98 shadow-2xl shadow-black/40 backdrop-blur md:right-6 xl:right-8"
         onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
@@ -150,14 +146,13 @@ export default function WalletModal({ onClose }: WalletModalProps) {
         </div>
 
         {/* Body */}
-        <div className="space-y-4 px-5 py-4">
+        <div className="space-y-3 px-4 py-4">
           <div className="space-y-2 text-xs font-sans leading-relaxed text-zinc-400">
             <p>
-              HyperPulse is <strong>read-only by default</strong>. Paste any public Hyperliquid
-              address to view portfolio analytics without exposing private credentials.
+              Paste a public Hyperliquid address or read the active browser-wallet address.
             </p>
             <p className="text-zinc-500">
-              The public deployment does not accept manual API private keys. Browser wallet discovery only reads the active wallet address and opens analytics for that address.
+              Read-only mode never asks for seed phrases, private keys, or trading permissions.
             </p>
           </div>
 
@@ -206,29 +201,6 @@ export default function WalletModal({ onClose }: WalletModalProps) {
             </div>
           )}
 
-          {!tradingEnabled ? (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3.5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-200">
-                  <Wallet className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-zinc-100">Discover browser wallet</div>
-                  <div className="mt-1 text-xs leading-6 text-zinc-500">
-                    Read the active address from MetaMask or Rabby and open it in analytics mode.
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => handleBrowserWalletConnect("auto")}
-                disabled={loading}
-                className="mt-4 w-full rounded-2xl border border-zinc-800 bg-[#090d12] px-4 py-3 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/30 hover:text-white disabled:opacity-50"
-              >
-                {loading ? "Checking wallet..." : "Use Browser Wallet Address"}
-              </button>
-            </div>
-          ) : null}
-
           {tradingEnabled && privyEnabled && privyAllowEmbedded && (
             <div className="space-y-3 border border-zinc-800 rounded p-3 bg-zinc-950/50">
               <div className="text-[10px] uppercase tracking-wider text-zinc-500">
@@ -266,6 +238,17 @@ export default function WalletModal({ onClose }: WalletModalProps) {
               {loading ? "Loading..." : "View Read-only Analytics"}
             </button>
           </div>
+
+          {!tradingEnabled ? (
+            <button
+              onClick={() => handleBrowserWalletConnect("auto")}
+              disabled={loading}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/30 hover:text-white disabled:opacity-50"
+            >
+              <Wallet className="h-4 w-4 text-emerald-300" />
+              {loading ? "Checking wallet..." : "Use connected browser address"}
+            </button>
+          ) : null}
 
           {tradingEnabled && (
             <>
@@ -312,7 +295,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-zinc-800 px-5 py-3">
+        <div className="border-t border-zinc-800 px-4 py-3">
           <p className="text-[10px] text-zinc-600 text-center">
             Read-only analytics never request your private key or seed phrase.
           </p>

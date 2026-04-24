@@ -12,7 +12,7 @@ import LandingProductPreview from "@/components/app/LandingProductPreview";
 const CAPABILITIES = [
   {
     title: "Market Pulse",
-    description: "Track perp prices, funding, OI, and tomorrow bias before entering a trade.",
+    description: "Track perp prices, funding rates, and tomorrow bias before entering a trade.",
     href: "/markets",
     icon: BarChart3,
   },
