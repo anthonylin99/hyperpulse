@@ -2,7 +2,7 @@
 
 HyperPulse is a portfolio analytics and trade review dashboard for **Hyperliquid perps traders**. It's a self-reflection tool for retail traders — not institutional/tradfi. Avoid jargon, acronyms, and metrics that don't map to what retail traders actually think about.
 
-**Live**: https://hyperpulse-gold.vercel.app
+**Live**: https://hyperpulsehl.com
 **Repo**: https://github.com/anthonylin99/hyperpulse
 **Vercel project**: `hyperpulse` under team `anthony-lins-projects-b27963d8`
 

@@ -20,7 +20,7 @@ function requestArtemisPrices(url: string): Promise<unknown> {
       {
         method: "GET",
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; HyperPulse/1.0; +https://hyperpulse-gold.vercel.app)",
+          "User-Agent": "Mozilla/5.0 (compatible; HyperPulse/1.0; +https://hyperpulsehl.com)",
           Accept: "application/json",
         },
         family: 4,

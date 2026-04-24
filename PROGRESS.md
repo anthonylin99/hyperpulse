@@ -1,7 +1,7 @@
 # HyperPulse — Progress & Phase Plan
 
 **Repo**: https://github.com/anthonylin99/hyperpulse
-**Live**: https://hyperscan-eight.vercel.app
+**Live**: https://hyperpulsehl.com
 **Stack**: Next.js 14, TypeScript, Tailwind, `@nktkas/hyperliquid@0.32.1`, `lightweight-charts`, `recharts`
 
 ---

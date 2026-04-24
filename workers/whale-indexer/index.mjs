@@ -49,7 +49,7 @@ const SHEETS_ENABLED = process.env.GOOGLE_SHEETS_ENABLED === 'true';
 const SHEETS_CREDS_B64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 || '';
 const SHEETS_SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || '';
 const SHEETS_TAB = process.env.GOOGLE_SHEET_TAB || 'RAW DATA';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hyperpulse-gold.vercel.app';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hyperpulsehl.com';
 
 setMaxListeners(0);
 
