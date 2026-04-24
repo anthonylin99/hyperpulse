@@ -39,21 +39,23 @@ export default function MarketOverviewPanel({
       className={cn(
         "min-w-0 overflow-hidden rounded-2xl border border-zinc-800",
         compact
-          ? "bg-zinc-900/75 p-4"
+          ? "bg-zinc-900/75 p-3"
           : "bg-gradient-to-br from-zinc-900 via-zinc-900 to-teal-950/10 p-5 md:p-6",
       )}
     >
       {showHeading && (
-        <div className={cn("flex flex-col gap-3", compact ? "mb-4" : "mb-5 lg:flex-row lg:items-end lg:justify-between")}>
+        <div className={cn("flex flex-col gap-3", compact ? "mb-3" : "mb-5 lg:flex-row lg:items-end lg:justify-between")}>
           <div className="min-w-0 max-w-2xl">
             <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">Pulse</div>
-            <h2 className={cn("font-semibold tracking-tight text-zinc-100", compact ? "mt-1 text-lg" : "mt-2 text-2xl")}>
+            <h2 className={cn("font-semibold tracking-tight text-zinc-100", compact ? "mt-1 text-base" : "mt-2 text-2xl")}>
               {title}
             </h2>
-            <p className={cn("text-zinc-400", compact ? "mt-1 text-xs leading-5" : "mt-2 text-sm leading-6")}>
+            <p className={cn("text-zinc-400", compact ? "mt-1 text-[11px] leading-4" : "mt-2 text-sm leading-6")}>
               {factorsEnabled
                 ? description
-                : "Live Hyperliquid context across tomorrow bias and major perp benchmarks before you scan the full market table."}
+                : compact
+                  ? "Bias and benchmark context."
+                  : "Live Hyperliquid context across tomorrow bias and major perp benchmarks before you scan the full market table."}
             </p>
           </div>
         </div>
@@ -81,19 +83,20 @@ export default function MarketOverviewPanel({
                       active
                         ? "border-teal-400/40 bg-teal-500/10 shadow-[0_0_0_1px_rgba(45,212,191,0.12)]"
                         : "border-zinc-800 bg-zinc-950/45 hover:border-zinc-700 hover:bg-zinc-950/70",
-                      compact && "px-3 py-3",
+                      compact && "rounded-xl px-3 py-2",
                     )}
                   >
                     <div className="flex min-w-0 items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">{asset.coin}</div>
-                        <div className={cn("font-semibold text-zinc-100", compact ? "mt-1 text-lg" : "mt-2 text-xl")}>
+                        <div className={cn("font-semibold text-zinc-100", compact ? "mt-0.5 text-sm" : "mt-2 text-xl")}>
                           {formatUSD(asset.markPx, asset.markPx < 1 ? 4 : 2)}
                         </div>
                       </div>
                       <div
                         className={cn(
-                          "rounded-full px-2 py-1 text-xs font-medium",
+                          "rounded-full px-2 py-1 font-medium",
+                          compact ? "text-[11px]" : "text-xs",
                           asset.priceChange24h >= 0
                             ? "bg-emerald-500/10 text-emerald-300"
                             : "bg-red-500/10 text-red-300",
@@ -103,14 +106,14 @@ export default function MarketOverviewPanel({
                       </div>
                     </div>
 
-                    <div className={cn("grid min-w-0 grid-cols-2 gap-2 text-xs text-zinc-500", compact ? "mt-3" : "mt-4")}>
+                    <div className={cn("grid min-w-0 grid-cols-2 gap-2 text-zinc-500", compact ? "mt-2 text-[11px]" : "mt-4 text-xs")}>
                       <div>
                         <div className="uppercase tracking-[0.14em] text-zinc-600">Funding APR</div>
-                        <div className="mt-1 truncate text-sm text-zinc-300">{formatFundingAPR(asset.fundingAPR)}</div>
+                        <div className={cn("mt-1 truncate text-zinc-300", compact ? "text-xs" : "text-sm")}>{formatFundingAPR(asset.fundingAPR)}</div>
                       </div>
                       <div>
                         <div className="uppercase tracking-[0.14em] text-zinc-600">Signal</div>
-                        <div className="mt-1 truncate text-sm text-zinc-300">{asset.signal.label}</div>
+                        <div className={cn("mt-1 truncate text-zinc-300", compact ? "text-xs" : "text-sm")}>{asset.signal.label}</div>
                       </div>
                     </div>
                   </button>

@@ -58,15 +58,16 @@ const SPOT_COLUMNS: { key: SpotSortKey; label: string; align: string }[] = [
   { key: "marketCap", label: "Mkt Cap", align: "text-right" },
 ];
 
-const SPOT_FILTERS: Array<SpotCategory | "All"> = [
-  "All",
+const RWA_SPOT_CATEGORIES = [
   "Stocks",
   "Indices/ETFs",
   "Metals",
   "Energy",
   "Commodities",
-  "Crypto",
-];
+] as const satisfies readonly SpotCategory[];
+
+const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
+const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
 
 function getPerpSortValue(asset: MarketAsset, key: PerpSortKey): number | string {
   switch (key) {
@@ -126,11 +127,31 @@ export default function MarketTable({
   }, []);
 
   useEffect(() => {
-    if (mode !== "spot") return;
     fetchSpot();
+  }, [fetchSpot]);
+
+  useEffect(() => {
+    if (mode !== "spot") return;
     const interval = setInterval(fetchSpot, POLL_INTERVAL_MARKET);
     return () => clearInterval(interval);
   }, [mode, fetchSpot]);
+
+  const rwaSpotAssets = useMemo(
+    () => spotAssets.filter((asset) => RWA_SPOT_CATEGORY_SET.has(asset.category)),
+    [spotAssets],
+  );
+
+  const availableSpotFilters = useMemo(() => {
+    const categories = new Set(rwaSpotAssets.map((asset) => asset.category));
+    return SPOT_FILTERS.filter((filter) => filter === "All" || categories.has(filter));
+  }, [rwaSpotAssets]);
+
+  useEffect(() => {
+    if (mode === "spot" && !spotLoading && rwaSpotAssets.length === 0) {
+      setMode("perps");
+      setSpotFilter("All");
+    }
+  }, [mode, rwaSpotAssets.length, spotLoading]);
 
   const perpsFiltered = useMemo(() => {
     let arr = [...assets];
@@ -161,7 +182,7 @@ export default function MarketTable({
   }, [assets, search, categoryFilter, hideSmallCaps, perpSortKey, perpSortAsc]);
 
   const spotFiltered = useMemo(() => {
-    let arr = [...spotAssets];
+    let arr = [...rwaSpotAssets];
 
     if (search) {
       const q = search.toUpperCase();
@@ -184,7 +205,7 @@ export default function MarketTable({
     });
 
     return arr;
-  }, [spotAssets, search, spotFilter, spotSortKey, spotSortAsc]);
+  }, [rwaSpotAssets, search, spotFilter, spotSortKey, spotSortAsc]);
 
   const perpsTotalOI = useMemo(
     () => perpsFiltered.reduce((sum, a) => sum + a.openInterest, 0),
@@ -197,6 +218,7 @@ export default function MarketTable({
 
   const perpsLoading = loading;
   const activeLoading = mode === "perps" ? perpsLoading : spotLoading;
+  const spotModeAvailable = spotLoading || rwaSpotAssets.length > 0;
 
   if (activeLoading) {
     return (
@@ -218,7 +240,7 @@ export default function MarketTable({
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
             <input
               type="text"
-              placeholder={mode === "perps" ? "Search perps..." : "Search HIP-3 spot..."}
+              placeholder={mode === "perps" ? "Search perps..." : "Search RWA spot..."}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-7 pr-2 py-1 w-[160px] text-[11px] font-mono bg-zinc-900 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-[#7dd4c4]/70"
@@ -236,16 +258,18 @@ export default function MarketTable({
             >
               Perps
             </button>
-            <button
-              onClick={() => setMode("spot")}
-              className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
-                mode === "spot"
-                  ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
-                  : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
-              }`}
-            >
-              Spot (HIP-3)
-            </button>
+            {spotModeAvailable && (
+              <button
+                onClick={() => setMode("spot")}
+                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                  mode === "spot"
+                    ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
+                    : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
+                }`}
+              >
+                RWA Spot
+              </button>
+            )}
           </div>
 
           {mode === "perps" ? (
@@ -292,7 +316,7 @@ export default function MarketTable({
             </>
           ) : (
             <div className="min-w-0 flex-1 flex items-center gap-1 overflow-x-auto scrollbar-hide">
-              {SPOT_FILTERS.map((cat) => (
+              {availableSpotFilters.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSpotFilter(cat)}
@@ -444,9 +468,9 @@ export default function MarketTable({
 
           {mode === "spot" && spotFiltered.length === 0 && (
             <div className="flex h-32 flex-col items-center justify-center gap-1 px-4 text-center font-mono text-sm text-zinc-600">
-              <div>No HIP-3 spot assets match your filters</div>
+              <div>No RWA spot markets match your filters</div>
               <div className="max-w-xl text-[11px] font-sans text-zinc-500">
-                HyperPulse only shows commodities, metals, energy, stock, and index-like spot markets that Hyperliquid currently exposes.
+                HyperPulse only lists stocks, indices/ETFs, metals, energy, and commodity spot markets when Hyperliquid exposes them.
               </div>
             </div>
           )}
@@ -460,7 +484,7 @@ export default function MarketTable({
             </>
           ) : (
             <>
-              <span>{spotFiltered.length} of {spotAssets.length} HIP-3 spot assets</span>
+              <span>{spotFiltered.length} of {rwaSpotAssets.length} RWA spot assets</span>
               <span>Total Mkt Cap: {formatCompact(spotTotalMcap)}</span>
             </>
           )}

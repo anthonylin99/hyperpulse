@@ -4,11 +4,12 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatChartPrice } from "@/lib/format";
 import { calculateSupportResistanceLevels, nearestLevel } from "@/lib/supportResistance";
-import { CompactStat, FilterChip, SectionEyebrow } from "@/components/trading-ui";
+import { FilterChip, SectionEyebrow } from "@/components/trading-ui";
 
 interface PriceChartProps {
   coin: string;
   marketType?: "perp" | "spot";
+  compact?: boolean;
 }
 
 declare global {
@@ -107,7 +108,7 @@ function loadTradingViewScript(): Promise<void> {
   });
 }
 
-export default function PriceChart({ coin, marketType = "perp" }: PriceChartProps) {
+export default function PriceChart({ coin, marketType = "perp", compact = false }: PriceChartProps) {
   const instanceId = useId().replace(/[^a-zA-Z0-9]/g, "");
   const widgetContainerId = useMemo(
     () => `tv-chart-${coin.replace(/[^a-zA-Z0-9]/g, "-")}-${marketType}-${instanceId}`,
@@ -147,9 +148,9 @@ export default function PriceChart({ coin, marketType = "perp" }: PriceChartProp
           toolbar_bg: "#0a0c10",
           backgroundColor: "rgba(10, 12, 16, 1)",
           gridColor: "rgba(63, 63, 70, 0.22)",
-          hide_top_toolbar: false,
-          hide_side_toolbar: false,
-          allow_symbol_change: true,
+          hide_top_toolbar: true,
+          hide_side_toolbar: true,
+          allow_symbol_change: false,
           save_image: false,
           studies: ["STD;Pivot_Points_Standard"],
           container_id: widgetContainerId,
@@ -207,16 +208,15 @@ export default function PriceChart({ coin, marketType = "perp" }: PriceChartProp
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
-      <div className="shrink-0 border-b border-zinc-800 px-4 py-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <SectionEyebrow>{marketType === "spot" ? "TradingView HIP-3 proxy" : "TradingView market chart"}</SectionEyebrow>
-            <div className="mt-1 flex flex-wrap items-center gap-3">
-              <div className="font-mono text-lg font-semibold text-zinc-100">{coin}</div>
-              <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2.5 py-1 font-mono text-xs text-zinc-400">
+            <SectionEyebrow>{marketType === "spot" ? "RWA chart proxy" : "Market chart"}</SectionEyebrow>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <div className={compact ? "font-mono text-base font-semibold text-zinc-100" : "font-mono text-lg font-semibold text-zinc-100"}>{coin}</div>
+              <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
                 {symbol}
               </div>
-              <div className="text-xs text-zinc-500">Pivot study enabled</div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -232,40 +232,38 @@ export default function PriceChart({ coin, marketType = "perp" }: PriceChartProp
           </div>
         </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <CompactStat
-            label="Nearest support"
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+          <LevelPill
+            label="Support"
             value={nearestSupport ? formatChartPrice(nearestSupport.price) : "n/a"}
             helper={
               levelsLoading
                 ? "calculating"
                 : nearestSupport?.distancePct != null
-                  ? `${nearestSupport.distancePct.toFixed(2)}% from price`
-                  : "no nearby level"
+                  ? `${nearestSupport.distancePct.toFixed(2)}%`
+                  : "none"
             }
             tone="green"
           />
-          <CompactStat
-            label="Nearest resistance"
+          <LevelPill
+            label="Resistance"
             value={nearestResistance ? formatChartPrice(nearestResistance.price) : "n/a"}
             helper={
               levelsLoading
                 ? "calculating"
                 : nearestResistance?.distancePct != null
-                  ? `${nearestResistance.distancePct.toFixed(2)}% from price`
-                  : "no nearby level"
+                  ? `${nearestResistance.distancePct.toFixed(2)}%`
+                  : "none"
             }
             tone="amber"
           />
-          <CompactStat label="Chart source" value="TradingView" helper="standardized embed" />
-          <CompactStat label="Study" value="Pivots" helper="support/resistance context" />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-3">
-        <div className="relative h-full min-h-[360px] overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950">
+      <div className="min-h-0 flex-1 overflow-hidden p-2.5">
+        <div className="relative h-full min-h-0 overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950">
           {widgetError ? (
-            <div className="flex h-full min-h-[360px] items-center justify-center px-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-sm text-zinc-500">
               {widgetError}
             </div>
           ) : (
@@ -273,6 +271,26 @@ export default function PriceChart({ coin, marketType = "perp" }: PriceChartProp
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function LevelPill({
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  tone: "green" | "amber";
+}) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 font-mono">
+      <span className="uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+      <span className={tone === "green" ? "text-emerald-300" : "text-amber-300"}>{value}</span>
+      <span className="text-zinc-600">{helper}</span>
     </div>
   );
 }

@@ -12,7 +12,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import type { MarketAsset } from "@/types";
-import { formatUSD, formatPct, formatFundingRate, formatFundingAPR, formatCompact } from "@/lib/format";
+import { formatUSD, formatPct, formatFundingRate, formatFundingAPR } from "@/lib/format";
 import { getFundingRegime } from "@/lib/fundingRegime";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import PriceChart from "./PriceChart";
@@ -102,8 +102,8 @@ export default function AssetDetail({
   return (
     <div className="bg-zinc-900/80 border-t border-b border-zinc-700 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <div className="flex items-center gap-4 text-xs font-mono">
+      <div className="flex items-center justify-between px-4 pt-2.5 pb-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
           <span className="text-zinc-50 font-bold text-sm">{asset.coin}</span>
           <span className="text-zinc-400">
             {formatUSD(asset.markPx, priceDecimals)}
@@ -113,12 +113,6 @@ export default function AssetDetail({
           </span>
           <span className="text-zinc-400">
             Funding: {formatFundingRate(asset.fundingRate)} ({formatFundingAPR(asset.fundingAPR)} APR)
-          </span>
-          <span className="text-zinc-400">
-            OI: {formatCompact(asset.openInterest)}
-          </span>
-          <span className="text-zinc-400">
-            Vol: {formatCompact(asset.dayVolume)}
           </span>
         </div>
         <button
@@ -141,8 +135,8 @@ export default function AssetDetail({
       {/* Chart area */}
       <div className="px-4 pb-3">
         {tab === "price" ? (
-          <div className="h-[280px]">
-            <PriceChart coin={asset.coin} />
+          <div className="h-[520px] max-h-[72vh] min-h-[420px]">
+            <PriceChart coin={asset.coin} compact />
           </div>
         ) : (
           <div>

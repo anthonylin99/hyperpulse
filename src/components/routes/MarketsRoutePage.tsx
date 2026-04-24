@@ -29,7 +29,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           </div>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
           <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-900/75">
             <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
               <div className="flex flex-col gap-1">
@@ -37,7 +37,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
                   <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">Markets</div>
                   <div className="mt-1 text-lg font-semibold text-zinc-100">Market directory</div>
                   <div className="mt-1 text-sm text-zinc-400">
-                    Search, filter, and inspect Hyperliquid perps plus HIP-3 spot markets.
+                    Search, filter, and inspect Hyperliquid perps plus available RWA spot markets.
                   </div>
                 </div>
               </div>
@@ -49,7 +49,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             />
           </section>
 
-          <div className="xl:sticky xl:top-[104px]">
+          <div className="xl:sticky xl:top-[96px]">
             <MarketOverviewPanel
               title="Tape Context"
               description="Tomorrow bias and major benchmark context stay close, but secondary to the directory."
