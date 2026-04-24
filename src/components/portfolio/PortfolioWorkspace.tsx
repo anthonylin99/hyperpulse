@@ -7,7 +7,6 @@ import EquityCurve from "@/components/portfolio/EquityCurve";
 import StatsGrid from "@/components/portfolio/StatsGrid";
 import FactorLeaderStrip from "@/components/factors/FactorLeaderStrip";
 import RiskStrip from "@/components/portfolio/RiskStrip";
-import SizingDiscipline from "@/components/portfolio/SizingDiscipline";
 import CorrelationMap from "@/components/portfolio/CorrelationMap";
 import PositionsTable from "@/components/portfolio/PositionsTable";
 import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
@@ -141,7 +140,6 @@ export default function PortfolioWorkspace() {
           <div className="space-y-4">
             {factorsEnabled ? <FactorLeaderStrip /> : null}
             <RiskStrip density={density} />
-            <SizingDiscipline />
           </div>
           {hasPositions ? (
             <section className="rounded-[26px] border border-zinc-800 bg-zinc-950/85 p-5">
@@ -243,7 +241,6 @@ export default function PortfolioWorkspace() {
               {subtab === "positions" && (
                 <div className="space-y-4">
                   <RiskStrip density={density} />
-                  <SizingDiscipline />
                   {hasPositions ? <PositionsTable density={density} /> : <EmptyPositionsState />}
                 </div>
               )}

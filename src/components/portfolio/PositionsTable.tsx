@@ -3,9 +3,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { NotebookPen } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
+import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatFundingAPR, formatUSD } from "@/lib/format";
-import { positionSizingPct } from "@/lib/portfolioSizing";
+import { getTradeableUsdcCapital, positionSizingPct } from "@/lib/portfolioSizing";
 import {
   emptyPositionNote,
   getPositionNotes,
@@ -32,6 +33,7 @@ function riskTone(dist: number | null): "default" | "warning" | "danger" {
 
 export default function PositionsTable({ density = "compact" }: { density?: "compact" | "roomy" }) {
   const { accountState, address } = useWallet();
+  const { sizingSnapshots, researchLoading } = usePortfolio();
   const { assets } = useMarket();
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, PositionNote>>({});
@@ -53,14 +55,27 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
   const totals = useMemo(() => {
     let notional = 0;
     let pnl = 0;
+    let largestSizingPct: number | null = null;
+    let largestSizingAsset: string | null = null;
 
     for (const position of sorted) {
       notional += Math.abs(position.szi) * position.markPx;
       pnl += position.unrealizedPnl;
+      const sizingPct = positionSizingPct(position, accountState);
+      if (sizingPct != null && (largestSizingPct == null || sizingPct > largestSizingPct)) {
+        largestSizingPct = sizingPct;
+        largestSizingAsset = position.coin;
+      }
     }
 
-    return { notional, pnl };
-  }, [sorted]);
+    return {
+      notional,
+      pnl,
+      tradeableCapital: getTradeableUsdcCapital(accountState),
+      largestSizingPct,
+      largestSizingAsset,
+    };
+  }, [accountState, sorted]);
 
   const assetByCoin = useMemo(
     () => new Map(assets.map((asset) => [asset.coin, asset])),
@@ -113,16 +128,47 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
   return (
     <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
       <div className={cn("border-b border-zinc-800", density === "roomy" ? "px-6 py-5" : "px-5 py-4")}>
-        <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
-          Positions
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
+              Positions
+            </div>
+            <div className="mt-2 text-lg font-semibold text-zinc-100">
+              Hyperliquid-style position view
+            </div>
+            <div className="mt-1 text-sm text-zinc-500">
+              Entry, mark, P&amp;L, liquidation, and margin share in one review table.
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Positions</div>
+              <div className="mt-1 font-mono text-zinc-100">{sorted.length}</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Value</div>
+              <div className="mt-1 font-mono text-zinc-100">{formatUSD(totals.notional)}</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Tradeable USDC</div>
+              <div className="mt-1 font-mono text-zinc-100">{formatUSD(totals.tradeableCapital)}</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Largest Margin</div>
+              <div className="mt-1 font-mono text-emerald-300">
+                {totals.largestSizingPct == null
+                  ? "n/a"
+                  : `${totals.largestSizingAsset} ${totals.largestSizingPct.toFixed(1)}%`}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-          <div className="text-lg font-semibold text-zinc-100">
-            Hyperliquid-style position view
-          </div>
-          <div className="text-sm text-zinc-500">
-            {sorted.length} position{sorted.length === 1 ? "" : "s"} • {formatUSD(totals.notional)} value • 5m snapshot
-          </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+          <span>5m snapshot</span>
+          <span className="text-zinc-700">•</span>
+          <span>{researchLoading ? "Sizing sync pending" : `${sizingSnapshots.length} sizing snapshot${sizingSnapshots.length === 1 ? "" : "s"} captured forward`}</span>
+          <span className="text-zinc-700">•</span>
+          <span>Margin % = margin used / total tradeable USDC</span>
         </div>
         {noteWarning ? (
           <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
