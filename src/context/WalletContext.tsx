@@ -120,12 +120,18 @@ function parsePositions(
       liquidationPx: string | null;
       returnOnEquity: string;
     };
-  }>
+  }>,
+  dex: string | null = null,
 ): Position[] {
   return assetPositions
     .filter((ap) => parseFloat(ap.position.szi) !== 0)
     .map((ap) => {
       const p = ap.position;
+      const rawCoin = String(p.coin ?? "");
+      const displayCoin =
+        dex && rawCoin.toLowerCase().startsWith(`${dex.toLowerCase()}:`)
+          ? rawCoin.slice(dex.length + 1)
+          : rawCoin;
       const szi = parseFloat(p.szi);
       const entryPx = parseFloat(p.entryPx);
       const unrealizedPnl = parseFloat(p.unrealizedPnl);
@@ -137,7 +143,7 @@ function parsePositions(
           ? entryPx - pnlPerUnit
           : entryPx;
       return {
-        coin: p.coin,
+        coin: displayCoin,
         szi,
         entryPx,
         markPx,
@@ -146,7 +152,8 @@ function parsePositions(
         leverage: p.leverage.value,
         liquidationPx: p.liquidationPx ? parseFloat(p.liquidationPx) : null,
         returnOnEquity: parseFloat(p.returnOnEquity),
-        marketType: "perp",
+        marketType: dex ? "hip3_perp" : "perp",
+        dex,
       };
     });
 }
@@ -188,6 +195,7 @@ function parseSpotPositions(
         liquidationPx: null,
         returnOnEquity,
         marketType: "hip3_spot",
+        dex: null,
       };
     })
     .filter((position): position is Position => position != null)
@@ -215,11 +223,41 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return infoRef.current;
   }, []);
 
+  const fetchDexPerpStates = useCallback(
+    async (info: InfoClient, mainAddress: string) => {
+      try {
+        const dexs = await info.perpDexs();
+        const dexNames = dexs
+          .filter(
+            (dex): dex is NonNullable<typeof dex> =>
+              dex != null && typeof dex.name === "string" && dex.name.length > 0,
+          )
+          .map((dex) => dex.name);
+
+        const settled = await Promise.allSettled(
+          dexNames.map(async (dex) => ({
+            dex,
+            state: await info.clearinghouseState({
+              user: mainAddress as `0x${string}`,
+              dex,
+            }),
+          })),
+        );
+
+        return settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+      } catch (err) {
+        reportClientError("portfolio.dexFetch", err, { address: mainAddress });
+        return [];
+      }
+    },
+    [],
+  );
+
   const fetchPortfolio = useCallback(
     async (mainAddress: string, throwOnError = false) => {
       try {
         const info = getInfo();
-        const [state, spotState, spotMeta] = await Promise.all([
+        const [state, spotState, spotMeta, dexStates] = await Promise.all([
           info.clearinghouseState({
             user: mainAddress as `0x${string}`,
           }),
@@ -227,9 +265,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             user: mainAddress as `0x${string}`,
           }),
           info.spotMetaAndAssetCtxs(),
+          fetchDexPerpStates(info, mainAddress),
         ]);
 
-        const positions = parsePositions(state.assetPositions);
+        const perpStates = [{ dex: null, state }, ...dexStates];
+        const positions = perpStates.flatMap((entry) =>
+          parsePositions(entry.state.assetPositions, entry.dex),
+        );
         const [spotMetaData, spotAssetCtxs] = spotMeta as unknown as [
           { universe: Array<{ index: number; tokens: number[] }>; tokens: Array<{ index: number; name: string; fullName?: string }> },
           Array<{ markPx: string; midPx: string | null; prevDayPx: string }>,
@@ -254,19 +296,32 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           0,
         );
         const spotTotalValue = spotUsdcTotal + spotAssetValue;
-        const crossAccountValue = parseFloat(state.crossMarginSummary.accountValue);
-        const isolatedAccountValue = parseFloat(state.marginSummary.accountValue);
-        const crossMarginUsed = parseFloat(state.crossMarginSummary.totalMarginUsed);
-        const totalMarginUsed = parseFloat(state.marginSummary.totalMarginUsed);
+        const crossAccountValue = perpStates.reduce(
+          (sum, entry) => sum + parseNumber(entry.state.crossMarginSummary.accountValue),
+          0,
+        );
+        const isolatedAccountValue = perpStates.reduce(
+          (sum, entry) => sum + parseNumber(entry.state.marginSummary.accountValue),
+          0,
+        );
+        const totalMarginUsed = perpStates.reduce(
+          (sum, entry) => sum + parseNumber(entry.state.marginSummary.totalMarginUsed),
+          0,
+        );
         const totalUnrealizedPnl = perpUnrealizedPnl + spotUnrealizedPnl;
 
         // marginSummary.accountValue is the total perps equity (cross + isolated).
         // Spot wallet value includes idle USDC plus marked non-USDC balances.
         const totalAccountValue = isolatedAccountValue + spotTotalValue;
 
-        // Available for new orders = cross account value - cross margin used
-        // This matches Hyperliquid UI "Available Balance"
-        const availableForTrading = Math.max(crossAccountValue - crossMarginUsed, 0);
+        // Available for new orders across main + HIP-3 DEX perp books.
+        const availableForTrading = perpStates.reduce((sum, entry) => {
+          const explicitWithdrawable = parseNumber(entry.state.withdrawable);
+          if (explicitWithdrawable > 0) return sum + explicitWithdrawable;
+          const accountValue = parseNumber(entry.state.crossMarginSummary.accountValue);
+          const marginUsed = parseNumber(entry.state.crossMarginSummary.totalMarginUsed);
+          return sum + Math.max(accountValue - marginUsed, 0);
+        }, 0);
 
         setAccountState({
           accountValue: totalAccountValue,
@@ -290,7 +345,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [getInfo]
+    [fetchDexPerpStates, getInfo]
   );
 
   const connectWithExecutionProvider = useCallback(

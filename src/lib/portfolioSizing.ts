@@ -17,7 +17,8 @@ export function positionSizingPct(position: Position, accountState: AccountState
 }
 
 export function positionKey(position: Position): string {
-  return `${position.marketType ?? "perp"}:${position.coin}:${getPositionSide(position)}`;
+  const market = position.dex ? `${position.marketType ?? "perp"}:${position.dex}` : position.marketType ?? "perp";
+  return `${market}:${position.coin}:${getPositionSide(position)}`;
 }
 
 export function findSizingForTrade(

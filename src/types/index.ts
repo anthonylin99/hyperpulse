@@ -73,7 +73,8 @@ export interface Position {
   leverage: number;
   liquidationPx: number | null;
   returnOnEquity: number;
-  marketType?: "perp" | "hip3_spot";
+  marketType?: "perp" | "hip3_perp" | "hip3_spot";
+  dex?: string | null;
 }
 
 export interface AccountState {
@@ -231,7 +232,7 @@ export interface TradeSizingSnapshot {
   walletAddress: string;
   asset: string;
   side: "long" | "short";
-  marketType: "perp";
+  marketType: "perp" | "hip3_perp";
   positionKey: string;
   capturedAt: number;
   entryTime: number | null;

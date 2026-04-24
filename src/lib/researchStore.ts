@@ -110,7 +110,7 @@ function normalizeSizingSnapshot(row: Record<string, unknown>): TradeSizingSnaps
     walletAddress: String(row.wallet_address),
     asset: String(row.asset),
     side: String(row.side) === "short" ? "short" : "long",
-    marketType: "perp",
+    marketType: String(row.market_type) === "hip3_perp" ? "hip3_perp" : "perp",
     positionKey: String(row.position_key),
     capturedAt: Number(row.captured_at),
     entryTime: row.entry_time == null ? null : Number(row.entry_time),

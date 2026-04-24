@@ -199,6 +199,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
               const dist = liqDistancePct(position);
               const tone = riskTone(dist);
               const isSpot = position.marketType === "hip3_spot";
+              const isHip3Perp = position.marketType === "hip3_perp";
               const sizingPct = positionSizingPct(position, accountState);
               const noteKey = positionNoteKey(position);
               const note = effectiveNotes[noteKey] ?? emptyPositionNote();
@@ -207,7 +208,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
               const marketAsset = assetByCoin.get(position.coin);
 
               return (
-                <Fragment key={`${position.marketType ?? "perp"}-${position.coin}-${isLong ? "long" : "short"}`}>
+                <Fragment key={`${position.marketType ?? "perp"}-${position.dex ?? "main"}-${position.coin}-${isLong ? "long" : "short"}`}>
                   <tr className="border-b border-zinc-800/70 align-top">
                     <td className={cn(density === "roomy" ? "px-5 py-5" : "px-5 py-4")}>
                       <div className="flex items-start gap-3">
@@ -229,6 +230,11 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                             <span className="text-xs text-zinc-500">
                               {isSpot ? "wallet balance" : `${position.leverage.toFixed(1)}x`}
                             </span>
+                            {isHip3Perp && position.dex ? (
+                              <span className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-emerald-300">
+                                {position.dex}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>

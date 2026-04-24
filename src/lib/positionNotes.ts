@@ -15,7 +15,8 @@ function storageKey(address: string): string {
 
 export function positionNoteKey(position: Position): string {
   const side = position.marketType === "hip3_spot" ? "spot" : position.szi >= 0 ? "long" : "short";
-  return `${position.marketType ?? "perp"}:${position.coin}:${side}`;
+  const market = position.dex ? `${position.marketType ?? "perp"}:${position.dex}` : position.marketType ?? "perp";
+  return `${market}:${position.coin}:${side}`;
 }
 
 export function emptyPositionNote(): PositionNote {
