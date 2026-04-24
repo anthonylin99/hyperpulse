@@ -7,11 +7,12 @@ function buildCsp() {
     "form-action 'self'",
     "frame-ancestors 'none'",
     "object-src 'none'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://*.tradingview.com",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://*.tradingview.com",
     "font-src 'self' data:",
-    "connect-src 'self' https://api.hyperliquid.xyz wss://api.hyperliquid.xyz",
+    "connect-src 'self' https://api.hyperliquid.xyz wss://api.hyperliquid.xyz https://*.tradingview.com wss://*.tradingview.com",
+    "frame-src https://*.tradingview.com",
     "manifest-src 'self'",
   ];
 

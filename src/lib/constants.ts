@@ -86,7 +86,7 @@ export const ASSET_CATEGORIES: Record<string, AssetCategory> = {
 };
 
 export const ALL_CATEGORIES: AssetCategory[] = [
-  "L1", "L2", "DeFi", "Meme", "AI", "Gaming", "HL Native", "Other",
+  "L2", "AI", "Gaming", "HL Native",
 ];
 
 export function getAssetCategory(coin: string): AssetCategory {

@@ -66,7 +66,6 @@ const SPOT_FILTERS: Array<SpotCategory | "All"> = [
   "Energy",
   "Commodities",
   "Crypto",
-  "Other",
 ];
 
 function getPerpSortValue(asset: MarketAsset, key: PerpSortKey): number | string {
