@@ -31,6 +31,8 @@ import type {
   DailyBreakdown,
   EquityPoint,
   Insight,
+  CorrelationResult,
+  TradeSizingSnapshot,
 } from "@/types";
 
 interface PortfolioContextValue {
@@ -43,10 +45,15 @@ interface PortfolioContextValue {
   byHour: HourlyBreakdown[];
   byDay: DailyBreakdown[];
   insights: Insight[];
+  sizingSnapshots: TradeSizingSnapshot[];
+  correlation: CorrelationResult | null;
+  researchLoading: boolean;
+  researchError: string | null;
   loading: boolean;
   error: string | null;
   lastUpdated: number | null;
   refresh: () => Promise<void>;
+  refreshResearch: () => Promise<void>;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue | null>(null);
@@ -69,6 +76,10 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [byHour, setByHour] = useState<HourlyBreakdown[]>([]);
   const [byDay, setByDay] = useState<DailyBreakdown[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [sizingSnapshots, setSizingSnapshots] = useState<TradeSizingSnapshot[]>([]);
+  const [correlation, setCorrelation] = useState<CorrelationResult | null>(null);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
@@ -108,6 +119,46 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       // Cache miss or corrupt — no problem, will fetch fresh
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
+
+  const fetchResearch = useCallback(async () => {
+    if (!address) return;
+    setResearchLoading(true);
+    setResearchError(null);
+
+    try {
+      await fetch(withNetworkParam("/api/portfolio/sizing-snapshot"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      }).catch(() => null);
+
+      const [sizingRes, correlationRes] = await Promise.all([
+        fetch(withNetworkParam(`/api/portfolio/sizing?address=${address}&days=730`)),
+        fetch(withNetworkParam(`/api/portfolio/correlations?address=${address}&days=90`)),
+      ]);
+
+      if (sizingRes.ok) {
+        const sizingPayload = await sizingRes.json();
+        setSizingSnapshots(Array.isArray(sizingPayload.snapshots) ? sizingPayload.snapshots : []);
+      } else {
+        setSizingSnapshots([]);
+      }
+
+      if (correlationRes.ok) {
+        const correlationPayload = await correlationRes.json();
+        setCorrelation(correlationPayload as CorrelationResult);
+      } else {
+        setCorrelation(null);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Research layer unavailable";
+      setResearchError(msg);
+      setSizingSnapshots([]);
+      setCorrelation(null);
+    } finally {
+      setResearchLoading(false);
+    }
   }, [address]);
 
   const fetchData = useCallback(async () => {
@@ -300,19 +351,26 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     }
   }, [address]);
 
+  const refreshAll = useCallback(async () => {
+    await fetchData();
+    await fetchResearch();
+  }, [fetchData, fetchResearch]);
+
   // Fetch on connect + auto-refresh every 12 hours
   useEffect(() => {
     if (isConnected && address) {
       fetchData();
+      fetchResearch();
 
       const TWELVE_HOURS = 12 * 60 * 60 * 1000;
       const refreshInterval = setInterval(() => {
         fetchData();
+        fetchResearch();
       }, TWELVE_HOURS);
 
       return () => clearInterval(refreshInterval);
     }
-  }, [isConnected, address, fetchData]);
+  }, [isConnected, address, fetchData, fetchResearch]);
 
   // Reset on disconnect
   useEffect(() => {
@@ -326,6 +384,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setByHour([]);
       setByDay([]);
       setInsights([]);
+      setSizingSnapshots([]);
+      setCorrelation(null);
+      setResearchError(null);
       setError(null);
       setLastUpdated(null);
       hasFetchedRef.current = false;
@@ -344,10 +405,15 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         byHour,
         byDay,
         insights,
+        sizingSnapshots,
+        correlation,
+        researchLoading,
+        researchError,
         loading,
         error,
         lastUpdated,
-        refresh: fetchData,
+        refresh: refreshAll,
+        refreshResearch: fetchResearch,
       }}
     >
       {children}

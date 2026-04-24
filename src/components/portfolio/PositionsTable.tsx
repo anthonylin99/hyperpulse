@@ -5,6 +5,7 @@ import { NotebookPen } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatFundingAPR, formatUSD } from "@/lib/format";
+import { positionSizingPct, sizingTone } from "@/lib/portfolioSizing";
 import {
   emptyPositionNote,
   getPositionNotes,
@@ -27,6 +28,13 @@ function riskTone(dist: number | null): "default" | "warning" | "danger" {
   if (dist < 10) return "danger";
   if (dist < 20) return "warning";
   return "default";
+}
+
+function sizingClass(tone: ReturnType<typeof sizingTone>): string {
+  if (tone === "target") return "text-emerald-300";
+  if (tone === "over") return "text-red-300";
+  if (tone === "under") return "text-amber-300";
+  return "text-zinc-500";
 }
 
 export default function PositionsTable({ density = "compact" }: { density?: "compact" | "roomy" }) {
@@ -131,7 +139,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
       </div>
 
       <div className="overflow-x-auto">
-        <table className={cn("w-full text-sm", density === "roomy" ? "min-w-[1100px]" : "min-w-[1020px]")}>
+        <table className={cn("w-full text-sm", density === "roomy" ? "min-w-[1180px]" : "min-w-[1100px]")}>
           <thead className="bg-zinc-950/90">
             <tr className="border-b border-zinc-800 text-left text-[11px] uppercase tracking-[0.14em] text-zinc-500">
               <th className="px-5 py-3 font-medium">Asset</th>
@@ -140,6 +148,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
               <th className="px-4 py-3 font-medium">Mark Price</th>
               <th className="px-4 py-3 font-medium">P&amp;L (ROE)</th>
               <th className="px-4 py-3 font-medium">Liq. Price</th>
+              <th className="px-4 py-3 font-medium">Sizing</th>
               <th className="px-4 py-3 font-medium">Plan</th>
             </tr>
           </thead>
@@ -151,6 +160,8 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
               const dist = liqDistancePct(position);
               const tone = riskTone(dist);
               const isSpot = position.marketType === "hip3_spot";
+              const sizingPct = positionSizingPct(position, accountState);
+              const sizing = sizingTone(sizingPct);
               const noteKey = positionNoteKey(position);
               const note = effectiveNotes[noteKey] ?? emptyPositionNote();
               const hasNote = !!(note.thesis || note.invalidation || note.review);
@@ -245,6 +256,14 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                       </div>
                     </td>
                     <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
+                      <div className={cn("font-mono font-medium", sizingClass(sizing))}>
+                        {sizingPct == null ? "n/a" : `${sizingPct.toFixed(1)}%`}
+                      </div>
+                      <div className="mt-1 text-xs text-zinc-500">
+                        {isSpot ? "No margin" : "of deployable"}
+                      </div>
+                    </td>
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
                       <button
                         type="button"
                         onClick={() => setExpandedNote((current) => (current === noteKey ? null : noteKey))}
@@ -262,7 +281,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                   </tr>
                   {isExpanded ? (
                     <tr className="border-b border-zinc-800/70 bg-zinc-950">
-                      <td colSpan={7} className="px-5 py-4">
+                      <td colSpan={8} className="px-5 py-4">
                         <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
                           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 p-4">
                             <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
@@ -288,6 +307,11 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                                   label: "Funding drag",
                                   value: isSpot ? "n/a" : marketAsset ? formatFundingAPR(marketAsset.fundingAPR) : "n/a",
                                   tone: marketAsset && marketAsset.fundingAPR <= 0 ? "positive" : "negative",
+                                },
+                                {
+                                  label: "Sizing",
+                                  value: sizingPct == null ? "n/a" : `${sizingPct.toFixed(1)}% of deployable`,
+                                  tone: sizing === "target" ? "positive" : sizing === "over" ? "negative" : "warning",
                                 },
                                 {
                                   label: "Market signal",
@@ -359,6 +383,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                 {formatUSD(totals.pnl)}
               </td>
               <td className="px-4 py-4 text-zinc-500">Review risk strip above for aggregate risk.</td>
+              <td className="px-4 py-4 text-zinc-500">Target 5–12%.</td>
               <td className="px-4 py-4 text-zinc-500">Notes stay local.</td>
             </tr>
           </tfoot>

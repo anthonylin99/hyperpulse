@@ -5,12 +5,15 @@ import {
   CandlestickSeries,
   ColorType,
   HistogramSeries,
+  LineStyle,
   createChart,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatChartPrice, formatCompactUsd, formatPct } from "@/lib/format";
+import { calculateSupportResistanceLevels, nearestLevel } from "@/lib/supportResistance";
 import { CompactStat, FilterChip, SectionEyebrow } from "@/components/trading-ui";
 
 interface PriceChartProps {
@@ -45,6 +48,7 @@ export default function PriceChart({ coin, marketType = "perp" }: PriceChartProp
   const seriesRef = useRef<ISeriesApi<any> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const volumeRef = useRef<ISeriesApi<any> | null>(null);
+  const levelLinesRef = useRef<IPriceLine[]>([]);
   const [interval, setInterval] = useState<Interval>("1h");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -209,6 +213,43 @@ export default function PriceChart({ coin, marketType = "perp" }: PriceChartProp
     };
   }, [candles]);
 
+  const levels = useMemo(
+    () => calculateSupportResistanceLevels(candles, interval),
+    [candles, interval],
+  );
+  const nearestSupport = useMemo(() => nearestLevel(levels, "support"), [levels]);
+  const nearestResistance = useMemo(() => nearestLevel(levels, "resistance"), [levels]);
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    for (const line of levelLinesRef.current) {
+      series.removePriceLine(line);
+    }
+    levelLinesRef.current = [];
+
+    for (const level of levels) {
+      const color =
+        level.kind === "support"
+          ? "rgba(52, 211, 153, 0.78)"
+          : level.kind === "resistance"
+            ? "rgba(251, 113, 133, 0.78)"
+            : "rgba(244, 244, 245, 0.45)";
+
+      levelLinesRef.current.push(
+        series.createPriceLine({
+          price: level.price,
+          color,
+          lineWidth: level.source === "traditional_pivot" ? 1 : 2,
+          lineStyle: level.source === "traditional_pivot" ? LineStyle.Dashed : LineStyle.Solid,
+          axisLabelVisible: true,
+          title: level.label,
+        }),
+      );
+    }
+  }, [levels]);
+
   return (
     <div className="flex h-full flex-col rounded-2xl border border-zinc-800 bg-[#0d1016]">
       <div className="border-b border-zinc-800 px-4 py-3">
@@ -235,9 +276,21 @@ export default function PriceChart({ coin, marketType = "perp" }: PriceChartProp
         </div>
 
         {stats ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <CompactStat label="Range" value={`${formatChartPrice(stats.dayLow)} - ${formatChartPrice(stats.dayHigh)}`} helper={`${interval} window`} />
             <CompactStat label="Volume" value={formatCompactUsd(stats.totalVolume)} helper="candle sum" />
+            <CompactStat
+              label="Nearest support"
+              value={nearestSupport ? formatChartPrice(nearestSupport.price) : "n/a"}
+              helper={nearestSupport?.distancePct != null ? `${nearestSupport.distancePct.toFixed(2)}% from price` : "waiting for levels"}
+              tone="green"
+            />
+            <CompactStat
+              label="Nearest resistance"
+              value={nearestResistance ? formatChartPrice(nearestResistance.price) : "n/a"}
+              helper={nearestResistance?.distancePct != null ? `${nearestResistance.distancePct.toFixed(2)}% from price` : "waiting for levels"}
+              tone="amber"
+            />
             <CompactStat
               label="Structure"
               value={stats.changePct >= 0 ? "Buyers pressing" : "Sellers pressing"}

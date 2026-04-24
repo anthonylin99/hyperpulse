@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { formatUSD, cn } from "@/lib/format";
+import { findSizingForTrade, sizingTone } from "@/lib/portfolioSizing";
 import { getNotes, setNote } from "@/lib/tradeNotes";
 import type { RoundTripTrade } from "@/types";
 import TradeAnalyzerModal from "./TradeAnalyzerModal";
@@ -20,10 +21,14 @@ function formatDuration(ms: number): string {
   return `${(hrs / 24).toFixed(1)}d`;
 }
 
-function exportCSV(trades: RoundTripTrade[], notes: Record<string, string>) {
+function exportCSV(
+  trades: RoundTripTrade[],
+  notes: Record<string, string>,
+  sizingByTrade: Record<string, string>,
+) {
   const headers = [
     "Date", "Asset", "Direction", "Entry Price", "Exit Price",
-    "Size (USD)", "P&L", "P&L %", "Duration (min)", "Fees", "Funding", "Notes"
+    "Size (USD)", "Initial Margin %", "P&L", "P&L %", "Duration (min)", "Fees", "Funding", "Notes"
   ];
   const rows = trades.map((t) => [
     new Date(t.exitTime).toISOString(),
@@ -32,6 +37,7 @@ function exportCSV(trades: RoundTripTrade[], notes: Record<string, string>) {
     t.entryPx.toString(),
     t.exitPx.toString(),
     t.notional.toFixed(2),
+    sizingByTrade[t.id] ?? "Not captured",
     t.pnl.toFixed(2),
     t.pnlPct.toFixed(2),
     (t.duration / 60000).toFixed(1),
@@ -51,7 +57,7 @@ function exportCSV(trades: RoundTripTrade[], notes: Record<string, string>) {
 }
 
 export default function TradeJournal({ density = "compact" }: { density?: "compact" | "roomy" }) {
-  const { trades, loading } = usePortfolio();
+  const { trades, loading, sizingSnapshots } = usePortfolio();
   const { address } = useWallet();
   const [sortKey, setSortKey] = useState<SortKey>("time");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -149,6 +155,15 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
     return { totalPnl, totalFees, totalVolume, count, avgPnl };
   }, [sorted]);
 
+  const sizingByTrade = useMemo(() => {
+    const next: Record<string, string> = {};
+    for (const trade of sorted) {
+      const sizing = findSizingForTrade(trade, sizingSnapshots);
+      if (sizing) next[trade.id] = `${sizing.sizingPct.toFixed(1)}%`;
+    }
+    return next;
+  }, [sizingSnapshots, sorted]);
+
   const paged = sorted.slice(page * pageSize, (page + 1) * pageSize);
   const totalPages = Math.ceil(sorted.length / pageSize);
 
@@ -190,7 +205,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
     </span>
   );
 
-  const COL_COUNT = 12; // 10 data columns + analyze button + note icon column
+  const COL_COUNT = 13; // 11 data columns + analyze button + note icon column
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
@@ -283,7 +298,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
             ))}
           </div>
             <button
-              onClick={() => exportCSV(sorted, notes)}
+              onClick={() => exportCSV(sorted, notes, sizingByTrade)}
               className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
             >
               Export CSV
@@ -346,6 +361,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               <th className="text-center px-2 py-2">Entry</th>
               <th className="text-center px-2 py-2">Exit</th>
               <th className="text-center px-2 py-2">Size</th>
+              <th className="text-center px-2 py-2">Sizing</th>
               <th
                 className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
                 onClick={() => toggleSort("pnl")}
@@ -376,6 +392,8 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
             {paged.map((trade) => {
               const hasNote = !!notes[trade.id];
               const isExpanded = expandedNote === trade.id;
+              const sizing = findSizingForTrade(trade, sizingSnapshots);
+              const sizingStatus = sizingTone(sizing?.sizingPct ?? null);
               return (
                 <Fragment key={trade.id}>
                   <tr
@@ -427,6 +445,17 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                     </td>
                     <td className="px-2 py-2 text-center text-zinc-400 font-mono">
                       {formatUSD(trade.notional)}
+                    </td>
+                    <td
+                      className={cn(
+                        "px-2 py-2 text-center font-mono text-xs",
+                        sizingStatus === "target" && "text-emerald-300",
+                        sizingStatus === "over" && "text-red-300",
+                        sizingStatus === "under" && "text-amber-300",
+                        sizingStatus === "unknown" && "text-zinc-600",
+                      )}
+                    >
+                      {sizing ? `${sizing.sizingPct.toFixed(1)}%` : "Not captured"}
                     </td>
                     <td
                       className={cn(
@@ -512,6 +541,9 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               <td colSpan={3} />
               <td className="px-2 py-2 text-center text-xs font-mono text-zinc-400">
                 {formatUSD(summary.totalVolume)}
+              </td>
+              <td className="px-2 py-2 text-center text-xs font-mono text-zinc-500">
+                sizing tracked forward
               </td>
               <td
                 className={cn(

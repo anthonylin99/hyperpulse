@@ -210,6 +210,80 @@ export interface EquityPoint {
   drawdown: number; // 0 to -1 (percentage from peak)
 }
 
+// ─── Research Store Types ───────────────────────────────────────
+
+export interface DailyMarketPrice {
+  asset: string;
+  marketType: "perp" | "spot";
+  day: string; // UTC YYYY-MM-DD
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  source: "hyperliquid";
+  updatedAt: number;
+}
+
+export interface TradeSizingSnapshot {
+  id: string;
+  walletAddress: string;
+  asset: string;
+  side: "long" | "short";
+  marketType: "perp";
+  positionKey: string;
+  capturedAt: number;
+  entryTime: number | null;
+  entryPrice: number;
+  markPrice: number;
+  size: number;
+  notionalUsd: number;
+  marginUsedUsd: number;
+  accountEquityUsd: number;
+  deployableCapitalUsd: number;
+  leverage: number;
+  sizingPct: number;
+  status: "open" | "closed" | "unknown";
+  source: "first_captured" | "snapshot";
+}
+
+export interface CorrelationMatrixEntry {
+  assetA: string;
+  assetB: string;
+  correlation: number | null;
+  samples: number;
+}
+
+export interface CorrelationCluster {
+  primaryAsset: string;
+  secondaryAsset: string;
+  correlation: number;
+  combinedNotionalUsd: number;
+  note: string;
+}
+
+export interface CorrelationResult {
+  configured: boolean;
+  windowDays: number;
+  assets: string[];
+  matrix: CorrelationMatrixEntry[];
+  clusters: CorrelationCluster[];
+  warning: string | null;
+  updatedAt: number;
+}
+
+export interface SupportResistanceLevel {
+  id: string;
+  label: string;
+  kind: "support" | "resistance" | "pivot";
+  source: "traditional_pivot" | "swing_pivot";
+  price: number;
+  strength: number;
+  touches?: number;
+  distancePct?: number;
+}
+
 // ─── Activity Types ─────────────────────────────────────────────
 
 export type ActivityType = "liquidation" | "whale" | "oi-spike";
