@@ -2,9 +2,9 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { withNetworkParam } from "@/lib/hyperliquid";
-import { cn, formatChartPrice } from "@/lib/format";
+import { formatChartPrice } from "@/lib/format";
 import { calculateSupportResistanceLevels, nearestLevel } from "@/lib/supportResistance";
-import { FilterChip, SectionEyebrow } from "@/components/trading-ui";
+import { SectionEyebrow } from "@/components/trading-ui";
 
 interface PriceChartProps {
   coin: string;
@@ -20,15 +20,8 @@ declare global {
   }
 }
 
-const INTERVALS = ["15", "60", "240", "D"] as const;
-type TradingViewInterval = (typeof INTERVALS)[number];
-
-const INTERVAL_LABELS: Record<TradingViewInterval, string> = {
-  "15": "15m",
-  "60": "1h",
-  "240": "4h",
-  D: "1d",
-};
+type TradingViewInterval = "15" | "60" | "240" | "D";
+const DEFAULT_INTERVAL: TradingViewInterval = "15";
 
 const API_INTERVAL: Record<TradingViewInterval, "15m" | "1h" | "4h" | "1d"> = {
   "15": "15m",
@@ -115,10 +108,10 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
     [coin, instanceId, marketType],
   );
   const shellRef = useRef<HTMLDivElement>(null);
-  const [interval, setInterval] = useState<TradingViewInterval>("60");
   const [levelsLoading, setLevelsLoading] = useState(true);
   const [widgetError, setWidgetError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
+  const interval = DEFAULT_INTERVAL;
 
   const symbol = useMemo(() => tradingViewSymbol(coin, marketType), [coin, marketType]);
   const levels = useMemo(
@@ -148,11 +141,22 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
           toolbar_bg: "#0a0c10",
           backgroundColor: "rgba(10, 12, 16, 1)",
           gridColor: "rgba(63, 63, 70, 0.22)",
-          hide_top_toolbar: true,
-          hide_side_toolbar: true,
-          allow_symbol_change: false,
+          hide_top_toolbar: false,
+          hide_side_toolbar: false,
+          allow_symbol_change: true,
           save_image: false,
-          studies: ["STD;Pivot_Points_Standard"],
+          withdateranges: true,
+          studies: [
+            { id: "MASimple@tv-basicstudies", inputs: { length: 50 } },
+            { id: "MAExp@tv-basicstudies", inputs: { length: 21 } },
+          ],
+          studies_overrides: {
+            "moving average.ma.color": "#22c55e",
+            "moving average.ma.linewidth": 2,
+            "moving average exponential.plot.color": "#60a5fa",
+            "moving average exponential.0.plot.color": "#60a5fa",
+            "moving average exponential.plot.linewidth": 2,
+          },
           container_id: widgetContainerId,
         });
       })
@@ -208,8 +212,8 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
 
   return (
     <div ref={shellRef} className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
-      <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <SectionEyebrow>{marketType === "spot" ? "RWA chart proxy" : "Market chart"}</SectionEyebrow>
             <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -219,16 +223,16 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {INTERVALS.map((value) => (
-              <FilterChip
-                key={value}
-                label={INTERVAL_LABELS[value]}
-                active={interval === value}
-                onClick={() => setInterval(value)}
-                className="py-1.5 text-xs"
-              />
-            ))}
+          <div className="flex flex-wrap gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500">
+            <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
+              50 SMA
+            </span>
+            <span className="rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-sky-300">
+              21 EMA
+            </span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
+              native TV controls
+            </span>
           </div>
         </div>
 
@@ -267,13 +271,7 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
               {widgetError}
             </div>
           ) : (
-            <div
-              id={widgetContainerId}
-              className={cn(
-                "absolute inset-0 overflow-hidden",
-                compact && "pointer-events-none",
-              )}
-            />
+            <div id={widgetContainerId} className="absolute inset-0 overflow-hidden" />
           )}
         </div>
       </div>
