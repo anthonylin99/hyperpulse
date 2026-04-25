@@ -21,16 +21,32 @@ interface PriceChartProps {
   compact?: boolean;
 }
 
-type TradingInterval = "15";
+type TradingInterval = "5" | "15" | "60" | "240" | "D";
 const DEFAULT_INTERVAL: TradingInterval = "15";
 
-const API_INTERVAL: Record<TradingInterval, "15m"> = {
+const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> = {
+  "5": "5m",
   "15": "15m",
+  "60": "1h",
+  "240": "4h",
+  D: "1d",
 };
 
 const LOOKBACK_MS: Record<TradingInterval, number> = {
+  "5": 48 * 60 * 60 * 1000,
   "15": 5 * 24 * 60 * 60 * 1000,
+  "60": 14 * 24 * 60 * 60 * 1000,
+  "240": 45 * 24 * 60 * 60 * 1000,
+  D: 180 * 24 * 60 * 60 * 1000,
 };
+
+const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
+  { label: "5m", value: "5" },
+  { label: "15m", value: "15" },
+  { label: "1h", value: "60" },
+  { label: "4h", value: "240" },
+  { label: "1d", value: "D" },
+];
 
 type CandleDatum = {
   time: number;
@@ -80,7 +96,7 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
-  const interval = DEFAULT_INTERVAL;
+  const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
 
   const levels = useMemo(
     () => calculateSupportResistanceLevels(candles, API_INTERVAL[interval]),
@@ -252,7 +268,7 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <div className={compact ? "font-mono text-base font-semibold text-zinc-100" : "font-mono text-lg font-semibold text-zinc-100"}>{coin}</div>
               <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
-                15m candles
+                {API_INTERVAL[interval]} candles
               </div>
               {currentPrice != null && (
                 <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-300">
@@ -261,7 +277,23 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
               )}
             </div>
           </div>
-          <div className="flex flex-wrap gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500">
+          <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
+            <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
+              {INTERVAL_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setInterval(option.value)}
+                  className={`rounded-full px-2 py-0.5 transition ${
+                    interval === option.value
+                      ? "bg-emerald-500/15 text-emerald-200"
+                      : "text-zinc-500 hover:text-zinc-200"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
               Green support
             </span>
