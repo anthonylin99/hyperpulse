@@ -11,7 +11,6 @@ import {
   formatFundingAPR,
 } from "@/lib/format";
 import { getFundingRegime } from "@/lib/fundingRegime";
-import { getAssetCategory } from "@/lib/constants";
 import SignalBadge from "./SignalBadge";
 
 interface AssetRowProps {
@@ -52,7 +51,6 @@ export default function AssetRow({
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const rowBg = index % 2 === 0 ? "bg-zinc-950" : "bg-zinc-900/50";
-  const category = getAssetCategory(asset.coin);
   const fundingRegime = getFundingRegime(asset.fundingRate, fundingHistory);
   const fundingRegimeShort =
     fundingRegime.percentile == null
@@ -72,7 +70,6 @@ export default function AssetRow({
         <td className="px-2.5 py-0.5 whitespace-nowrap">
           <div className="flex items-center gap-2">
             <span className="text-zinc-50 font-medium">{asset.coin}</span>
-            <span className="text-[8px] text-zinc-600 uppercase">{category}</span>
           </div>
         </td>
 
