@@ -24,6 +24,11 @@ interface AssetDetailProps {
   onClose: () => void;
 }
 
+type PricePoint = {
+  time: number;
+  price: number;
+};
+
 const FUNDING_RANGES = [
   { label: "7d", days: 7 },
   { label: "30d", days: 30 },
@@ -37,7 +42,9 @@ export default function AssetDetail({
 }: AssetDetailProps) {
   const [fundingRange, setFundingRange] = useState<7 | 30 | 60>(7);
   const [extendedFunding, setExtendedFunding] = useState<{ time: number; rate: number }[] | null>(null);
+  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [loadingFunding, setLoadingFunding] = useState(false);
+  const [loadingPrice, setLoadingPrice] = useState(false);
   const [tab, setTab] = useState<"price" | "funding">("price");
   const [fundingView, setFundingView] = useState<"apr" | "hourly">("apr");
 
@@ -78,16 +85,50 @@ export default function AssetDetail({
     }
   }, [asset.coin]);
 
+  const fetchPriceHistory = useCallback(async (days: number) => {
+    setLoadingPrice(true);
+    try {
+      const now = Date.now();
+      const startTime = now - days * 24 * 60 * 60 * 1000;
+      const interval = days <= 7 ? "1h" : "4h";
+      const res = await fetch(
+        withNetworkParam(
+          `/api/market/candles?coin=${asset.coin}&marketType=perp&interval=${interval}&startTime=${startTime}&endTime=${now}`,
+        )
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as Array<Record<string, string | number>>;
+      setPriceHistory(
+        data
+          .map((candle) => ({
+            time: Number(candle.t ?? candle.T ?? candle.time),
+            price: Number(candle.c ?? candle.close),
+          }))
+          .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price) && point.price > 0)
+      );
+    } catch {
+      setPriceHistory([]);
+    } finally {
+      setLoadingPrice(false);
+    }
+  }, [asset.coin]);
+
   useEffect(() => {
+    if (tab !== "funding") return;
     fetchExtendedFunding(fundingRange);
-  }, [fundingRange, fetchExtendedFunding]);
+    fetchPriceHistory(fundingRange);
+  }, [fetchExtendedFunding, fetchPriceHistory, fundingRange, tab]);
 
   const activeFunding = fundingRange === 7 ? fundingHistory : extendedFunding;
-  const chartData = activeFunding?.map((f) => ({
-    time: f.time,
-    apr: f.rate * 8760 * 100,
-    hourlyPct: f.rate * 100,
-  }));
+  const chartData = activeFunding?.map((f) => {
+    const nearestPrice = nearestPriceForTime(priceHistory, f.time);
+    return {
+      time: f.time,
+      apr: f.rate * 8760 * 100,
+      hourlyPct: f.rate * 100,
+      price: nearestPrice?.price ?? null,
+    };
+  });
   const fundingRegime = getFundingRegime(
     asset.fundingRate,
     activeFunding ?? undefined
@@ -152,7 +193,7 @@ export default function AssetDetail({
 
             {chartData && chartData.length > 0 ? (
               <div className="space-y-2">
-                <div className="flex items-center gap-3 text-[11px] font-mono">
+                <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono">
                   <span className={regimeColor}>{fundingRegime.label}</span>
                   {fundingRegime.percentile != null && (
                     <span className="text-zinc-500">
@@ -164,6 +205,9 @@ export default function AssetDetail({
                       Mean: {formatFundingAPR(fundingRegime.meanAPR)}
                     </span>
                   )}
+                  <span className="text-zinc-500">
+                    Price overlay {loadingPrice ? "loading" : priceHistory.length > 0 ? "on" : "unavailable"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1">
                   <FilterChip label="APR" active={fundingView === "apr"} onClick={() => setFundingView("apr")} className="py-1 text-[11px]" />
@@ -171,23 +215,35 @@ export default function AssetDetail({
                 </div>
                 <div className="text-[10px] text-zinc-600">
                   {fundingView === "apr"
-                    ? "Funding chart is annualized APR (hourly rate x 8760)."
-                    : "Hourly % shows the raw per-period funding rate without annualization."}
+                    ? "Funding APR is overlaid with mark price so you can see crowded funding versus price reaction."
+                    : "Hourly % shows raw funding overlaid with mark price for the same window."}
                 </div>
-                <div className="h-[200px]">
+                <div className="h-[240px]">
                   <ResponsiveContainer width="100%" height="100%">
                   <LineChart
                     data={chartData}
                     margin={{ top: 4, right: 10, left: 10, bottom: 0 }}
                   >
                     <Line
+                      yAxisId="funding"
                       type="monotone"
                       dataKey={fundingView === "apr" ? "apr" : "hourlyPct"}
                       stroke="#7dd4c4"
                       strokeWidth={1.5}
                       dot={false}
+                      name="Funding"
                     />
-                    <ReferenceLine y={0} stroke="#3f3f46" strokeDasharray="3 3" />
+                    <Line
+                      yAxisId="price"
+                      type="monotone"
+                      dataKey="price"
+                      stroke="#f4f4f5"
+                      strokeWidth={1.25}
+                      dot={false}
+                      connectNulls
+                      name="Price"
+                    />
+                    <ReferenceLine yAxisId="funding" y={0} stroke="#3f3f46" strokeDasharray="3 3" />
                     <XAxis
                       dataKey="time"
                       tickFormatter={(t) =>
@@ -201,11 +257,21 @@ export default function AssetDetail({
                       tickLine={false}
                     />
                     <YAxis
+                      yAxisId="funding"
                       tickFormatter={(v) => `${v.toFixed(0)}%`}
                       tick={{ fontSize: 10, fill: "#71717a" }}
                       axisLine={false}
                       tickLine={false}
                       width={45}
+                    />
+                    <YAxis
+                      yAxisId="price"
+                      orientation="right"
+                      tickFormatter={(v) => formatUSD(Number(v), priceDecimals)}
+                      tick={{ fontSize: 10, fill: "#a1a1aa" }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={72}
                     />
                     <Tooltip
                       contentStyle={{
@@ -222,13 +288,15 @@ export default function AssetDetail({
                           hour: "2-digit",
                         })
                       }
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      formatter={(value: any) => [
-                        fundingView === "apr"
-                          ? `${Number(value).toFixed(1)}% APR`
-                          : `${Number(value).toFixed(4)}% hourly`,
-                        "Funding",
-                      ]}
+                      formatter={(value, name) => {
+                        if (name === "Price") return [formatUSD(Number(value), priceDecimals), "Price"];
+                        return [
+                          fundingView === "apr"
+                            ? `${Number(value).toFixed(1)}% APR`
+                            : `${Number(value).toFixed(4)}% hourly`,
+                          "Funding",
+                        ];
+                      }}
                     />
                   </LineChart>
                   </ResponsiveContainer>
@@ -244,4 +312,26 @@ export default function AssetDetail({
       </div>
     </div>
   );
+}
+
+function nearestPriceForTime(priceHistory: PricePoint[], time: number): PricePoint | null {
+  if (priceHistory.length === 0) return null;
+
+  const target = normalizeTime(time);
+  let nearest: PricePoint | null = null;
+  let nearestDistance = Infinity;
+
+  for (const point of priceHistory) {
+    const distance = Math.abs(normalizeTime(point.time) - target);
+    if (distance < nearestDistance) {
+      nearest = point;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearestDistance <= 4 * 60 * 60 * 1000 ? nearest : null;
+}
+
+function normalizeTime(time: number): number {
+  return time > 10_000_000_000 ? time : time * 1000;
 }
