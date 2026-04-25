@@ -33,11 +33,11 @@ const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> =
 };
 
 const LOOKBACK_MS: Record<TradingInterval, number> = {
-  "5": 48 * 60 * 60 * 1000,
-  "15": 5 * 24 * 60 * 60 * 1000,
-  "60": 14 * 24 * 60 * 60 * 1000,
-  "240": 45 * 24 * 60 * 60 * 1000,
-  D: 180 * 24 * 60 * 60 * 1000,
+  "5": 5 * 24 * 60 * 60 * 1000,
+  "15": 14 * 24 * 60 * 60 * 1000,
+  "60": 60 * 24 * 60 * 60 * 1000,
+  "240": 120 * 24 * 60 * 60 * 1000,
+  D: 120 * 24 * 60 * 60 * 1000,
 };
 
 const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
