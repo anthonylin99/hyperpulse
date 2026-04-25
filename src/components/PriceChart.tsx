@@ -242,7 +242,7 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
               21 EMA
             </span>
             <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-              native TV indicators
+              structure levels
             </span>
           </div>
         </div>

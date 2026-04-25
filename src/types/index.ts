@@ -278,7 +278,7 @@ export interface SupportResistanceLevel {
   id: string;
   label: string;
   kind: "support" | "resistance" | "pivot";
-  source: "traditional_pivot" | "swing_pivot";
+  source: "traditional_pivot" | "swing_pivot" | "structure_pivot" | "structure_trendline";
   price: number;
   strength: number;
   touches?: number;
