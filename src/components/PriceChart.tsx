@@ -147,12 +147,20 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
           save_image: false,
           withdateranges: true,
           studies: [
-            { id: "MASimple@tv-basicstudies", inputs: { length: 50 } },
+            "PivotPointsHighLow@tv-basicstudies",
             { id: "MAExp@tv-basicstudies", inputs: { length: 21 } },
           ],
           studies_overrides: {
-            "moving average.ma.color": "#22c55e",
-            "moving average.ma.linewidth": 2,
+            "pivot points high low.pivothigh.color": "#ef4444",
+            "pivot points high low.pivot high.color": "#ef4444",
+            "pivot points high low.high.color": "#ef4444",
+            "pivot points high low.pivothigh.linewidth": 2,
+            "pivot points high low.pivot high.linewidth": 2,
+            "pivot points high low.pivotlow.color": "#22c55e",
+            "pivot points high low.pivot low.color": "#22c55e",
+            "pivot points high low.low.color": "#22c55e",
+            "pivot points high low.pivotlow.linewidth": 2,
+            "pivot points high low.pivot low.linewidth": 2,
             "moving average exponential.plot.color": "#60a5fa",
             "moving average exponential.0.plot.color": "#60a5fa",
             "moving average exponential.plot.linewidth": 2,
@@ -224,14 +232,17 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500">
+            <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-rose-300">
+              Pivot highs
+            </span>
             <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
-              50 SMA
+              Pivot lows
             </span>
             <span className="rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-sky-300">
               21 EMA
             </span>
             <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-              native TV controls
+              native TV indicators
             </span>
           </div>
         </div>
