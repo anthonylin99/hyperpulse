@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { X } from "lucide-react";
 import {
   LineChart,
@@ -120,15 +120,24 @@ export default function AssetDetail({
   }, [fetchExtendedFunding, fetchPriceHistory, fundingRange, tab]);
 
   const activeFunding = fundingRange === 7 ? fundingHistory : extendedFunding;
-  const chartData = activeFunding?.map((f) => {
-    const nearestPrice = nearestPriceForTime(priceHistory, f.time);
-    return {
-      time: f.time,
-      apr: f.rate * 8760 * 100,
-      hourlyPct: f.rate * 100,
-      price: nearestPrice?.price ?? null,
-    };
-  });
+  const chartData = useMemo(() => {
+    const raw = activeFunding?.map((f) => {
+      const nearestPrice = nearestPriceForTime(priceHistory, f.time);
+      return {
+        time: f.time,
+        apr: f.rate * 8760 * 100,
+        hourlyPct: f.rate * 100,
+        price: nearestPrice?.price ?? null,
+      };
+    });
+    const firstPrice = raw?.find((point) => point.price != null)?.price ?? null;
+    return raw?.map((point) => ({
+      ...point,
+      priceChangePct: point.price != null && firstPrice != null && firstPrice > 0
+        ? ((point.price - firstPrice) / firstPrice) * 100
+        : null,
+    }));
+  }, [activeFunding, priceHistory]);
   const fundingRegime = getFundingRegime(
     asset.fundingRate,
     activeFunding ?? undefined
@@ -215,8 +224,8 @@ export default function AssetDetail({
                 </div>
                 <div className="text-[10px] text-zinc-600">
                   {fundingView === "apr"
-                    ? "Funding APR is overlaid with mark price so you can see crowded funding versus price reaction."
-                    : "Hourly % shows raw funding overlaid with mark price for the same window."}
+                    ? "Funding APR is overlaid with price change % so movement is visually comparable."
+                    : "Hourly % is overlaid with price change % for the same window."}
                 </div>
                 <div className="h-[240px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -236,16 +245,17 @@ export default function AssetDetail({
                     <Line
                       yAxisId="price"
                       type="monotone"
-                      dataKey="price"
+                      dataKey="priceChangePct"
                       stroke="#f4f4f5"
                       strokeWidth={1.25}
                       dot={false}
                       connectNulls
-                      name="Price"
+                      name="Price Δ"
                     />
                     <ReferenceLine yAxisId="funding" y={0} stroke="#3f3f46" strokeDasharray="3 3" />
                     <XAxis
                       dataKey="time"
+                      hide
                       tickFormatter={(t) =>
                         new Date(t).toLocaleDateString("en-US", {
                           month: "short",
@@ -267,11 +277,11 @@ export default function AssetDetail({
                     <YAxis
                       yAxisId="price"
                       orientation="right"
-                      tickFormatter={(v) => formatUSD(Number(v), priceDecimals)}
+                      tickFormatter={(v) => `${Number(v).toFixed(1)}%`}
                       tick={{ fontSize: 10, fill: "#a1a1aa" }}
                       axisLine={false}
                       tickLine={false}
-                      width={72}
+                      width={48}
                     />
                     <Tooltip
                       contentStyle={{
@@ -289,7 +299,7 @@ export default function AssetDetail({
                         })
                       }
                       formatter={(value, name) => {
-                        if (name === "Price") return [formatUSD(Number(value), priceDecimals), "Price"];
+                        if (name === "Price Δ") return [`${Number(value).toFixed(2)}%`, "Price Δ"];
                         return [
                           fundingView === "apr"
                             ? `${Number(value).toFixed(1)}% APR`
