@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MousePointerClick } from "lucide-react";
 import MarketOverviewPanel from "@/components/MarketOverviewPanel";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
@@ -38,6 +39,10 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
                   <div className="mt-1 text-lg font-semibold text-zinc-100">Market directory</div>
                   <div className="mt-1 text-sm text-zinc-400">
                     Search, filter, and inspect Hyperliquid perps plus available RWA spot markets.
+                  </div>
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-[11px] text-zinc-400">
+                    <MousePointerClick className="h-3.5 w-3.5 text-teal-300" />
+                    Click any asset row to open the chart and detail view.
                   </div>
                 </div>
               </div>

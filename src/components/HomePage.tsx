@@ -45,6 +45,12 @@ const CAPABILITIES = [
     href: "/portfolio",
     icon: BriefcaseBusiness,
   },
+  {
+    title: "Methodology",
+    description: "Document the public demo posture, metrics, and data sources behind the terminal.",
+    href: "/docs",
+    icon: BookOpenText,
+  },
 ] as const;
 
 export default function HomePage() {
@@ -94,14 +100,14 @@ export default function HomePage() {
                 href={primaryHref}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-teal-300 px-6 py-3.5 text-sm font-semibold text-zinc-950 shadow-[0_18px_60px_rgba(45,212,191,0.24)] transition hover:bg-teal-200"
               >
-                Launch App
+                Enter Terminal
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/markets"
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-zinc-700/80 bg-zinc-950/45 px-6 py-3.5 text-sm font-medium text-zinc-200 backdrop-blur transition hover:border-zinc-500 hover:bg-zinc-900/80"
               >
-                Explore Markets
+                View Live Pulse
               </Link>
             </div>
 
@@ -198,7 +204,7 @@ export default function HomePage() {
 
         <section id="live-pulse" className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-3xl border border-zinc-800 bg-[#13171f] p-6 xl:p-7">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Product proof</div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Product proof</div>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 xl:text-[2.3rem]">
               One shell. Faster decisions.
             </h2>
@@ -233,7 +239,7 @@ export default function HomePage() {
                 <div className="mt-2 text-sm leading-7 text-zinc-400">
                   {factorsEnabled
                     ? `${factors.length || "--"} factor baskets available in this environment.`
-                    : "Public beta focuses on markets, read-only portfolio review, and docs."}
+                    : "Public demo focuses on markets, read-only portfolio review, and clear methodology."}
                 </div>
               </div>
             </div>

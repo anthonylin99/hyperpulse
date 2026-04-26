@@ -18,6 +18,8 @@
     "@nktkas/hyperliquid": "^0.32.1",
     "@privy-io/react-auth": "^3.18.0",
     "@solana/wallet-adapter-react": "^0.15.39",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "lightweight-charts": "^5.1.0",
     "lucide-react": "^1.0.1",
     "next": "^15.5.14",

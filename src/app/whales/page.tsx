@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default function WhalesRoutePage() {
   if (!isWhalesEnabled()) {
-    redirect("/");
+    redirect("/markets");
   }
   return <WhalesPage />;
 }

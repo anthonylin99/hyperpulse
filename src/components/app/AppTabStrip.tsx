@@ -20,7 +20,10 @@ export default function AppTabStrip() {
       <div className="mx-auto max-w-[1520px] px-4 py-3 sm:px-6 xl:px-8">
         <div className="scrollbar-hide inline-flex max-w-full gap-2 overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 p-1.5">
           {tabs.map((tab) => {
-            const active = tab.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+            const active =
+              tab.key === "home"
+                ? pathname === "/"
+                : tab.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
             return (
               <Link
                 key={tab.key}

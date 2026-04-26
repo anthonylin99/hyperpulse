@@ -1,4 +1,6 @@
 const STORAGE_KEY = "hp_saved_wallets";
+const PERSIST_SAVED_WALLETS =
+  process.env.NEXT_PUBLIC_ENABLE_SAVED_WALLETS === "true";
 
 export interface SavedWallet {
   address: string;
@@ -7,8 +9,13 @@ export interface SavedWallet {
   lastUsed: number;
 }
 
+export function savedWalletPersistenceEnabled() {
+  return PERSIST_SAVED_WALLETS;
+}
+
 export function getSavedWallets(): SavedWallet[] {
   if (typeof window === "undefined") return [];
+  if (!PERSIST_SAVED_WALLETS) return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
@@ -18,6 +25,7 @@ export function getSavedWallets(): SavedWallet[] {
 }
 
 export function saveWallet(address: string, nickname?: string): SavedWallet[] {
+  if (!PERSIST_SAVED_WALLETS) return [];
   const wallets = getSavedWallets();
   const normalized = address.toLowerCase();
   const existing = wallets.find((w) => w.address.toLowerCase() === normalized);
@@ -39,6 +47,7 @@ export function saveWallet(address: string, nickname?: string): SavedWallet[] {
 }
 
 export function removeWallet(address: string): SavedWallet[] {
+  if (!PERSIST_SAVED_WALLETS) return [];
   const wallets = getSavedWallets().filter(
     (w) => w.address.toLowerCase() !== address.toLowerCase()
   );
@@ -47,6 +56,7 @@ export function removeWallet(address: string): SavedWallet[] {
 }
 
 export function renameWallet(address: string, nickname: string): SavedWallet[] {
+  if (!PERSIST_SAVED_WALLETS) return [];
   const wallets = getSavedWallets();
   const wallet = wallets.find(
     (w) => w.address.toLowerCase() === address.toLowerCase()
@@ -57,6 +67,7 @@ export function renameWallet(address: string, nickname: string): SavedWallet[] {
 }
 
 export function touchWallet(address: string): void {
+  if (!PERSIST_SAVED_WALLETS) return;
   const wallets = getSavedWallets();
   const wallet = wallets.find(
     (w) => w.address.toLowerCase() === address.toLowerCase()
@@ -69,5 +80,6 @@ export function touchWallet(address: string): void {
 
 export function clearSavedWallets(): void {
   if (typeof window === "undefined") return;
+  if (!PERSIST_SAVED_WALLETS) return;
   localStorage.removeItem(STORAGE_KEY);
 }

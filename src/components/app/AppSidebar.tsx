@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpenText,
   BriefcaseBusiness,
+  House,
   Layers3,
   Shield,
   Waves,
@@ -16,6 +17,7 @@ import { APP_TABS, type AppTabKey } from "@/lib/appTabs";
 import { cn } from "@/lib/format";
 
 const TAB_ICONS: Record<AppTabKey, typeof BarChart3> = {
+  home: House,
   markets: BarChart3,
   factors: Layers3,
   whales: Waves,
@@ -24,6 +26,7 @@ const TAB_ICONS: Record<AppTabKey, typeof BarChart3> = {
 };
 
 const TAB_HELPERS: Record<AppTabKey, string> = {
+  home: "Landing + proof",
   markets: "Directory + context",
   factors: "Research regimes",
   whales: "Tracked flow",
@@ -55,7 +58,10 @@ export default function AppSidebar() {
         <nav className="mt-3 space-y-1.5">
           {tabs.map((tab) => {
             const Icon = TAB_ICONS[tab.key];
-            const active = tab.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+            const active =
+              tab.key === "home"
+                ? pathname === "/"
+                : tab.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
             return (
               <Link

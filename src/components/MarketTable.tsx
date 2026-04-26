@@ -333,6 +333,10 @@ export default function MarketTable({
           )}
         </div>
 
+        <div className="flex-shrink-0 border-b border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-500">
+          Tip: select a row like <span className="font-mono text-zinc-300">BTC</span> or <span className="font-mono text-zinc-300">ETH</span> to open its chart, funding context, and tape details.
+        </div>
+
         <div className="flex-1 overflow-auto">
           {mode === "perps" ? (
             <table className="w-full border-collapse">

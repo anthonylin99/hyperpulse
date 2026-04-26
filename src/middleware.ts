@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { isFactorsEnabled, isWhalesEnabled } from "@/lib/appConfig";
 
 function buildCsp() {
   const directives = [
@@ -23,9 +24,7 @@ function buildCsp() {
   return directives.join("; ");
 }
 
-export function middleware() {
-  const response = NextResponse.next();
-
+function applySecurityHeaders(response: NextResponse) {
   response.headers.set("Content-Security-Policy", buildCsp());
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -43,6 +42,22 @@ export function middleware() {
   }
 
   return response;
+}
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (
+    (!isFactorsEnabled() && pathname.startsWith("/factors")) ||
+    (!isWhalesEnabled() && pathname.startsWith("/whales"))
+  ) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/markets";
+    redirectUrl.search = "";
+    return applySecurityHeaders(NextResponse.redirect(redirectUrl, 307));
+  }
+
+  return applySecurityHeaders(NextResponse.next());
 }
 
 export const config = {

@@ -9,6 +9,7 @@ const checks = [
   { path: "/portfolio", expect: "read-only" },
   { path: "/docs", expect: "Docs" },
   { path: "/api/public-config", json: true },
+  { path: "/api/health", json: true, health: true },
 ];
 
 async function read(path) {
@@ -27,20 +28,26 @@ for (const check of checks) {
 
   if (check.json) {
     const config = JSON.parse(body);
-    for (const key of ["tradingEnabled", "whalesEnabled", "factorsEnabled"]) {
-      if (typeof config[key] !== "boolean") {
-        throw new Error(`/api/public-config expected boolean ${key}, got ${config[key]}`);
+    if (check.health) {
+      if (config.ok !== true || config.status !== "ok") {
+        throw new Error(`/api/health expected ok payload, got ${body}`);
       }
-    }
-    if (expectPublicFlags) {
-      const expectedOff = [
-        ["tradingEnabled", false],
-        ["whalesEnabled", false],
-        ["factorsEnabled", false],
-      ];
-      for (const [key, expected] of expectedOff) {
-        if (config[key] !== expected) {
-          throw new Error(`/api/public-config expected ${key}=${expected}, got ${config[key]}`);
+    } else {
+      for (const key of ["tradingEnabled", "whalesEnabled", "factorsEnabled"]) {
+        if (typeof config[key] !== "boolean") {
+          throw new Error(`/api/public-config expected boolean ${key}, got ${config[key]}`);
+        }
+      }
+      if (expectPublicFlags) {
+        const expectedOff = [
+          ["tradingEnabled", false],
+          ["whalesEnabled", false],
+          ["factorsEnabled", false],
+        ];
+        for (const [key, expected] of expectedOff) {
+          if (config[key] !== expected) {
+            throw new Error(`/api/public-config expected ${key}=${expected}, got ${config[key]}`);
+          }
         }
       }
     }
@@ -59,6 +66,10 @@ if (expectPublicFlags) {
     });
     if (![302, 303, 307, 308].includes(response.status)) {
       throw new Error(`${path} expected disabled redirect, got ${response.status}`);
+    }
+    const location = response.headers.get("location");
+    if (!location || !location.includes("/markets")) {
+      throw new Error(`${path} expected redirect to /markets, got ${location}`);
     }
     console.log(`ok ${path} disabled redirect`);
   }

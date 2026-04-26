@@ -7,6 +7,7 @@ import {
   clearSavedWallets,
   getSavedWallets,
   removeWallet,
+  savedWalletPersistenceEnabled,
   type SavedWallet,
 } from "@/lib/savedWallets";
 import { cn, truncateAddress } from "@/lib/format";
@@ -20,6 +21,7 @@ export default function ConnectPrompt() {
   const [addressInput, setAddressInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
+  const remembersWallets = savedWalletPersistenceEnabled();
 
   useEffect(() => {
     setSavedWallets(getSavedWallets());
@@ -148,6 +150,9 @@ export default function ConnectPrompt() {
               <span className="rounded-full border border-zinc-800 bg-[#090d12] px-3 py-1.5">
                 5 minute portfolio refresh
               </span>
+              <span className="rounded-full border border-zinc-800 bg-[#090d12] px-3 py-1.5">
+                {remembersWallets ? "This browser remembers wallets" : "Session-only privacy"}
+              </span>
             </div>
           </div>
 
@@ -188,7 +193,7 @@ export default function ConnectPrompt() {
           </div>
         </div>
 
-        {savedWallets.length > 0 ? (
+        {remembersWallets && savedWallets.length > 0 ? (
           <div className="mt-5 rounded-[22px] border border-zinc-800 bg-zinc-950/45 p-4">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Recent wallets</div>
@@ -226,6 +231,12 @@ export default function ConnectPrompt() {
                   </div>
                 ))}
             </div>
+          </div>
+        ) : null}
+
+        {!remembersWallets ? (
+          <div className="mt-4 text-xs leading-6 text-zinc-500">
+            HyperPulse is currently set to avoid storing wallet history in local browser memory. Your coworker will not see this wallet later unless you intentionally share the address or keep this tab open.
           </div>
         ) : null}
 

@@ -12,7 +12,7 @@ export default async function WhaleAddressPage({
   searchParams: Promise<{ alert?: string }>;
 }) {
   if (!isWhalesEnabled()) {
-    redirect("/");
+    redirect("/markets");
   }
   const { address } = await params;
   const { alert } = await searchParams;

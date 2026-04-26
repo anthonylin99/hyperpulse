@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import Providers from "./providers";
 import AppShell from "@/components/app/AppShell";
+import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -16,9 +19,32 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "HyperPulse — Portfolio Analytics for Hyperliquid",
+  metadataBase: new URL(getSiteUrl()),
+  title: {
+    default: "HyperPulse — Hyperliquid Intelligence Workspace",
+    template: "%s",
+  },
   description:
-    "Portfolio analytics, trade journal, and performance insights for Hyperliquid traders",
+    "A Hyperliquid-native, read-only demo for live markets, cleaner portfolio review, and trader-friendly documentation.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "HyperPulse — Hyperliquid Intelligence Workspace",
+    description:
+      "Read-only by default. Live markets, portfolio review, and trader-facing context in one Hyperliquid-native workspace.",
+    url: "/",
+    siteName: "HyperPulse",
+    type: "website",
+    images: ["/opengraph-image"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HyperPulse — Hyperliquid Intelligence Workspace",
+    description:
+      "Read-only by default. Live markets, portfolio review, and trader-facing context in one Hyperliquid-native workspace.",
+    images: ["/twitter-image"],
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -41,6 +67,8 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers><AppShell>{children}</AppShell></Providers>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

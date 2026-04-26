@@ -12,6 +12,7 @@ import {
   getSavedWallets,
   removeWallet,
   renameWallet,
+  savedWalletPersistenceEnabled,
   saveWallet,
   touchWallet,
   type SavedWallet,
@@ -29,6 +30,7 @@ export default function DashboardHeader() {
   const [editing, setEditing] = useState(false);
   const [nicknameInput, setNicknameInput] = useState("");
   const switcherRef = useRef<HTMLDivElement>(null);
+  const remembersWallets = savedWalletPersistenceEnabled();
 
   const perpsValue = accountState?.isolatedAccountValue ?? 0;
   const spotWalletValue = accountState?.spotTotalValue ?? 0;
@@ -189,39 +191,59 @@ export default function DashboardHeader() {
             ref={switcherRef}
           >
             {address ? (
-              <button
-                onClick={() => setShowSwitcher((open) => !open)}
-                className={cn(
-                  "flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950",
-                  showSwitcher && "border-emerald-700/40"
-                )}
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-                    <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
-                    Wallet identity
+              remembersWallets ? (
+                <button
+                  onClick={() => setShowSwitcher((open) => !open)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950",
+                    showSwitcher && "border-emerald-700/40"
+                  )}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                      <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
+                      Wallet identity
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-sm font-medium text-zinc-100">
+                        {currentWallet?.nickname || "Unnamed wallet"}
+                      </span>
+                      <span className="text-xs font-mono text-zinc-500">
+                        {truncateAddress(address)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="text-sm font-medium text-zinc-100">
-                      {currentWallet?.nickname || "Unnamed wallet"}
+                  <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                    <span>
+                      {otherWallets.length > 0
+                        ? `${otherWallets.length} saved`
+                        : "Saved"}
                     </span>
-                    <span className="text-xs font-mono text-zinc-500">
-                      {truncateAddress(address)}
-                    </span>
+                    <span>▾</span>
+                  </div>
+                </button>
+              ) : (
+                <div className="flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                      <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
+                      Wallet identity
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-sm font-medium text-zinc-100">Current session</span>
+                      <span className="text-xs font-mono text-zinc-500">
+                        {truncateAddress(address)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-zinc-800 bg-zinc-900/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    Session only
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                  <span>
-                    {otherWallets.length > 0
-                      ? `${otherWallets.length} saved`
-                      : "Saved"}
-                  </span>
-                  <span>▾</span>
-                </div>
-              </button>
+              )
             ) : null}
 
-            {showSwitcher ? (
+            {remembersWallets && showSwitcher ? (
               <div className="absolute left-0 top-full z-50 mt-2 w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/30">
                 <div className="border-b border-zinc-800 px-4 py-4">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
@@ -336,6 +358,9 @@ export default function DashboardHeader() {
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
               <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
                 {address ?? "No wallet"}
+              </span>
+              <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
+                {remembersWallets ? "Browser memory on" : "Not saved on this browser"}
               </span>
               <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
                 Perps + full spot wallet

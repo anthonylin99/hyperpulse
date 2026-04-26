@@ -13,6 +13,14 @@ type SortKey = "time" | "pnl" | "pnlPct" | "duration" | "coin";
 type SortDir = "asc" | "desc";
 type FilterResult = "all" | "winners" | "losers";
 
+function startOfDay(date: string): number {
+  return new Date(`${date}T00:00:00`).getTime();
+}
+
+function endOfDay(date: string): number {
+  return new Date(`${date}T23:59:59.999`).getTime();
+}
+
 function formatDuration(ms: number): string {
   const mins = ms / (1000 * 60);
   if (mins < 60) return `${mins.toFixed(0)}m`;
@@ -62,7 +70,10 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
   const [sortKey, setSortKey] = useState<SortKey>("time");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterCoin, setFilterCoin] = useState<string>("all");
+  const [symbolQuery, setSymbolQuery] = useState("");
   const [filterResult, setFilterResult] = useState<FilterResult>("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(0);
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [analyzedTrade, setAnalyzedTrade] = useState<RoundTripTrade | null>(null);
@@ -109,11 +120,34 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
     return ["all", ...Array.from(set).sort()];
   }, [trades]);
 
+  const visibleCoinOptions = useMemo(() => {
+    const query = symbolQuery.trim().toUpperCase();
+    return coins
+      .filter((coin) => coin !== "all")
+      .filter((coin) => (query ? coin.includes(query) : true))
+      .slice(0, 24);
+  }, [coins, symbolQuery]);
+
   const sorted = useMemo(() => {
+    const query = symbolQuery.trim().toUpperCase();
     let filtered =
       filterCoin === "all"
         ? trades
         : trades.filter((t) => t.coin === filterCoin);
+
+    if (filterCoin === "all" && query) {
+      filtered = filtered.filter((t) => t.coin.toUpperCase().includes(query));
+    }
+
+    if (fromDate) {
+      const floor = startOfDay(fromDate);
+      filtered = filtered.filter((t) => t.exitTime >= floor);
+    }
+
+    if (toDate) {
+      const ceiling = endOfDay(toDate);
+      filtered = filtered.filter((t) => t.exitTime <= ceiling);
+    }
 
     if (filterResult === "winners") {
       filtered = filtered.filter((t) => t.pnl > 0);
@@ -144,7 +178,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
     });
 
     return filtered;
-  }, [trades, sortKey, sortDir, filterCoin, filterResult]);
+  }, [trades, sortKey, sortDir, filterCoin, filterResult, fromDate, toDate, symbolQuery]);
 
   const summary = useMemo(() => {
     const totalPnl = sorted.reduce((s, t) => s + t.pnl, 0);
@@ -271,7 +305,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
         </div>
 
         <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center overflow-hidden rounded-xl border border-zinc-700">
             {(
               [
@@ -305,31 +339,84 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-          <button
+          <div className="flex flex-wrap items-center gap-2">
+            <button
               className="text-xs text-zinc-500"
               onClick={() => {
+                setSymbolQuery("");
                 setFilterCoin("all");
                 setFilterResult("all");
+                setFromDate("");
+                setToDate("");
                 setPage(0);
               }}
             >
               Reset filters
             </button>
-            <select
-              value={filterCoin}
-              onChange={(e) => {
-                setFilterCoin(e.target.value);
-                setPage(0);
-              }}
-              className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300"
-            >
-              {coins.map((c) => (
-                <option key={c} value={c}>
-                  {c === "all" ? "All Assets" : c}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-[180px]">
+                <input
+                  list="trade-journal-symbols"
+                  value={symbolQuery}
+                  onChange={(e) => {
+                    const value = e.target.value.toUpperCase();
+                    setSymbolQuery(value);
+                    setFilterCoin(value && coins.includes(value) ? value : "all");
+                    setPage(0);
+                  }}
+                  placeholder="Search symbol"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs uppercase tracking-[0.14em] text-zinc-200 placeholder:text-zinc-500"
+                />
+                <datalist id="trade-journal-symbols">
+                  {visibleCoinOptions.map((coin) => (
+                    <option key={coin} value={coin} />
+                  ))}
+                </datalist>
+              </div>
+
+              <select
+                value={filterCoin}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setFilterCoin(value);
+                  setSymbolQuery(value === "all" ? "" : value);
+                  setPage(0);
+                }}
+                className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300"
+              >
+                {coins.map((c) => (
+                  <option key={c} value={c}>
+                    {c === "all" ? "All Assets" : c}
+                  </option>
+                ))}
+              </select>
+
+              <label className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400">
+                <span>From</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    setPage(0);
+                  }}
+                  className="bg-transparent text-zinc-200 outline-none [color-scheme:dark]"
+                />
+              </label>
+
+              <label className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400">
+                <span>To</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    setPage(0);
+                  }}
+                  className="bg-transparent text-zinc-200 outline-none [color-scheme:dark]"
+                />
+              </label>
+            </div>
           </div>
         </div>
         {noteWarning ? (

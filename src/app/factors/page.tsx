@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default function FactorsRoutePage() {
   if (!isFactorsEnabled()) {
-    redirect("/");
+    redirect("/markets");
   }
   return <FactorsPage />;
 }

@@ -1,36 +1,109 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HyperPulse
 
-## Getting Started
+HyperPulse is a Hyperliquid-native intelligence workspace for live markets, read-only portfolio review, and trader-facing documentation.
 
-First, run the development server:
+The current public demo is optimized for **Hyperliquid traders** and intentionally ships in a **read-only posture**. It is designed to be safe to share publicly while still showing real product surfaces.
+
+## Public Demo Scope
+
+The public production deployment exposes:
+
+- `Home`
+- `Markets`
+- `Portfolio`
+- `Docs`
+
+Hidden in the public demo by default:
+
+- `Trading`
+- `Factors`
+- `Whales`
+
+Those surfaces can still exist in non-public environments, but they are not part of the shareable public demo posture.
+
+## Product Surfaces
+
+- **Markets**: table-first Hyperliquid directory with price, funding, and top-level tape context
+- **Portfolio**: read-only wallet review with performance chart, positions, and trade journal
+- **Docs**: methodology and implementation notes for the current demo
+
+## Deployment Architecture
+
+- **Frontend**: Next.js App Router
+- **Primary deployment target**: Vercel
+- **Market data**: Hyperliquid-native APIs
+- **Whale worker**: Railway worker in non-public environments
+- **Database**: Neon Postgres for worker-backed analytics where enabled
+
+## Feature Flags
+
+Runtime flags are resolved from environment variables:
+
+- `ENABLE_TRADING`
+- `ENABLE_FACTORS`
+- `ENABLE_WHALES`
+- `NEXT_PUBLIC_ENABLE_TRADING`
+- `NEXT_PUBLIC_ENABLE_FACTORS`
+- `NEXT_PUBLIC_ENABLE_WHALES`
+
+Public production defaults:
+
+- `ENABLE_TRADING=false`
+- `ENABLE_FACTORS=false`
+- `ENABLE_WHALES=false`
+
+Optional site/runtime variables:
+
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_BUILD_ID`
+
+## Local Setup
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the local dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- [http://localhost:3000](http://localhost:3000)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verification
 
-## Learn More
+Build the app:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Run the public smoke test against a local or deployed environment:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run smoke:public
+```
 
-## Deploy on Vercel
+To enforce the public-demo expectations during smoke testing:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+HYPERPULSE_EXPECT_PUBLIC_FLAGS=1 npm run smoke:public
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Safety Posture
+
+- Public demo is **read-only**
+- No manual private-key entry
+- Browser-wallet portfolio view is analytics-only by default
+- Hidden features are disabled in public production
+- Health, metadata, and crawler routes are included for public sharing
+
+## Notes
+
+- Landing screenshots are intended to come from real HyperPulse UI states rather than synthetic marketing mockups.
+- If you are deploying publicly, verify the production flags first before sharing the URL.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Copy, LogOut, Shield, Wallet, X } from "lucide-react";
 import {
   useWallet,
@@ -17,6 +18,8 @@ interface WalletModalProps {
 }
 
 export default function WalletModal({ onClose }: WalletModalProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { tradingEnabled } = useAppConfig();
   const {
     address: connectedAddress,
@@ -36,6 +39,13 @@ export default function WalletModal({ onClose }: WalletModalProps) {
   const [error, setError] = useState("");
   const trimmedAddress = address.trim();
 
+  const finishSuccessfulConnect = () => {
+    onClose();
+    if (pathname === "/") {
+      router.push("/portfolio");
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -53,7 +63,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
     setError("");
     try {
       await connectWithPrivyWallet(wallet);
-      onClose();
+      finishSuccessfulConnect();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect wallet");
     }
@@ -63,7 +73,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
     setError("");
     try {
       await connectReadOnly(addr);
-      onClose();
+      finishSuccessfulConnect();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load wallet");
     }
@@ -79,7 +89,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
       } else {
         await connectWithBrowserWalletReadOnly(preference);
       }
-      onClose();
+      finishSuccessfulConnect();
     } catch (err) {
       const message =
         err instanceof Error
@@ -98,7 +108,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
     setError("");
     try {
       await connectReadOnly(trimmedAddress);
-      onClose();
+      finishSuccessfulConnect();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to load wallet";
@@ -124,11 +134,14 @@ export default function WalletModal({ onClose }: WalletModalProps) {
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[110] bg-transparent" onClick={onClose} />
+      <div
+        className="fixed inset-0 z-[110] bg-black/55 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
 
       {/* Wallet panel */}
       <div
-        className="fixed right-3 top-[6.75rem] z-[120] max-h-[calc(100vh-8rem)] w-[min(420px,calc(100vw-1.5rem))] overflow-y-auto rounded-[22px] border border-zinc-800 bg-[#0b1015]/98 shadow-2xl shadow-black/40 backdrop-blur md:right-6 xl:right-8"
+        className="fixed right-3 top-[6.75rem] z-[120] max-h-[calc(100vh-8rem)] w-[min(420px,calc(100vw-1.5rem))] overflow-y-auto rounded-[22px] border border-zinc-800 bg-[#0b1015] shadow-2xl shadow-black/50 md:right-6 xl:right-8"
         onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
@@ -157,7 +170,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
           </div>
 
           {isConnected && connectedAddress && (
-            <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3.5">
+            <div className="space-y-3 rounded-2xl border border-zinc-800 bg-[#121821] p-3.5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-zinc-500">
@@ -202,7 +215,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
           )}
 
           {tradingEnabled && privyEnabled && privyAllowEmbedded && (
-            <div className="space-y-3 border border-zinc-800 rounded p-3 bg-zinc-950/50">
+            <div className="space-y-3 rounded-2xl border border-zinc-800 bg-[#121821] p-3.5">
               <div className="text-[10px] uppercase tracking-wider text-zinc-500">
                 Email / Privy
               </div>
@@ -215,7 +228,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
             </div>
           )}
 
-          <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3.5">
+          <div className="space-y-3 rounded-2xl border border-zinc-800 bg-[#121821] p-3.5">
             <div>
               <label className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5 block">
                 Wallet Address
@@ -226,7 +239,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleReadOnlyConnect()}
-                className="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-mono text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-[#7dd4c4] focus:outline-none"
+                className="w-full rounded-2xl border border-zinc-700 bg-[#0c1016] px-3 py-2.5 text-sm font-mono text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-[#7dd4c4] focus:outline-none"
               />
             </div>
 
@@ -243,7 +256,7 @@ export default function WalletModal({ onClose }: WalletModalProps) {
             <button
               onClick={() => handleBrowserWalletConnect("auto")}
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/30 hover:text-white disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-800 bg-[#121821] px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/30 hover:text-white disabled:opacity-50"
             >
               <Wallet className="h-4 w-4 text-emerald-300" />
               {loading ? "Checking wallet..." : "Use connected browser address"}

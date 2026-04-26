@@ -27,9 +27,9 @@ export default function Nav() {
 
         <nav className="hidden items-center gap-1 md:flex">
           {tabs.map((tab) => {
-            const active = tab.match.some(
-              (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-            );
+            const active = tab.key === "home"
+              ? pathname === "/"
+              : tab.match.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
             return (
               <Link
                 key={tab.key}
