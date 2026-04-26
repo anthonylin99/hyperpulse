@@ -5,7 +5,6 @@ import {
   Area,
   CartesianGrid,
   ComposedChart,
-  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -60,18 +59,44 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
 
   const chartData = useMemo(() => {
     if (equityCurve.length === 0) return [];
+    if (range === "all") {
+      const baseline = equityCurve[0]?.equity ?? 0;
+      return equityCurve.map((point) => ({
+        time: point.time,
+        accountEquity: point.equity,
+        changeInView: point.equity - baseline,
+      }));
+    }
 
     const now = Date.now();
-    const cutoff = range === "all" ? 0 : now - RANGE_MS[range];
-    const filtered = equityCurve.filter((point) => point.time >= cutoff);
-    const scoped = filtered.length >= 2 ? filtered : equityCurve;
-    if (scoped.length === 0) return [];
+    const cutoff = now - RANGE_MS[range];
+    const sorted = [...equityCurve].sort((a, b) => a.time - b.time);
+    const lastBeforeCutoff = [...sorted].reverse().find((point) => point.time <= cutoff) ?? sorted[0];
+    const pointsInRange = sorted.filter((point) => point.time >= cutoff);
+    const openingPoint = {
+      time: cutoff,
+      equity: lastBeforeCutoff.equity,
+      drawdown: lastBeforeCutoff.drawdown,
+    };
 
-    const startEquity = scoped[0].equity;
+    const scoped = [
+      openingPoint,
+      ...pointsInRange.filter((point) => point.time !== cutoff),
+    ];
+
+    const lastScopedPoint = scoped[scoped.length - 1];
+    if (lastScopedPoint && lastScopedPoint.time < now) {
+      scoped.push({
+        time: now,
+        equity: lastScopedPoint.equity,
+        drawdown: lastScopedPoint.drawdown,
+      });
+    }
+
     return scoped.map((point) => ({
       time: point.time,
       accountEquity: point.equity,
-      changeInView: point.equity - startEquity,
+      changeInView: point.equity - openingPoint.equity,
     }));
   }, [equityCurve, range]);
 
@@ -170,7 +195,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
 
       <div className={cn(density === "roomy" ? "h-[420px] px-4 py-5 sm:px-5" : "h-[380px] px-3 py-4 sm:px-4")}>
         <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 10, right: 22, left: 0, bottom: 8 }}>
+            <ComposedChart data={chartData} margin={{ top: 10, right: 56, left: 0, bottom: 8 }}>
               <defs>
                 <linearGradient id="portfolioEquityFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#34d399" stopOpacity={0.24} />
@@ -199,8 +224,9 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
                 tick={{ fontSize: 11, fill: "#6b7280" }}
                 axisLine={false}
                 tickLine={false}
-                width={72}
+                width={88}
                 domain={(["dataMin - 60", "dataMax + 60"] as unknown) as [string, string]}
+                mirror={false}
               />
               <Tooltip
                 cursor={{ stroke: "rgba(52, 211, 153, 0.28)", strokeWidth: 1 }}
@@ -228,19 +254,6 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
                   fill: "#6ee7b7",
                 }}
               />
-              {latestPoint ? (
-                <ReferenceDot
-                  x={latestPoint.time}
-                  y={latestPoint.accountEquity}
-                  r={0}
-                  label={{
-                    value: formatUSD(latestPoint.accountEquity),
-                    position: "right",
-                    fill: "#d4d4d8",
-                    fontSize: 11,
-                  }}
-                />
-              ) : null}
             </ComposedChart>
         </ResponsiveContainer>
       </div>
