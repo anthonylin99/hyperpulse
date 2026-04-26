@@ -4,7 +4,7 @@ export interface HyperPulseVixResult {
   score: number; // 0..100 (0 fear, 100 greed)
   label: "Extreme Fear" | "Fear" | "Neutral" | "Greed" | "Extreme Greed";
   trendScore: number; // -100..100 (bearish to bullish)
-  trendLabel: "Bearish" | "Bullish";
+  trendLabel: "Bearish" | "Neutral" | "Bullish";
   trendConfidence: "low" | "medium" | "high";
   trendInputs: {
     momentum24h: number;
@@ -60,7 +60,8 @@ function toGreedBand(
 }
 
 function toTrendLabel(score: number): HyperPulseVixResult["trendLabel"] {
-  return score >= 0 ? "Bullish" : "Bearish";
+  if (Math.abs(score) < 12) return "Neutral";
+  return score > 0 ? "Bullish" : "Bearish";
 }
 
 function toTrendConfidence(score: number): HyperPulseVixResult["trendConfidence"] {
@@ -102,7 +103,7 @@ export function computeHyperPulseVix(args: {
       score: 50,
       label: "Neutral",
       trendScore: 0,
-      trendLabel: "Bearish",
+      trendLabel: "Neutral",
       trendConfidence: "low",
       trendInputs: {
         momentum24h: 0,
@@ -111,12 +112,12 @@ export function computeHyperPulseVix(args: {
         fundingAPR: 0,
       },
       trendWeights: {
-        momentum24h: 0.35,
-        momentum48h: 0.25,
-        oiChange: 0.25,
-        fundingContrarian: 0.15,
+        momentum24h: 0.4,
+        momentum48h: 0.3,
+        oiChange: 0.1,
+        fundingContrarian: 0.2,
       },
-      trendWindowHours: 48,
+      trendWindowHours: 24,
       volatilityBreadthPct: 0,
       fundingRegimeScore: 50,
       breadthScore: 50,
@@ -217,10 +218,10 @@ export function computeHyperPulseVix(args: {
   const oiScore = clamp(btcOiChange * 2, -30, 30);
 
   const trendWeights = {
-    momentum24h: 0.35,
-    momentum48h: 0.25,
-    oiChange: 0.25,
-    fundingContrarian: 0.15,
+    momentum24h: 0.4,
+    momentum48h: 0.3,
+    oiChange: 0.1,
+    fundingContrarian: 0.2,
   };
 
   const trendScore = clamp(
@@ -245,7 +246,7 @@ export function computeHyperPulseVix(args: {
       fundingAPR: Number(btcFundingAPR.toFixed(2)),
     },
     trendWeights,
-    trendWindowHours: 48,
+    trendWindowHours: 24,
     volatilityBreadthPct: Math.round(volBreadthPct),
     fundingRegimeScore: Math.round(fundingRegimeScore),
     breadthScore: Math.round(breadthScore),

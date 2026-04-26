@@ -52,7 +52,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           <div className="xl:sticky xl:top-[96px]">
             <MarketOverviewPanel
               title="Tape Context"
-              description="Tomorrow bias and major benchmark context stay close, but secondary to the directory."
+              description="Next-session bias and major benchmark context stay close, but secondary to the directory."
               variant="compact"
             />
           </div>

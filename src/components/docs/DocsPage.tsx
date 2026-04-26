@@ -9,7 +9,7 @@ const quickLinks = [
   { href: "#signals", label: "Market Signals" },
   { href: "#factors", label: "Factors" },
   { href: "#whales", label: "Whales" },
-  { href: "#sentiment", label: "Tomorrow Bias" },
+  { href: "#sentiment", label: "Next 24h Bias" },
   { href: "#wallets", label: "Wallet Modes" },
   { href: "#limits", label: "Limitations" },
   { href: "#faq", label: "FAQ" },
@@ -370,11 +370,11 @@ export default function DocsPage() {
             </Section>
           ) : null}
 
-          <Section id="sentiment" eyebrow="Sentiment" title="How HyperPulse estimates tomorrow&apos;s bias">
+          <Section id="sentiment" eyebrow="Sentiment" title="How HyperPulse frames next 24h bias">
             <p>
               The HyperPulse sentiment model is a composite regime indicator with a short-horizon directional overlay.
-              The headline score runs from fear to greed. The directional overlay estimates next-session bias using BTC
-              as the market anchor.
+              The headline score runs from fear to greed. The directional overlay frames next-session tape risk using
+              BTC as the market anchor.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
@@ -385,16 +385,18 @@ export default function DocsPage() {
                 </div>
               </div>
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Tomorrow bias model</div>
+                <div className="text-xs font-medium text-zinc-100">Next 24h bias model</div>
                 <div className="mt-2 text-sm text-zinc-400">
-                  BTC 24h momentum, BTC 48h momentum, BTC open-interest change, and a contrarian funding term are
-                  blended into a directional score. Current production weights are 35%, 25%, 25%, and 15%.
+                  BTC 24h momentum, BTC 48h momentum, live BTC open-interest tick, and a contrarian funding term are
+                  blended into a directional score. Current production weights are 40%, 30%, 10%, and 20%.
+                  OI is only a live confirmation input until HyperPulse stores true historical OI windows.
                 </div>
               </div>
             </div>
             <p>
-              This model is intentionally short-horizon. It is designed to frame the next trading session, not to act
-              as a multi-month valuation model.
+              This model is intentionally short-horizon and descriptive. Funding is a crowding/regime input, not a
+              direct spot-price predictor. CNN Fear &amp; Greed may be linked as macro backdrop, but it is not ingested
+              into the HyperPulse score.
             </p>
           </Section>
 

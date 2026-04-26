@@ -12,11 +12,16 @@ import {
   ReferenceLine,
 } from "recharts";
 import type { MarketAsset } from "@/types";
-import { formatUSD, formatPct, formatFundingRate, formatFundingAPR } from "@/lib/format";
+import { cn, formatCompactUsd, formatUSD, formatPct, formatFundingRate, formatFundingAPR } from "@/lib/format";
 import { getFundingRegime } from "@/lib/fundingRegime";
 import { withNetworkParam } from "@/lib/hyperliquid";
+import {
+  computePositioningContext,
+  formatPositioningDepth,
+  type OrderbookSnapshot,
+} from "@/lib/positioningContext";
 import PriceChart from "./PriceChart";
-import { FilterChip } from "@/components/trading-ui";
+import { CompactStat, FilterChip, SectionEyebrow } from "@/components/trading-ui";
 
 interface AssetDetailProps {
   asset: MarketAsset;
@@ -45,7 +50,10 @@ export default function AssetDetail({
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [loadingFunding, setLoadingFunding] = useState(false);
   const [loadingPrice, setLoadingPrice] = useState(false);
-  const [tab, setTab] = useState<"price" | "funding">("price");
+  const [loadingOrderbook, setLoadingOrderbook] = useState(false);
+  const [orderbook, setOrderbook] = useState<OrderbookSnapshot | null>(null);
+  const [orderbookError, setOrderbookError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"price" | "funding" | "leverage">("price");
   const [fundingView, setFundingView] = useState<"apr" | "hourly">("apr");
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
@@ -113,11 +121,38 @@ export default function AssetDetail({
     }
   }, [asset.coin]);
 
+  const fetchOrderbook = useCallback(async () => {
+    setLoadingOrderbook(true);
+    setOrderbookError(null);
+    try {
+      const res = await fetch(withNetworkParam(`/api/market/orderbook?coin=${asset.coin}`));
+      if (!res.ok) throw new Error("Order book unavailable");
+      const data = await res.json();
+      setOrderbook({
+        bestBid: data.bestBid ?? null,
+        bestAsk: data.bestAsk ?? null,
+        spreadBps: data.spreadBps ?? null,
+        bids: Array.isArray(data.bids) ? data.bids : [],
+        asks: Array.isArray(data.asks) ? data.asks : [],
+      });
+    } catch (error) {
+      setOrderbook(null);
+      setOrderbookError(error instanceof Error ? error.message : "Order book unavailable");
+    } finally {
+      setLoadingOrderbook(false);
+    }
+  }, [asset.coin]);
+
   useEffect(() => {
     if (tab !== "funding") return;
     fetchExtendedFunding(fundingRange);
     fetchPriceHistory(fundingRange);
   }, [fetchExtendedFunding, fetchPriceHistory, fundingRange, tab]);
+
+  useEffect(() => {
+    if (tab !== "leverage") return;
+    fetchOrderbook();
+  }, [fetchOrderbook, tab]);
 
   const activeFunding = fundingRange === 7 ? fundingHistory : extendedFunding;
   const chartData = useMemo(() => {
@@ -142,6 +177,11 @@ export default function AssetDetail({
     asset.fundingRate,
     activeFunding ?? undefined
   );
+  const positioningContext = computePositioningContext({
+    asset,
+    fundingRegime,
+    orderbook,
+  });
   const regimeColor =
     fundingRegime.tone === "red"
       ? "text-red-400"
@@ -180,6 +220,7 @@ export default function AssetDetail({
       <div className="flex items-center gap-1 px-4 pb-2">
         <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
         <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
+        <FilterChip label="Leverage / Crowd" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
       </div>
 
       {/* Chart area */}
@@ -188,7 +229,7 @@ export default function AssetDetail({
           <div className="h-[520px] max-h-[72vh] min-h-[420px]">
             <PriceChart coin={asset.coin} compact />
           </div>
-        ) : (
+        ) : tab === "funding" ? (
           <div>
             {/* Funding range selector */}
             <div className="flex items-center gap-1 mb-2">
@@ -318,8 +359,138 @@ export default function AssetDetail({
               </div>
             )}
           </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
+              <div
+                className={cn(
+                  "rounded-2xl border px-4 py-4",
+                  positioningContext.label === "Crowded long risk"
+                    ? "border-red-500/25 bg-red-500/10"
+                    : positioningContext.label === "Crowded short risk"
+                      ? "border-amber-500/25 bg-amber-500/10"
+                      : "border-zinc-800 bg-zinc-950/55",
+                )}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <SectionEyebrow className="text-teal-300/80">Positioning read</SectionEyebrow>
+                    <div className="mt-2 text-xl font-semibold text-zinc-100">
+                      {positioningContext.label}
+                    </div>
+                    <div className="mt-2 max-w-2xl text-sm leading-5 text-zinc-400">
+                      {positioningContext.riskNote}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <span className="rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-teal-200">
+                      Inferred
+                    </span>
+                    <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                      {positioningContext.confidence} confidence
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <CompactStat
+                    label="Crowding score"
+                    value={`${positioningContext.crowdingScore}/100`}
+                    helper="Funding, OI tick, leverage, turnover"
+                    tone={positioningContext.crowdingScore >= 55 ? "amber" : "neutral"}
+                  />
+                  <CompactStat
+                    label="Squeeze side"
+                    value={positioningContext.squeezeSide}
+                    helper="Risk framing, not a trade call"
+                    tone={positioningContext.squeezeSide === "None" ? "neutral" : "amber"}
+                  />
+                  <CompactStat
+                    label="Top book"
+                    value={
+                      positioningContext.topBookImbalancePct == null
+                        ? "n/a"
+                        : `${positioningContext.topBookImbalancePct >= 0 ? "+" : ""}${positioningContext.topBookImbalancePct.toFixed(0)}%`
+                    }
+                    helper={loadingOrderbook ? "Loading visible depth" : orderbookError ?? "Visible bid/ask depth"}
+                    tone={positioningContext.topBookImbalancePct == null ? "neutral" : "green"}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <SectionEyebrow>Actual tape</SectionEyebrow>
+                  <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                    Hyperliquid data
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <TapeMetric label="Funding APR" value={formatFundingAPR(asset.fundingAPR)} />
+                  <TapeMetric label="Open Interest" value={formatCompactUsd(asset.openInterest)} />
+                  <TapeMetric
+                    label="Latest OI tick"
+                    value={asset.oiChangePct == null ? "n/a" : formatPct(asset.oiChangePct)}
+                    helper="Not a 1h/4h trend"
+                  />
+                  <TapeMetric label="24h Volume" value={formatCompactUsd(asset.dayVolume)} />
+                  <TapeMetric label="Max leverage" value={`${asset.maxLeverage}x`} />
+                  <TapeMetric
+                    label="Spread"
+                    value={orderbook?.spreadBps == null ? "n/a" : `${orderbook.spreadBps.toFixed(2)} bps`}
+                    helper={loadingOrderbook ? "Loading" : undefined}
+                  />
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-500">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
+                    Bid depth: <span className="font-mono text-zinc-300">{formatPositioningDepth(positioningContext.bidDepthUsd)}</span>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
+                    Ask depth: <span className="font-mono text-zinc-300">{formatPositioningDepth(positioningContext.askDepthUsd)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SectionEyebrow>Why this matters</SectionEyebrow>
+                <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                  Crowding first · no liquidation-map claim
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {positioningContext.bullets.map((bullet) => (
+                  <div key={bullet} className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-sm text-zinc-400">
+                    {bullet}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 text-xs leading-5 text-zinc-500">
+                HyperPulse does not show exchange-wide liquidation zones here. This tab reads crowding from
+                available Hyperliquid funding, OI, volume, leverage, and visible order book data.
+              </div>
+            </div>
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function TapeMetric({
+  label,
+  value,
+  helper,
+}: {
+  label: string;
+  value: string;
+  helper?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+      <div className="mt-1 font-mono text-sm text-zinc-100">{value}</div>
+      {helper ? <div className="mt-0.5 text-[10px] text-zinc-600">{helper}</div> : null}
     </div>
   );
 }

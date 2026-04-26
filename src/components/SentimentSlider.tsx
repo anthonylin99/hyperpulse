@@ -28,13 +28,19 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
         : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
 
   const trendColor =
-    result.trendScore < 0 ? "text-red-400" : "text-emerald-300";
+    result.trendLabel === "Bearish"
+      ? "text-red-400"
+      : result.trendLabel === "Bullish"
+        ? "text-emerald-300"
+        : "text-zinc-300";
   const trendBadge =
-    result.trendScore < 0
+    result.trendLabel === "Bearish"
       ? "bg-red-500/15 text-red-300 border-red-500/30"
-      : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
+      : result.trendLabel === "Bullish"
+        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+        : "bg-zinc-700/40 text-zinc-200 border-zinc-600";
   const trendPos = `${(result.trendScore + 100) / 2}%`;
-  const hoverSummary = `BTC 24h: ${result.trendInputs.momentum24h}% · BTC 48h: ${result.trendInputs.momentum48h}% · BTC OI: ${result.trendInputs.oiChange}% · BTC funding: ${result.trendInputs.fundingAPR}%`;
+  const hoverSummary = `BTC 24h: ${result.trendInputs.momentum24h}% · BTC 48h: ${result.trendInputs.momentum48h}% · live OI tick: ${result.trendInputs.oiChange}% · BTC funding: ${result.trendInputs.fundingAPR}%`;
   const isHero = variant === "hero";
 
   return (
@@ -52,7 +58,7 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div>
               <div className={isHero ? "text-[11px] uppercase tracking-[0.18em] text-zinc-500" : "text-[9px] uppercase tracking-wider text-zinc-500"}>
-                Tomorrow Bias
+                Next 24h Bias
               </div>
               <div className={`${isHero ? "text-base" : "text-[12px]"} font-semibold ${trendColor}`}>
                 {result.trendLabel}
@@ -99,7 +105,7 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
               <div className="mt-1 text-sm text-zinc-200">{result.trendInputs.momentum24h}%</div>
             </div>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-2">
-              <div className="uppercase tracking-[0.14em] text-zinc-600">BTC OI</div>
+              <div className="uppercase tracking-[0.14em] text-zinc-600">Live OI Tick</div>
               <div className="mt-1 text-sm text-zinc-200">{result.trendInputs.oiChange}%</div>
             </div>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-2">
@@ -118,9 +124,9 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[540px] max-w-[92vw] bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl">
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
               <div>
-                <div className="text-sm font-medium">HyperPulse Tomorrow Bias</div>
+                <div className="text-sm font-medium">HyperPulse Next 24h Bias</div>
                 <div className="text-[11px] text-zinc-500">
-                  BTC‑anchored bias for the next 24h–48h using momentum, OI, and funding.
+                  BTC-anchored tape read for the next 24h using momentum, funding, and live OI confirmation.
                 </div>
               </div>
               <button
@@ -132,7 +138,7 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
             </div>
             <div className="px-4 py-3 text-xs space-y-3">
               <div className="p-2 rounded bg-zinc-950 border border-zinc-800 text-zinc-400">
-                Tomorrow Bias score: <span className="font-mono">{result.trendScore}</span> (
+                Next 24h Bias score: <span className="font-mono">{result.trendScore}</span> (
                 {result.trendLabel}, {result.trendConfidence} confidence)
                 <div className="mt-1 text-[11px] text-zinc-500">
                   Window: {result.trendWindowHours}h · Anchor: BTC
@@ -145,14 +151,14 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
                   BTC 48h: <span className="font-mono">{result.trendInputs.momentum48h}%</span>
                 </div>
                 <div className="p-2 rounded bg-zinc-950 border border-zinc-800">
-                  BTC OI: <span className="font-mono">{result.trendInputs.oiChange}%</span>
+                  Live OI tick: <span className="font-mono">{result.trendInputs.oiChange}%</span>
                   <br />
                   BTC funding APR: <span className="font-mono">{result.trendInputs.fundingAPR}%</span>
                 </div>
               </div>
               <div className="text-zinc-500">
                 Weights — 24h momentum {Math.round(result.trendWeights.momentum24h * 100)}%, 48h
-                momentum {Math.round(result.trendWeights.momentum48h * 100)}%, OI{" "}
+                momentum {Math.round(result.trendWeights.momentum48h * 100)}%, live OI tick{" "}
                 {Math.round(result.trendWeights.oiChange * 100)}%, funding contrarian{" "}
                 {Math.round(result.trendWeights.fundingContrarian * 100)}%.
               </div>
@@ -188,8 +194,21 @@ export default function SentimentSlider({ variant = "compact" }: { variant?: "co
               </div>
 
               <div className="text-zinc-500">
-                Scope: score reflects Hyperliquid microstructure only.
+                Scope: score reflects Hyperliquid-native microstructure only. Funding is treated as
+                crowding/regime context, not a direct price predictor.
               </div>
+
+              <a
+                href="https://www.cnn.com/markets/fear-and-greed"
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded bg-zinc-950 border border-zinc-800 p-2 text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200"
+              >
+                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">Macro backdrop</div>
+                <div className="mt-1 text-xs">
+                  CNN Fear &amp; Greed opens externally and is not scraped, cached, or blended into this score.
+                </div>
+              </a>
 
               <div className="grid grid-cols-2 gap-2 text-zinc-400">
                 <div className="p-2 rounded bg-zinc-950 border border-zinc-800">

@@ -55,7 +55,7 @@ export default function MarketOverviewPanel({
                 ? description
                 : compact
                   ? "Bias and benchmark context."
-                  : "Live Hyperliquid context across tomorrow bias and major perp benchmarks before you scan the full market table."}
+                  : "Live Hyperliquid context across next-session bias and major perp benchmarks before you scan the full market table."}
             </p>
           </div>
         </div>
