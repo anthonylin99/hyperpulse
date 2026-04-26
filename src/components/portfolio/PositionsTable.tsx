@@ -134,10 +134,10 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
               Positions
             </div>
             <div className="mt-2 text-lg font-semibold text-zinc-100">
-              Hyperliquid-style position view
+              Clean exposure view
             </div>
             <div className="mt-1 text-sm text-zinc-500">
-              Entry, mark, P&amp;L, liquidation, and margin share in one review table.
+              Entry, live price, return, and risk in one easier-to-scan table.
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">
@@ -182,12 +182,12 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
           <thead className="bg-zinc-950/90">
             <tr className="border-b border-zinc-800 text-left text-[11px] uppercase tracking-[0.14em] text-zinc-500">
               <th className="px-5 py-3 font-medium">Asset</th>
-              <th className="px-4 py-3 font-medium">Position Value</th>
-              <th className="px-4 py-3 font-medium">Entry Price</th>
-              <th className="px-4 py-3 font-medium">Mark Price</th>
-              <th className="px-4 py-3 font-medium">P&amp;L (ROE)</th>
-              <th className="px-4 py-3 font-medium">Liq. Price</th>
-              <th className="px-4 py-3 font-medium">Sizing</th>
+              <th className="px-4 py-3 font-medium">Size</th>
+              <th className="px-4 py-3 font-medium">Price</th>
+              <th className="px-4 py-3 font-medium">Average Cost</th>
+              <th className="px-4 py-3 font-medium">Total Return</th>
+              <th className="px-4 py-3 font-medium">Exposure</th>
+              <th className="px-4 py-3 font-medium">Risk</th>
               <th className="px-4 py-3 font-medium">Plan</th>
             </tr>
           </thead>
@@ -209,8 +209,8 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
 
               return (
                 <Fragment key={`${position.marketType ?? "perp"}-${position.dex ?? "main"}-${position.coin}-${isLong ? "long" : "short"}`}>
-                  <tr className="border-b border-zinc-800/70 align-top">
-                    <td className={cn(density === "roomy" ? "px-5 py-5" : "px-5 py-4")}>
+                  <tr className="border-b border-zinc-800/70 align-top transition-colors hover:bg-zinc-900/25">
+                    <td className={cn(density === "roomy" ? "px-5 py-5" : "px-5 py-3.5")}>
                       <div className="flex items-start gap-3">
                         <div className="min-w-0">
                           <div className="text-base font-medium text-zinc-100">{position.coin}</div>
@@ -239,25 +239,27 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                         </div>
                       </div>
                     </td>
-                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
-                      <div className="font-medium text-zinc-100">{formatUSD(notional)}</div>
-                      <div className="mt-1 text-xs text-zinc-500">
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-3.5")}>
+                      <div className="font-medium text-zinc-100">
                         {Math.abs(position.szi).toFixed(4)} {position.coin}
                       </div>
-                    </td>
-                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
-                      <div className="font-medium text-zinc-100">
-                        {formatUSD(position.entryPx, position.entryPx < 1 ? 5 : 2)}
+                      <div className="mt-1 text-xs text-zinc-500">
+                        {isSpot ? "Shares held" : `${position.leverage.toFixed(1)}x leverage`}
                       </div>
-                      <div className="mt-1 text-xs text-zinc-500">Entry</div>
                     </td>
-                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-3.5")}>
                       <div className="font-medium text-zinc-100">
                         {formatUSD(position.markPx, position.markPx < 1 ? 5 : 2)}
                       </div>
-                      <div className="mt-1 text-xs text-zinc-500">Mark</div>
+                      <div className="mt-1 text-xs text-zinc-500">Live price</div>
                     </td>
-                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-3.5")}>
+                      <div className="font-medium text-zinc-100">
+                        {formatUSD(position.entryPx, position.entryPx < 1 ? 5 : 2)}
+                      </div>
+                      <div className="mt-1 text-xs text-zinc-500">Entry basis</div>
+                    </td>
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-3.5")}>
                       <div
                         className={cn(
                           "font-medium",
@@ -273,10 +275,16 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                         )}
                       >
                         {pnlPct >= 0 ? "+" : ""}
-                        {pnlPct.toFixed(1)}% ROE
+                        {pnlPct.toFixed(1)}%
                       </div>
                     </td>
-                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-3.5")}>
+                      <div className="font-medium text-zinc-100">{formatUSD(notional)}</div>
+                      <div className="mt-1 text-xs text-zinc-500">
+                        {sizingPct == null ? "n/a" : `${sizingPct.toFixed(1)}% of tradeable USDC`}
+                      </div>
+                    </td>
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-3.5")}>
                       <div className="font-medium text-zinc-100">
                         {position.liquidationPx
                           ? formatUSD(position.liquidationPx, position.liquidationPx < 1 ? 5 : 2)
@@ -299,15 +307,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                             : "Liquidation unavailable"}
                       </div>
                     </td>
-                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
-                      <div className={cn("font-mono font-medium", sizingPct == null ? "text-zinc-500" : "text-emerald-300")}>
-                        {sizingPct == null ? "n/a" : `${sizingPct.toFixed(1)}%`}
-                      </div>
-                      <div className="mt-1 text-xs text-zinc-500">
-                        {isSpot ? "No margin" : "of tradeable USDC"}
-                      </div>
-                    </td>
-                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-4")}>
+                    <td className={cn(density === "roomy" ? "px-4 py-5" : "px-4 py-3.5")}>
                       <button
                         type="button"
                         onClick={() => setExpandedNote((current) => (current === noteKey ? null : noteKey))}
@@ -338,7 +338,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                                   value: `${formatUSD(position.entryPx, position.entryPx < 1 ? 5 : 2)} → ${formatUSD(position.markPx, position.markPx < 1 ? 5 : 2)}`,
                                 },
                                 {
-                                  label: "PnL / ROE",
+                                  label: "Return",
                                   value: `${position.unrealizedPnl >= 0 ? "+" : ""}${formatUSD(position.unrealizedPnl)} · ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%`,
                                   tone: position.unrealizedPnl >= 0 ? "positive" : "negative",
                                 },
@@ -415,9 +415,9 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                   {sorted.length} open holding{sorted.length === 1 ? "" : "s"}
                 </div>
               </td>
-              <td className="px-4 py-4 text-zinc-300">{formatUSD(totals.notional)}</td>
-              <td className="px-4 py-4 text-zinc-500">Portfolio average</td>
-              <td className="px-4 py-4 text-zinc-500">Latest snapshot</td>
+              <td className="px-4 py-4 text-zinc-500">Stacked by size</td>
+              <td className="px-4 py-4 text-zinc-500">Live marks</td>
+              <td className="px-4 py-4 text-zinc-500">Entry basis</td>
               <td
                 className={cn(
                   "px-4 py-4 font-medium",
@@ -426,8 +426,8 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
               >
                 {formatUSD(totals.pnl)}
               </td>
-              <td className="px-4 py-4 text-zinc-500">Review risk strip above for aggregate risk.</td>
-              <td className="px-4 py-4 text-zinc-500">Margin / tradeable USDC.</td>
+              <td className="px-4 py-4 text-zinc-300">{formatUSD(totals.notional)}</td>
+              <td className="px-4 py-4 text-zinc-500">Review liq distance and funding in notes.</td>
               <td className="px-4 py-4 text-zinc-500">Notes stay local.</td>
             </tr>
           </tfoot>

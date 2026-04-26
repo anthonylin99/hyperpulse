@@ -3,10 +3,9 @@
 import { useMemo, useState } from "react";
 import {
   Area,
-  Bar,
-  Cell,
+  CartesianGrid,
   ComposedChart,
-  Line,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -17,7 +16,6 @@ import { usePortfolio } from "@/context/PortfolioContext";
 import { cn, formatUSD } from "@/lib/format";
 
 type TimeRange = "7d" | "30d" | "90d" | "all";
-type ChartMode = "line" | "bars";
 
 const RANGE_MS: Record<TimeRange, number> = {
   "7d": 7 * 24 * 60 * 60 * 1000,
@@ -26,31 +24,39 @@ const RANGE_MS: Record<TimeRange, number> = {
   all: Infinity,
 };
 
-function startOfDay(timestamp: number): number {
-  const date = new Date(timestamp);
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
+function EquityTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ value?: number }>;
+  label?: number;
+}) {
+  if (!active || !payload?.length || label == null) return null;
+  const value = Number(payload[0]?.value ?? 0);
 
-function startOfWeek(timestamp: number): number {
-  const date = new Date(startOfDay(timestamp));
-  date.setDate(date.getDate() - date.getDay());
-  return date.getTime();
-}
-
-function formatPeriodLabel(timestamp: number, weekly: boolean): string {
-  const date = new Date(timestamp);
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    ...(weekly ? {} : {}),
-  });
+  return (
+    <div className="min-w-[160px] rounded-2xl border border-zinc-800/90 bg-[#070b09]/95 px-3 py-2.5 shadow-[0_10px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+        {new Date(label).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })}
+      </div>
+      <div className="mt-1.5 text-lg font-semibold text-zinc-50">{formatUSD(value)}</div>
+      <div className="mt-1 inline-flex items-center gap-2 text-xs text-emerald-300/90">
+        <span className="h-2 w-2 rounded-full bg-emerald-400" />
+        Account equity
+      </div>
+    </div>
+  );
 }
 
 export default function EquityCurve({ density = "compact" }: { density?: "compact" | "roomy" }) {
-  const { equityCurve, trades, loading } = usePortfolio();
+  const { equityCurve, loading } = usePortfolio();
   const [range, setRange] = useState<TimeRange>("30d");
-  const [chartMode, setChartMode] = useState<ChartMode>("line");
 
   const chartData = useMemo(() => {
     if (equityCurve.length === 0) return [];
@@ -65,41 +71,23 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
     return scoped.map((point) => ({
       time: point.time,
       accountEquity: point.equity,
-      realizedPnl: point.equity - startEquity,
+      changeInView: point.equity - startEquity,
     }));
   }, [equityCurve, range]);
 
   const latestPoint = chartData[chartData.length - 1] ?? null;
-  const latestRealized = latestPoint?.realizedPnl ?? 0;
+  const startingPoint = chartData[0] ?? null;
+  const changeInView = latestPoint?.changeInView ?? 0;
+  const rangeHigh = useMemo(
+    () => (chartData.length ? Math.max(...chartData.map((point) => point.accountEquity)) : null),
+    [chartData],
+  );
+  const rangeLow = useMemo(
+    () => (chartData.length ? Math.min(...chartData.map((point) => point.accountEquity)) : null),
+    [chartData],
+  );
 
-  const pnlBars = useMemo(() => {
-    if (trades.length === 0) return [];
-    const now = Date.now();
-    const cutoff = range === "all" ? 0 : now - RANGE_MS[range];
-    const visibleTrades = trades.filter((trade) => trade.exitTime >= cutoff);
-    const weekly = range === "90d" || range === "all";
-    const grouped = new Map<number, { time: number; label: string; pnl: number; trades: number }>();
-
-    for (const trade of visibleTrades) {
-      const time = weekly ? startOfWeek(trade.exitTime) : startOfDay(trade.exitTime);
-      const current = grouped.get(time) ?? {
-        time,
-        label: formatPeriodLabel(time, weekly),
-        pnl: 0,
-        trades: 0,
-      };
-      current.pnl += trade.pnl;
-      current.trades += 1;
-      grouped.set(time, current);
-    }
-
-    return Array.from(grouped.values()).sort((a, b) => a.time - b.time);
-  }, [range, trades]);
-
-  const visibleBarPnl = pnlBars.reduce((sum, point) => sum + point.pnl, 0);
-  const realizedInView = chartMode === "bars" ? visibleBarPnl : latestRealized;
-
-  if (loading && trades.length === 0) {
+  if (loading && equityCurve.length === 0) {
     return (
       <section className="rounded-[28px] border border-zinc-800 bg-zinc-950/85 p-5">
         <div className="flex items-center justify-between gap-4">
@@ -119,7 +107,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
     );
   }
 
-  if (trades.length === 0 || chartData.length < 2) return null;
+  if (chartData.length < 2) return null;
 
   return (
     <section className="overflow-hidden rounded-[30px] border border-emerald-900/25 bg-[linear-gradient(180deg,rgba(7,14,12,0.98),rgba(5,10,9,0.98))]">
@@ -136,57 +124,32 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
               <div
                 className={cn(
                   "pb-1 text-sm font-medium",
-                  realizedInView >= 0 ? "text-emerald-400" : "text-red-400",
+                  changeInView >= 0 ? "text-emerald-400" : "text-red-400",
                 )}
               >
-                {realizedInView >= 0 ? "+" : ""}
-                {formatUSD(realizedInView)} realized in view
+                {changeInView >= 0 ? "+" : ""}
+                {formatUSD(changeInView)} net change in view
               </div>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
-              {chartMode === "line" ? (
-                <>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    Account equity
-                  </span>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-zinc-100" />
-                    Realized trade P&amp;L
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    Positive closed P&amp;L
-                  </span>
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-red-400" />
-                    Negative closed P&amp;L
-                  </span>
-                </>
-              )}
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                Equity curve
+              </span>
+              {startingPoint ? (
+                <span>
+                  Started at {formatUSD(startingPoint.accountEquity)}
+                </span>
+              ) : null}
+              {rangeLow != null && rangeHigh != null ? (
+                <span>
+                  Range {formatUSD(rangeLow)} - {formatUSD(rangeHigh)}
+                </span>
+              ) : null}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <div className="mr-1 inline-flex overflow-hidden rounded-full border border-zinc-800 bg-zinc-950/80">
-              {(["line", "bars"] as ChartMode[]).map((value) => (
-                <button
-                  key={value}
-                  onClick={() => setChartMode(value)}
-                  className={cn(
-                    "px-3.5 py-2 text-xs font-medium uppercase tracking-[0.14em] transition-colors",
-                    chartMode === value
-                      ? "bg-emerald-500/[0.12] text-emerald-200"
-                      : "text-zinc-500 hover:text-zinc-200",
-                  )}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
             {(["7d", "30d", "90d", "all"] as TimeRange[]).map((value) => (
               <button
                 key={value}
@@ -206,26 +169,17 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
       </div>
 
       <div className={cn(density === "roomy" ? "h-[420px] px-4 py-5 sm:px-5" : "h-[380px] px-3 py-4 sm:px-4")}>
-        {chartMode === "bars" && pnlBars.length === 0 ? (
-          <div className="flex h-full items-center justify-center rounded-[22px] border border-dashed border-zinc-800 bg-zinc-950/45 px-4 text-center">
-            <div>
-              <div className="text-sm font-medium text-zinc-200">No closed-trade P&amp;L in this range.</div>
-              <div className="mt-2 text-xs text-zinc-500">
-                Switch ranges or use the line view to inspect the account curve.
-              </div>
-            </div>
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            {chartMode === "line" ? (
+        <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 10, right: 22, left: 0, bottom: 8 }}>
               <defs>
                 <linearGradient id="portfolioEquityFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#34d399" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="#34d399" stopOpacity={0.02} />
+                  <stop offset="0%" stopColor="#34d399" stopOpacity={0.24} />
+                  <stop offset="70%" stopColor="#15803d" stopOpacity={0.1} />
+                  <stop offset="100%" stopColor="#020617" stopOpacity={0} />
                 </linearGradient>
               </defs>
 
+              <CartesianGrid vertical={false} stroke="rgba(39,39,42,0.45)" strokeDasharray="0" />
               <XAxis
                 dataKey="time"
                 tickFormatter={(value) =>
@@ -240,101 +194,55 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
                 minTickGap={40}
               />
               <YAxis
-                yAxisId="equity"
                 orientation="right"
                 tickFormatter={(value) => formatUSD(value, Math.abs(value) >= 1000 ? 0 : 2)}
                 tick={{ fontSize: 11, fill: "#6b7280" }}
                 axisLine={false}
                 tickLine={false}
                 width={72}
+                domain={(["dataMin - 60", "dataMax + 60"] as unknown) as [string, string]}
               />
-              <YAxis yAxisId="pnl" hide domain={["auto", "auto"]} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "#050807",
-                  border: "1px solid rgba(39, 39, 42, 0.95)",
-                  borderRadius: "14px",
-                  fontSize: "12px",
-                  color: "#f4f4f5",
-                }}
-                labelFormatter={(value) =>
-                  new Date(value).toLocaleString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                }
-                formatter={(value, name) => [
-                  formatUSD(Number(value ?? 0)),
-                  name === "accountEquity" ? "Account equity" : "Realized trade P&L",
-                ]}
+                cursor={{ stroke: "rgba(52, 211, 153, 0.28)", strokeWidth: 1 }}
+                content={<EquityTooltip />}
               />
+              {startingPoint ? (
+                <ReferenceLine
+                  y={startingPoint.accountEquity}
+                  stroke="rgba(161,161,170,0.4)"
+                  strokeDasharray="4 4"
+                />
+              ) : null}
 
               <Area
-                yAxisId="equity"
                 type="monotone"
                 dataKey="accountEquity"
                 stroke="#34d399"
-                strokeWidth={2.4}
+                strokeWidth={3}
                 fill="url(#portfolioEquityFill)"
-              />
-              <Line
-                yAxisId="pnl"
-                type="monotone"
-                dataKey="realizedPnl"
-                stroke="#f4f4f5"
-                strokeWidth={1.65}
                 dot={false}
-                activeDot={{ r: 3.5, fill: "#f4f4f5" }}
-              />
-            </ComposedChart>
-            ) : (
-            <ComposedChart data={pnlBars} margin={{ top: 10, right: 22, left: 0, bottom: 8 }}>
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 11, fill: "#6b7280" }}
-                axisLine={false}
-                tickLine={false}
-                minTickGap={32}
-              />
-              <YAxis
-                orientation="right"
-                tickFormatter={(value) => formatUSD(Number(value), Math.abs(Number(value)) >= 1000 ? 0 : 2)}
-                tick={{ fontSize: 11, fill: "#6b7280" }}
-                axisLine={false}
-                tickLine={false}
-                width={72}
-                domain={["auto", "auto"]}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#050807",
-                  border: "1px solid rgba(39, 39, 42, 0.95)",
-                  borderRadius: "14px",
-                  fontSize: "12px",
-                  color: "#f4f4f5",
+                activeDot={{
+                  r: 4.5,
+                  stroke: "#052e16",
+                  strokeWidth: 3,
+                  fill: "#6ee7b7",
                 }}
-                labelFormatter={(_, payload) => {
-                  const point = payload?.[0]?.payload as { time?: number; trades?: number } | undefined;
-                  if (!point?.time) return "Realized P&L";
-                  return `${new Date(point.time).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })} · ${point.trades ?? 0} trade${point.trades === 1 ? "" : "s"}`;
-                }}
-                formatter={(value) => [formatUSD(Number(value ?? 0)), "Realized P&L"]}
               />
-              <ReferenceLine y={0} stroke="#3f3f46" strokeDasharray="4 4" />
-              <Bar dataKey="pnl" maxBarSize={34} radius={[6, 6, 4, 4]}>
-                {pnlBars.map((point) => (
-                  <Cell key={point.time} fill={point.pnl >= 0 ? "#34d399" : "#f87171"} />
-                ))}
-              </Bar>
+              {latestPoint ? (
+                <ReferenceDot
+                  x={latestPoint.time}
+                  y={latestPoint.accountEquity}
+                  r={0}
+                  label={{
+                    value: formatUSD(latestPoint.accountEquity),
+                    position: "right",
+                    fill: "#d4d4d8",
+                    fontSize: 11,
+                  }}
+                />
+              ) : null}
             </ComposedChart>
-            )}
-          </ResponsiveContainer>
-        )}
+        </ResponsiveContainer>
       </div>
     </section>
   );
