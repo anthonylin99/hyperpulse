@@ -50,9 +50,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/public-config", {
-        cache: "no-store",
-      });
+      const response = await fetch("/api/public-config");
 
       if (!response.ok) {
         throw new Error("Failed to load app config");

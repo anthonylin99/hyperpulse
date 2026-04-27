@@ -13,6 +13,7 @@ import { getSubscriptionClient, withNetworkParam, getStoredNetwork } from "@/lib
 import { fundingToSignal, computeFundingSignal } from "@/lib/signals";
 import { reportClientError } from "@/lib/clientErrorReporter";
 import {
+  MARKET_ENRICHMENT_INTERVAL_MS,
   POLL_INTERVAL_MARKET,
   WHALE_THRESHOLD_USD,
   OI_SPIKE_THRESHOLD_PCT,
@@ -52,6 +53,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   >({});
   const [btcCandles, setBtcCandles] = useState<Array<{ time: number; close: number }>>([]);
   const signalFetchRef = useRef(0);
+  const fundingFetchRef = useRef(0);
+  const btcCandleFetchRef = useRef(0);
   const prevOIRef = useRef<Record<string, number>>({});
   const wsInitRef = useRef(false);
 
@@ -304,12 +307,19 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       setError(null);
       setLastUpdated(new Date());
 
+      const now = Date.now();
       const top10 = [...parsed]
         .sort((a, b) => b.openInterest - a.openInterest)
         .slice(0, 10);
-      fetchFundingHistories(top10.map((a) => a.coin));
+      if (now - fundingFetchRef.current >= MARKET_ENRICHMENT_INTERVAL_MS) {
+        fundingFetchRef.current = now;
+        fetchFundingHistories(top10.map((a) => a.coin));
+      }
       fetchSignalData(parsed);
-      fetchBtcCandles();
+      if (now - btcCandleFetchRef.current >= MARKET_ENRICHMENT_INTERVAL_MS) {
+        btcCandleFetchRef.current = now;
+        fetchBtcCandles();
+      }
     } catch (err) {
       reportClientError("market.fetch", err);
       setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -320,8 +330,20 @@ export function MarketProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchMarketData();
-    const interval = setInterval(fetchMarketData, POLL_INTERVAL_MARKET);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      fetchMarketData();
+    }, POLL_INTERVAL_MARKET);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchMarketData();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchMarketData]);
 
   useEffect(() => {

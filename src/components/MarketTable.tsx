@@ -127,11 +127,8 @@ export default function MarketTable({
   }, []);
 
   useEffect(() => {
-    fetchSpot();
-  }, [fetchSpot]);
-
-  useEffect(() => {
     if (mode !== "spot") return;
+    fetchSpot();
     const interval = setInterval(fetchSpot, POLL_INTERVAL_MARKET);
     return () => clearInterval(interval);
   }, [mode, fetchSpot]);
@@ -218,7 +215,7 @@ export default function MarketTable({
 
   const perpsLoading = loading;
   const activeLoading = mode === "perps" ? perpsLoading : spotLoading;
-  const spotModeAvailable = spotLoading || rwaSpotAssets.length > 0;
+  const spotModeAvailable = true;
 
   if (activeLoading) {
     return (

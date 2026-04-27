@@ -25,6 +25,13 @@ function buildCsp() {
 }
 
 function applySecurityHeaders(response: NextResponse) {
+  // The Codex/Electron in-app browser and Next dev runtime can be touchy with
+  // production-grade CSP/XFO headers. Keep local development easy to inspect;
+  // production still gets the full hardening below.
+  if (process.env.NODE_ENV !== "production") {
+    return response;
+  }
+
   response.headers.set("Content-Security-Policy", buildCsp());
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -34,12 +41,10 @@ function applySecurityHeaders(response: NextResponse) {
     "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)",
   );
 
-  if (process.env.NODE_ENV === "production") {
-    response.headers.set(
-      "Strict-Transport-Security",
-      "max-age=63072000; includeSubDomains; preload",
-    );
-  }
+  response.headers.set(
+    "Strict-Transport-Security",
+    "max-age=63072000; includeSubDomains; preload",
+  );
 
   return response;
 }

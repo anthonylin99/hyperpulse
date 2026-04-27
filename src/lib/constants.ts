@@ -13,7 +13,16 @@ export const MAJOR_ASSETS = [
   "AAVE",
 ] as const;
 
-export const POLL_INTERVAL_MARKET = 30_000; // 30s
+const configuredMarketPollMs = Number(process.env.NEXT_PUBLIC_MARKET_POLL_MS);
+
+export const POLL_INTERVAL_MARKET =
+  Number.isFinite(configuredMarketPollMs) && configuredMarketPollMs >= 30_000
+    ? configuredMarketPollMs
+    : process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
+      ? 120_000
+      : 30_000;
+export const MARKET_ENRICHMENT_INTERVAL_MS =
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "production" ? 10 * 60_000 : 5 * 60_000;
 export const POLL_INTERVAL_PORTFOLIO = 300_000; // 5m
 export const WS_DEBOUNCE_MS = 1_000;
 export const WHALE_THRESHOLD_USD = 500_000;
