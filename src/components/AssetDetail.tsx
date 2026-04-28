@@ -226,8 +226,13 @@ export default function AssetDetail({
       {/* Chart area */}
       <div className="px-4 pb-3">
         {tab === "price" ? (
-          <div className="h-[520px] max-h-[72vh] min-h-[420px]">
-            <PriceChart coin={asset.coin} compact />
+          <div className="h-[700px] max-h-[82vh] min-h-[620px]">
+            <PriceChart
+              coin={asset.coin}
+              compact
+              fundingAPR={asset.fundingAPR}
+              fundingPercentile={fundingRegime.percentile}
+            />
           </div>
         ) : tab === "funding" ? (
           <div>

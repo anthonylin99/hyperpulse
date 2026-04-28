@@ -13,12 +13,15 @@ import {
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { calculateSupportResistanceLevels } from "@/lib/supportResistance";
+import { buildTradePlan } from "@/lib/tradePlan";
 import { SectionEyebrow } from "@/components/trading-ui";
 
 interface PriceChartProps {
   coin: string;
   marketType?: "perp" | "spot";
   compact?: boolean;
+  fundingAPR?: number | null;
+  fundingPercentile?: number | null;
 }
 
 type TradingInterval = "5" | "15" | "60" | "240" | "D";
@@ -90,7 +93,13 @@ function toCandlestickData(candles: CandleDatum[]): CandlestickData[] {
     });
 }
 
-export default function PriceChart({ coin, marketType = "perp", compact = false }: PriceChartProps) {
+export default function PriceChart({
+  coin,
+  marketType = "perp",
+  compact = false,
+  fundingAPR = null,
+  fundingPercentile = null,
+}: PriceChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +112,17 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
     [candles, interval],
   );
   const currentPrice = candles.at(-1)?.close ?? null;
+  const tradePlan = useMemo(
+    () =>
+      buildTradePlan({
+        candles,
+        interval: API_INTERVAL[interval],
+        levels,
+        fundingAPR,
+        fundingPercentile,
+      }),
+    [candles, fundingAPR, fundingPercentile, interval, levels],
+  );
   const visibleSupports = useMemo(
     () =>
       levels
@@ -308,7 +328,7 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden p-2.5">
-        <div className="relative h-full min-h-0 overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950">
+        <div className="relative h-full min-h-[240px] overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950">
           {loading ? (
             <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-sm text-zinc-500">
               Loading price structure...
@@ -321,6 +341,72 @@ export default function PriceChart({ coin, marketType = "perp", compact = false 
             <div ref={chartContainerRef} className="absolute inset-0" />
           )}
         </div>
+      </div>
+
+      {!loading && !error && candles.length > 0 ? (
+        <div className="shrink-0 border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
+          <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <SectionEyebrow>Trade plan</SectionEyebrow>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] ${
+                    tradePlan.bias === "long-setup"
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      : tradePlan.bias === "short-setup"
+                        ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                        : "border-zinc-700 bg-zinc-900 text-zinc-400"
+                  }`}
+                >
+                  {tradePlan.confidence} confidence
+                </span>
+              </div>
+              <div className="mt-1 text-sm font-semibold text-zinc-100">{tradePlan.title}</div>
+              <div className="mt-1 text-xs leading-5 text-zinc-400">{tradePlan.summary}</div>
+            </div>
+
+            <div className="grid gap-2 text-xs md:grid-cols-3">
+              <PlanBox label="Trigger" value={tradePlan.trigger} />
+              <PlanBox label="Invalidation" value={tradePlan.invalidation} tone="danger" />
+              <PlanBox
+                label="Targets"
+                value={tradePlan.targets.length > 0 ? tradePlan.targets.join(" → ") : "n/a"}
+                tone="success"
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {tradePlan.context.slice(0, 4).map((item) => (
+              <div key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PlanBox({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "success" | "danger";
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+      <div
+        className={`mt-1 leading-5 ${
+          tone === "success" ? "text-emerald-300" : tone === "danger" ? "text-rose-300" : "text-zinc-300"
+        }`}
+      >
+        {value}
       </div>
     </div>
   );
