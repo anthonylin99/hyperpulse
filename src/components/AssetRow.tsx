@@ -1,6 +1,5 @@
 "use client";
 
-import { LineChart, Line } from "recharts";
 import type { ReactNode } from "react";
 import type { MarketAsset } from "@/types";
 import {
@@ -11,7 +10,9 @@ import {
   formatFundingAPR,
 } from "@/lib/format";
 import { getFundingRegime } from "@/lib/fundingRegime";
+import type { MarketSetupSignal } from "@/lib/tradePlan";
 import SignalBadge from "./SignalBadge";
+import SetupBadge from "./SetupBadge";
 
 interface AssetRowProps {
   asset: MarketAsset;
@@ -21,6 +22,7 @@ interface AssetRowProps {
   onTrade: (direction: "long" | "short") => void;
   tradingEnabled: boolean;
   fundingHistory?: { time: number; rate: number }[];
+  setupSignal?: MarketSetupSignal | null;
   detailNode: ReactNode;
 }
 
@@ -32,6 +34,7 @@ export default function AssetRow({
   onTrade,
   tradingEnabled,
   fundingHistory,
+  setupSignal,
   detailNode,
 }: AssetRowProps) {
   const priceColor =
@@ -51,6 +54,12 @@ export default function AssetRow({
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const rowBg = index % 2 === 0 ? "bg-zinc-950" : "bg-zinc-900/50";
+  const setupBg =
+    setupSignal?.isActive && setupSignal.tone === "green"
+      ? "bg-emerald-950/30"
+      : setupSignal?.isActive && setupSignal.tone === "red"
+        ? "bg-rose-950/30"
+        : "";
   const fundingRegime = getFundingRegime(asset.fundingRate, fundingHistory);
   const fundingRegimeShort =
     fundingRegime.percentile == null
@@ -65,7 +74,7 @@ export default function AssetRow({
     <>
       <tr
         onClick={onSelect}
-        className={`h-8 border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors text-xs font-mono ${rowBg} ${isExpanded ? "bg-zinc-800/40" : ""}`}
+        className={`h-8 border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors text-xs font-mono ${rowBg} ${setupBg} ${isExpanded ? "bg-zinc-800/40" : ""}`}
       >
         <td className="px-2.5 py-0.5 whitespace-nowrap">
           <div className="flex items-center gap-2">
@@ -116,20 +125,7 @@ export default function AssetRow({
         </td>
 
         <td className="px-2.5 py-0.5">
-          {fundingHistory && fundingHistory.length > 0 ? (
-            <LineChart width={36} height={16} data={fundingHistory}>
-              <Line
-                type="monotone"
-                dataKey="rate"
-                stroke="#7dd4c4"
-                strokeWidth={1}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          ) : (
-            <span className="text-zinc-700">—</span>
-          )}
+          <SetupBadge setup={setupSignal} />
         </td>
 
         {tradingEnabled && (

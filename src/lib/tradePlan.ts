@@ -12,6 +12,16 @@ export interface TradePlan {
   context: string[];
 }
 
+export interface MarketSetupSignal {
+  type: "support-reclaim" | "resistance-break" | "support-break" | "near-resistance" | "near-support" | "none";
+  label: string;
+  detail: string;
+  tone: "green" | "red" | "amber" | "neutral";
+  level: number | null;
+  distancePct: number | null;
+  isActive: boolean;
+}
+
 function normalizeTimestamp(time: number): number {
   return time > 10_000_000_000 ? time : time * 1000;
 }
@@ -95,6 +105,126 @@ function fundingContext(fundingAPR?: number | null, fundingPercentile?: number |
     return "Funding is elevated, so longs may be crowded. Longs need cleaner confirmation and tighter invalidation.";
   }
   return "Funding is not extreme enough to drive the setup by itself.";
+}
+
+export function buildMarketSetupSignal({
+  candles,
+  levels,
+}: {
+  candles: LevelCandle[];
+  levels: SupportResistanceLevel[];
+}): MarketSetupSignal {
+  const sorted = [...candles].sort((a, b) => normalizeTimestamp(a.time) - normalizeTimestamp(b.time));
+  const latest = sorted.at(-1);
+  const previous = sorted.at(-2);
+
+  if (!latest || !previous || levels.length === 0) {
+    return {
+      type: "none",
+      label: "No setup",
+      detail: "Waiting for structure",
+      tone: "neutral",
+      level: null,
+      distancePct: null,
+      isActive: false,
+    };
+  }
+
+  const currentPrice = latest.close;
+  const atr = averageTrueRange(sorted);
+  const support = nearestLevel(levels, "support", currentPrice);
+  const resistance = nearestLevel(levels, "resistance", currentPrice);
+  const supportDistance = support ? ((currentPrice - support.price) / currentPrice) * 100 : null;
+  const resistanceDistance = resistance ? ((resistance.price - currentPrice) / currentPrice) * 100 : null;
+  const breakBuffer = Math.max(atr * 0.12, currentPrice * 0.001);
+  const proximityPct = 0.55;
+
+  const resistanceBreak =
+    resistance != null &&
+    previous.close <= resistance.price &&
+    latest.close > resistance.price + breakBuffer;
+  if (resistanceBreak && resistance) {
+    return {
+      type: "resistance-break",
+      label: "Resistance break",
+      detail: `Cleared ${formatPrice(resistance.price)}`,
+      tone: "green",
+      level: resistance.price,
+      distancePct: resistanceDistance,
+      isActive: true,
+    };
+  }
+
+  const supportReclaim =
+    support != null &&
+    latest.low <= support.price + atr * 0.35 &&
+    latest.close > support.price + breakBuffer &&
+    latest.close > previous.close;
+  if (supportReclaim && support) {
+    return {
+      type: "support-reclaim",
+      label: "Support reclaim",
+      detail: `Held ${formatPrice(support.price)}`,
+      tone: "green",
+      level: support.price,
+      distancePct: supportDistance,
+      isActive: true,
+    };
+  }
+
+  const supportBreak =
+    support != null &&
+    previous.close >= support.price &&
+    latest.close < support.price - breakBuffer;
+  if (supportBreak && support) {
+    return {
+      type: "support-break",
+      label: "Support break",
+      detail: `Lost ${formatPrice(support.price)}`,
+      tone: "red",
+      level: support.price,
+      distancePct: supportDistance,
+      isActive: true,
+    };
+  }
+
+  if (resistance && resistanceDistance != null && resistanceDistance <= proximityPct) {
+    return {
+      type: "near-resistance",
+      label: "Testing resistance",
+      detail: `${formatPrice(resistance.price)} is ${resistanceDistance.toFixed(2)}% above`,
+      tone: "amber",
+      level: resistance.price,
+      distancePct: resistanceDistance,
+      isActive: false,
+    };
+  }
+
+  if (support && supportDistance != null && supportDistance <= proximityPct) {
+    return {
+      type: "near-support",
+      label: "Near support",
+      detail: `${formatPrice(support.price)} is ${supportDistance.toFixed(2)}% below`,
+      tone: "amber",
+      level: support.price,
+      distancePct: supportDistance,
+      isActive: false,
+    };
+  }
+
+  return {
+    type: "none",
+    label: "Range wait",
+    detail: resistance
+      ? `Next trigger ${formatPrice(resistance.price)}`
+      : support
+        ? `Watch ${formatPrice(support.price)}`
+        : "No nearby trigger",
+    tone: "neutral",
+    level: resistance?.price ?? support?.price ?? null,
+    distancePct: resistanceDistance ?? supportDistance,
+    isActive: false,
+  };
 }
 
 export function buildTradePlan({

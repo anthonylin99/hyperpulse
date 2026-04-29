@@ -18,6 +18,8 @@ import {
 import { formatCompact, formatPct, formatUSD } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { reportClientError } from "@/lib/clientErrorReporter";
+import { calculateSupportResistanceLevels, type LevelCandle } from "@/lib/supportResistance";
+import { buildMarketSetupSignal, type MarketSetupSignal } from "@/lib/tradePlan";
 
 type Mode = "perps" | "spot";
 
@@ -68,6 +70,7 @@ const RWA_SPOT_CATEGORIES = [
 
 const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
 const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
+const SETUP_SCAN_LIMIT = 18;
 
 function getPerpSortValue(asset: MarketAsset, key: PerpSortKey): number | string {
   switch (key) {
@@ -109,6 +112,7 @@ export default function MarketTable({
   const [spotSortKey, setSpotSortKey] = useState<SpotSortKey>("dayVolume");
   const [spotSortAsc, setSpotSortAsc] = useState(false);
   const [spotFilter, setSpotFilter] = useState<SpotCategory | "All">("All");
+  const [setupSignals, setSetupSignals] = useState<Record<string, MarketSetupSignal>>({});
 
   const fetchSpot = useCallback(async () => {
     try {
@@ -177,6 +181,61 @@ export default function MarketTable({
 
     return arr;
   }, [assets, search, categoryFilter, hideSmallCaps, perpSortKey, perpSortAsc]);
+
+  const scanAssets = useMemo(
+    () => perpsFiltered.slice(0, SETUP_SCAN_LIMIT),
+    [perpsFiltered],
+  );
+
+  useEffect(() => {
+    if (mode !== "perps" || scanAssets.length === 0) return;
+    let cancelled = false;
+
+    async function scanSetups() {
+      const now = Date.now();
+      const startTime = now - 14 * 24 * 60 * 60 * 1000;
+      const nextSignals: Record<string, MarketSetupSignal> = {};
+
+      await Promise.allSettled(
+        scanAssets.map(async (asset) => {
+          const response = await fetch(
+            withNetworkParam(
+              `/api/market/candles?coin=${encodeURIComponent(asset.coin)}&interval=15m&startTime=${startTime}&endTime=${now}`,
+            ),
+          );
+          if (!response.ok) return;
+          const rawCandles = (await response.json()) as Array<Record<string, string | number>>;
+          const candles: LevelCandle[] = rawCandles
+            .map((candle) => ({
+              time: Number(candle.t ?? candle.T ?? candle.time),
+              open: Number(candle.o ?? candle.open),
+              high: Number(candle.h ?? candle.high),
+              low: Number(candle.l ?? candle.low),
+              close: Number(candle.c ?? candle.close),
+              volume: Number(candle.v ?? candle.vlm ?? 0),
+            }))
+            .filter((candle) => Number.isFinite(candle.close) && candle.close > 0);
+          const levels = calculateSupportResistanceLevels(candles, "15m");
+          nextSignals[asset.coin] = buildMarketSetupSignal({ candles, levels });
+        }),
+      );
+
+      if (!cancelled) {
+        setSetupSignals((prev) => ({ ...prev, ...nextSignals }));
+      }
+    }
+
+    scanSetups().catch((error) => reportClientError("market.setup-scan", error));
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      scanSetups().catch((error) => reportClientError("market.setup-scan", error));
+    }, 5 * 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [mode, scanAssets]);
 
   const spotFiltered = useMemo(() => {
     let arr = [...rwaSpotAssets];
@@ -360,7 +419,7 @@ export default function MarketTable({
                       )}
                     </th>
                   ))}
-                  <th className="px-2.5 py-1.5 text-left whitespace-nowrap">7d Chart</th>
+                  <th className="px-2.5 py-1.5 text-left whitespace-nowrap">Setup</th>
                   {tradingEnabled && (
                     <th className="px-2.5 py-1.5 text-left whitespace-nowrap">Trade</th>
                   )}
@@ -377,6 +436,7 @@ export default function MarketTable({
                     onTrade={(direction) => onTrade(asset.coin, direction)}
                     tradingEnabled={tradingActive}
                     fundingHistory={fundingHistories[asset.coin]}
+                    setupSignal={setupSignals[asset.coin]}
                     detailNode={
                       selectedAsset === asset.coin ? (
                         <tr key={`${asset.coin}-detail`}>
