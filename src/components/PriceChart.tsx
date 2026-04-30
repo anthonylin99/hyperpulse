@@ -38,11 +38,11 @@ const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> =
 };
 
 const LOOKBACK_MS: Record<TradingInterval, number> = {
-  "5": 5 * 24 * 60 * 60 * 1000,
-  "15": 14 * 24 * 60 * 60 * 1000,
-  "60": 60 * 24 * 60 * 60 * 1000,
-  "240": 120 * 24 * 60 * 60 * 1000,
-  D: 120 * 24 * 60 * 60 * 1000,
+  "5": 2 * 24 * 60 * 60 * 1000,
+  "15": 5 * 24 * 60 * 60 * 1000,
+  "60": 30 * 24 * 60 * 60 * 1000,
+  "240": 90 * 24 * 60 * 60 * 1000,
+  D: 180 * 24 * 60 * 60 * 1000,
 };
 
 const INTERVAL_MS: Record<TradingInterval, number> = {
@@ -111,7 +111,23 @@ function toCandlestickData(candles: CandleDatum[]): CandlestickData[] {
 
 function formatLevelPrice(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "n/a";
-  return value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 6 : value < 100 ? 3 : 0 });
+  return value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 6 : value < 100 ? 2 : 0 });
+}
+
+function pricePrecision(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 2;
+  if (value >= 100) return 0;
+  if (value >= 1) return 2;
+  if (value >= 0.01) return 4;
+  return 6;
+}
+
+function minMoveForPrecision(precision: number): number {
+  return precision === 0 ? 1 : Number(`0.${"0".repeat(Math.max(precision - 1, 0))}1`);
+}
+
+function chartPriceFormatter(value: number): string {
+  return formatLevelPrice(value);
 }
 
 function formatTimeMs(timeMs: number | null | undefined): string {
@@ -289,9 +305,13 @@ export default function PriceChart({
     const container = chartContainerRef.current;
     const data = toCandlestickData(candles);
     if (!container || data.length === 0) return;
+    const precision = pricePrecision(candles.at(-1)?.close);
 
     const chart = createChart(container, {
       autoSize: true,
+      localization: {
+        priceFormatter: chartPriceFormatter,
+      },
       layout: {
         background: { type: ColorType.Solid, color: "#090b10" },
         textColor: "#a1a1aa",
@@ -315,6 +335,7 @@ export default function PriceChart({
         borderColor: "#27272a",
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 8,
       },
       handleScroll: true,
       handleScale: true,
@@ -330,6 +351,11 @@ export default function PriceChart({
       priceLineColor: "#f4f4f5",
       priceLineWidth: 1,
       priceLineStyle: LineStyle.Dashed,
+      priceFormat: {
+        type: "price",
+        precision,
+        minMove: minMoveForPrecision(precision),
+      },
     });
 
     candleSeries.setData(data);
@@ -341,27 +367,34 @@ export default function PriceChart({
       index: number,
       kind: "support" | "resistance",
     ) => {
-      const discovered = Math.max(normalizeTime(level.discoveredTimeMs ?? firstTime), firstTime);
-      if (!Number.isFinite(discovered) || discovered > lastTime) return;
-      const start = toChartTime(discovered);
-      const end = toChartTime(lastTime);
       const color = kind === "support" ? "#22c55e" : "#fb7185";
-      const softColor = kind === "support" ? "rgba(34, 197, 94, 0.38)" : "rgba(251, 113, 133, 0.38)";
-      const lineWidth = index === 0 ? 2 : 1;
+      const softColor = kind === "support" ? "rgba(34, 197, 94, 0.35)" : "rgba(251, 113, 133, 0.35)";
+      const start = toChartTime(firstTime);
+      const end = toChartTime(lastTime);
 
       const center = chart.addSeries(LineSeries, {
         color,
-        lineWidth,
+        lineWidth: index === 0 ? 2 : 1,
         lineStyle: index === 0 ? LineStyle.Solid : LineStyle.Dashed,
         lastValueVisible: false,
         priceLineVisible: false,
+        crosshairMarkerVisible: false,
       });
       center.setData([
         { time: start, value: level.price },
         { time: end, value: level.price },
       ]);
 
-      if (level.zoneLow != null && level.zoneHigh != null && index <= 1) {
+      candleSeries.createPriceLine({
+        price: level.price,
+        color,
+        lineWidth: index === 0 ? 2 : 1,
+        lineStyle: index === 0 ? LineStyle.Solid : LineStyle.Dashed,
+        axisLabelVisible: index === 0,
+        title: index === 0 ? (kind === "support" ? "Support" : "Resistance") : "",
+      });
+
+      if (level.zoneLow != null && level.zoneHigh != null && index === 0) {
         for (const zonePrice of [level.zoneLow, level.zoneHigh]) {
           const edge = chart.addSeries(LineSeries, {
             color: softColor,
@@ -369,17 +402,27 @@ export default function PriceChart({
             lineStyle: LineStyle.Dotted,
             lastValueVisible: false,
             priceLineVisible: false,
+            crosshairMarkerVisible: false,
           });
           edge.setData([
             { time: start, value: zonePrice },
             { time: end, value: zonePrice },
           ]);
+
+          candleSeries.createPriceLine({
+            price: zonePrice,
+            color: softColor,
+            lineWidth: 1,
+            lineStyle: LineStyle.Dotted,
+            axisLabelVisible: false,
+            title: "",
+          });
         }
       }
     };
 
-    visibleSupports.forEach((level, index) => renderLevel(level, index, "support"));
-    visibleResistances.forEach((level, index) => renderLevel(level, index, "resistance"));
+    visibleSupports.slice(0, 1).forEach((level, index) => renderLevel(level, index, "support"));
+    visibleResistances.slice(0, 1).forEach((level, index) => renderLevel(level, index, "resistance"));
 
     chart.timeScale().fitContent();
     chartRef.current = chart;
@@ -420,7 +463,7 @@ export default function PriceChart({
               </div>
               {currentPrice != null && (
                 <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-300">
-                  {currentPrice.toLocaleString(undefined, { maximumFractionDigits: currentPrice < 1 ? 6 : 2 })}
+                  {formatLevelPrice(currentPrice)}
                 </div>
               )}
             </div>

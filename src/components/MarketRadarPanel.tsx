@@ -122,7 +122,6 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
                     <div className="font-mono text-lg font-semibold tracking-tight text-zinc-100">{signal.asset}</div>
                     <div className="mt-1 text-xs leading-5 text-zinc-500">{signal.label}</div>
                   </div>
-                  <div className="text-[11px] font-medium text-teal-300 opacity-70 transition group-hover:opacity-100">Open</div>
                 </div>
               </Link>
             ))
