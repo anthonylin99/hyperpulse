@@ -127,6 +127,9 @@ export interface RoundTripTrade {
   pnlPct: number; // %
   fees: number;
   fundingPaid: number;
+  capitalUsedUsd?: number | null; // margin / own capital used when captured or estimated
+  leverageUsed?: number | null;
+  capitalSource?: "captured" | "estimated" | "spot" | "unavailable";
   fills: Fill[];
 }
 
@@ -241,12 +244,21 @@ export interface TradeSizingSnapshot {
   size: number;
   notionalUsd: number;
   marginUsedUsd: number;
+  liquidationPx?: number | null;
   accountEquityUsd: number;
   tradeableCapitalUsd: number;
   leverage: number;
   sizingPct: number;
   status: "open" | "closed" | "unknown";
   source: "first_captured" | "snapshot";
+}
+
+export interface PortfolioTrackedWallet {
+  walletAddress: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  source: "portfolio" | "manual" | "worker";
+  status: "active" | "paused";
 }
 
 export interface CorrelationMatrixEntry {
@@ -280,9 +292,19 @@ export interface SupportResistanceLevel {
   kind: "support" | "resistance" | "pivot";
   source: "traditional_pivot" | "swing_pivot" | "structure_pivot" | "structure_trendline";
   price: number;
+  zoneLow?: number;
+  zoneHigh?: number;
   strength: number;
   touches?: number;
   distancePct?: number;
+  pivotTimeMs?: number;
+  discoveredTimeMs?: number;
+  updatedAtMs?: number;
+  expiresAtMs?: number;
+  confidence?: "low" | "medium" | "high";
+  status?: "forecast" | "active" | "tested" | "broken" | "expired";
+  confirmationBars?: number;
+  reason?: string;
 }
 
 // ─── Activity Types ─────────────────────────────────────────────
@@ -557,6 +579,40 @@ export type WhaleFocusTag =
   | "Metals"
   | "Multi-asset";
 
+export type TraderCohortFamily = "size" | "performance";
+
+export type TraderCohortTone = "green" | "amber" | "red" | "neutral";
+
+export interface TraderCohort {
+  id: string;
+  family: TraderCohortFamily;
+  label: string;
+  minUsd: number | null;
+  maxUsd: number | null;
+  tone: TraderCohortTone;
+  description: string;
+}
+
+export type TraderProfileTag =
+  | WhaleBehaviorTag
+  | WhaleStyleTag
+  | WhaleFocusTag
+  | "Smart money"
+  | "Large account"
+  | "Review-only"
+  | "Tracked favorite";
+
+export interface WalletIntelligenceSummary {
+  sizeCohort: TraderCohort;
+  pnlCohort: TraderCohort;
+  qualityLabel: string;
+  riskLabel: string;
+  directionBias: "long" | "short" | "balanced";
+  topAssets: string[];
+  tags: TraderProfileTag[];
+  evidence: string[];
+}
+
 export interface WhaleBucketExposure {
   bucket: WhaleRiskBucket;
   longNotionalUsd: number;
@@ -698,6 +754,9 @@ export interface WhaleWalletProfile {
   preMoveSampleSize?: number | null;
   repeatedAddCount6h?: number | null;
   bucketExposures: WhaleBucketExposure[];
+  sizeCohort: TraderCohort;
+  pnlCohort: TraderCohort;
+  intelligenceSummary: WalletIntelligenceSummary;
   narrative: string;
   positions: WhalePositionSnapshot[];
   trades: WhaleTradeSummary[];
@@ -723,6 +782,57 @@ export interface WhaleWatchlistEntry {
   address: string;
   nickname: string | null;
   createdAt: number;
+}
+
+export interface TrackedWalletFavorite extends WhaleWatchlistEntry {
+  lastSeenAt: number | null;
+  profile: WalletIntelligenceSummary | null;
+}
+
+export type MarketRadarSignalKind =
+  | "strongest_asset"
+  | "weakest_asset"
+  | "crowded_long"
+  | "crowded_short"
+  | "liquidation_pressure"
+  | "whale_flow"
+  | "factor_confirmation";
+
+export interface MarketRadarSignal {
+  id: string;
+  kind: MarketRadarSignalKind;
+  asset: string;
+  label: string;
+  value: string;
+  severity: WhaleSeverity;
+  timestamp: number;
+  evidence: string[];
+  routeHref: string;
+}
+
+export interface CohortsLiteBucket {
+  id: string;
+  label: string;
+  description: string;
+  walletCount: number;
+  netLongUsd: number;
+  netShortUsd: number;
+  netBias: "long" | "short" | "balanced";
+  topAsset: string | null;
+  medianTradeSizeUsd: number;
+  avgLeverage: number;
+}
+
+export interface ShareCardPayload {
+  type: "whale" | "market" | "factor" | "portfolio";
+  title: string;
+  subtitle: string;
+  primaryMetric: string;
+  secondaryMetric?: string;
+  evidence: string[];
+  routeHref: string;
+  generatedAt: number;
+  privacy: "public" | "redacted";
 }
 
 export type PositioningAlertType =

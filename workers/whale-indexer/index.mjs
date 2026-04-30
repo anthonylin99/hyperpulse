@@ -498,6 +498,99 @@ function buildNarrative(styleTags, focusTags, baseline, bucketExposures) {
   return `${primaryStyle} focused on ${focus}. Median trade size ${baseline.medianTradeSize30d > 0 ? `$${baseline.medianTradeSize30d.toLocaleString()}` : 'n/a'}; median hold ${baseline.avgHoldHours30d > 0 ? `${baseline.avgHoldHours30d.toFixed(1)}h` : 'n/a'}; ${bucketText}.`;
 }
 
+const SIZE_COHORTS = [
+  { id: 'observer', family: 'size', label: 'Observer', minUsd: 0, maxUsd: 10_000, tone: 'neutral', description: 'Small account; useful for color, not market impact.' },
+  { id: 'active_trader', family: 'size', label: 'Active Trader', minUsd: 10_000, maxUsd: 100_000, tone: 'neutral', description: 'Meaningful trader with enough margin to express directional views.' },
+  { id: 'whale', family: 'size', label: 'Whale', minUsd: 100_000, maxUsd: 1_000_000, tone: 'amber', description: 'Large enough to matter when positioning is concentrated.' },
+  { id: 'leviathan', family: 'size', label: 'Leviathan', minUsd: 1_000_000, maxUsd: null, tone: 'green', description: 'Institutional-scale wallet; changes in exposure deserve review.' },
+];
+
+const PNL_COHORTS = [
+  { id: 'stressed', family: 'performance', label: 'Stressed', minUsd: null, maxUsd: -100_000, tone: 'red', description: 'Recently deeply negative; useful as a crowding or stress input.' },
+  { id: 'underwater', family: 'performance', label: 'Underwater', minUsd: -100_000, maxUsd: 0, tone: 'amber', description: 'Recently negative; treat as context rather than smart-money signal.' },
+  { id: 'grinder', family: 'performance', label: 'Grinder', minUsd: 0, maxUsd: 200_000, tone: 'neutral', description: 'Positive but not yet a default main-tape wallet.' },
+  { id: 'smart_money', family: 'performance', label: 'Smart Money', minUsd: 200_000, maxUsd: 1_000_000, tone: 'green', description: 'Strong recent realized P&L; eligible for higher-priority review.' },
+  { id: 'money_printer', family: 'performance', label: 'Money Printer', minUsd: 1_000_000, maxUsd: null, tone: 'green', description: 'Exceptional recent realized P&L; still verify the current setup.' },
+];
+
+function selectCohort(value, cohorts) {
+  return cohorts.find((cohort) => {
+    const aboveMin = cohort.minUsd == null || value >= cohort.minUsd;
+    const belowMax = cohort.maxUsd == null || value < cohort.maxUsd;
+    return aboveMin && belowMax;
+  }) || cohorts[0];
+}
+
+function formatCompactUsd(value) {
+  const sign = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+function directionBias(bucketExposures) {
+  const net = bucketExposures.reduce((sum, bucket) => sum + bucket.netNotionalUsd, 0);
+  const gross = bucketExposures.reduce((sum, bucket) => sum + bucket.longNotionalUsd + bucket.shortNotionalUsd, 0);
+  if (gross <= 0) return 'balanced';
+  const ratio = net / gross;
+  if (ratio >= 0.2) return 'long';
+  if (ratio <= -0.2) return 'short';
+  return 'balanced';
+}
+
+function buildWalletIntelligenceSummary(profile) {
+  const sizeCohort = selectCohort(Math.max(profile.perpsEquity, profile.accountEquity, 0), SIZE_COHORTS);
+  const pnlCohort = selectCohort(profile.realizedPnl30d, PNL_COHORTS);
+  const nearestLiq = profile.positions.reduce((best, position) => {
+    if (position.liquidationDistancePct == null) return best;
+    return best == null ? position.liquidationDistancePct : Math.min(best, position.liquidationDistancePct);
+  }, null);
+  const riskLabel =
+    nearestLiq != null && nearestLiq < 10
+      ? 'Liquidation-sensitive'
+      : profile.averageLeverage >= 10
+        ? 'High leverage'
+        : profile.unrealizedPnl <= -500_000
+          ? 'Under pressure'
+          : profile.positions.some((position) => position.side === 'long') && profile.positions.some((position) => position.side === 'short')
+            ? 'Two-sided book'
+            : 'Normal risk';
+  const qualityLabel =
+    profile.realizedPnl30d >= 1_000_000
+      ? 'Elite recent performer'
+      : profile.realizedPnl30d >= 200_000
+        ? 'Strong recent performer'
+        : profile.realizedPnl30d >= 0
+          ? 'Positive but review-only'
+          : 'Negative recent P&L';
+  const tags = Array.from(new Set([
+    ...(profile.realizedPnl30d >= 200_000 ? ['Smart money'] : []),
+    ...(Math.max(profile.accountEquity, profile.perpsEquity) >= 100_000 ? ['Large account'] : []),
+    ...(profile.realizedPnl30d < 200_000 ? ['Review-only'] : []),
+    ...(profile.styleTags || []),
+    ...(profile.focusTags || []),
+    ...(profile.behaviorTags || []),
+  ])).slice(0, 8);
+
+  return {
+    sizeCohort,
+    pnlCohort,
+    qualityLabel,
+    riskLabel,
+    directionBias: directionBias(profile.bucketExposures),
+    topAssets: profile.dominantAssets.length ? profile.dominantAssets.slice(0, 4) : (profile.baseline.favoriteAssets || []).slice(0, 4),
+    tags,
+    evidence: [
+      `${formatCompactUsd(profile.realizedPnl30d)} realized P&L over the sampled 30d window`,
+      `${formatCompactUsd(profile.baseline.volume30d)} sampled trade volume`,
+      `${profile.baseline.directionalHitRate30d.toFixed(1)}% closed-trade win rate`,
+      `${profile.averageLeverage.toFixed(1)}x average live leverage`,
+    ],
+  };
+}
+
 function buildProfile(address, perpState, spotState, fills, funding, ledger) {
   const positions = [...positionSnapshot(perpState.assetPositions || []), ...buildSpotPositions(spotState.balances || [])].sort((a, b) => b.notionalUsd - a.notionalUsd);
   const trades = mergeFundingIntoTrades(groupFillsIntoTrades(fills), funding);
@@ -520,6 +613,20 @@ function buildProfile(address, perpState, spotState, fills, funding, ledger) {
     ...fills.map((fill) => fill.time).filter(Boolean),
     ...ledger.map((event) => event.time).filter(Boolean),
   ];
+  const intelligenceSummary = buildWalletIntelligenceSummary({
+    accountEquity: perpsEquity + spotUsdc,
+    perpsEquity,
+    realizedPnl30d,
+    unrealizedPnl,
+    averageLeverage,
+    dominantAssets: positions.slice(0, 4).map((position) => position.coin),
+    behaviorTags,
+    styleTags,
+    focusTags,
+    baseline,
+    positions,
+    bucketExposures,
+  });
   return {
     address,
     firstSeenAt: timeline.length ? Math.min(...timeline) : null,
@@ -545,6 +652,9 @@ function buildProfile(address, perpState, spotState, fills, funding, ledger) {
     avgHoldHours30d: baseline.avgHoldHours30d,
     directionalHitRate30d: baseline.directionalHitRate30d,
     bucketExposures,
+    sizeCohort: intelligenceSummary.sizeCohort,
+    pnlCohort: intelligenceSummary.pnlCohort,
+    intelligenceSummary,
     narrative: buildNarrative(styleTags, focusTags, baseline, bucketExposures),
     positions,
     trades,

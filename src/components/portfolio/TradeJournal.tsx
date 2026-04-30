@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { formatUSD, cn } from "@/lib/format";
-import { findSizingForTrade } from "@/lib/portfolioSizing";
+import { enrichTradesWithSizing } from "@/lib/portfolioSizing";
 import { getNotes, setNote } from "@/lib/tradeNotes";
 import type { RoundTripTrade } from "@/types";
 import TradeAnalyzerModal from "./TradeAnalyzerModal";
@@ -180,26 +180,42 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
     return filtered;
   }, [trades, sortKey, sortDir, filterCoin, filterResult, fromDate, toDate, symbolQuery]);
 
+  const sizedTrades = useMemo(
+    () => enrichTradesWithSizing(sorted, sizingSnapshots),
+    [sorted, sizingSnapshots],
+  );
+
   const summary = useMemo(() => {
-    const totalPnl = sorted.reduce((s, t) => s + t.pnl, 0);
-    const totalFees = sorted.reduce((s, t) => s + t.fees, 0);
-    const totalVolume = sorted.reduce((s, t) => s + t.notional, 0);
-    const count = sorted.length;
+    const totalPnl = sizedTrades.reduce((s, t) => s + t.pnl, 0);
+    const totalFees = sizedTrades.reduce((s, t) => s + t.fees, 0);
+    const totalCapitalIn = sizedTrades.reduce((sum, trade) => sum + (trade.capitalUsedUsd ?? 0), 0);
+    const leverageValues = sizedTrades
+      .map((trade) => trade.leverageUsed ?? null)
+      .filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+    const count = sizedTrades.length;
     const avgPnl = count > 0 ? totalPnl / count : 0;
-    return { totalPnl, totalFees, totalVolume, count, avgPnl };
-  }, [sorted]);
+    const avgLeverage =
+      leverageValues.length > 0
+        ? leverageValues.reduce((sum, value) => sum + value, 0) / leverageValues.length
+        : null;
+    return { totalPnl, totalFees, totalCapitalIn, avgLeverage, count, avgPnl };
+  }, [sizedTrades]);
 
   const sizingByTrade = useMemo(() => {
     const next: Record<string, string> = {};
-    for (const trade of sorted) {
-      const sizing = findSizingForTrade(trade, sizingSnapshots);
-      if (sizing) next[trade.id] = `${sizing.sizingPct.toFixed(1)}%`;
+    for (const trade of sizedTrades) {
+      if (trade.capitalUsedUsd != null) {
+        next[trade.id] =
+          trade.capitalSource === "captured"
+            ? `${trade.capitalUsedUsd.toFixed(2)} margin / ${trade.leverageUsed?.toFixed(1) ?? "?"}x`
+            : `${trade.capitalUsedUsd.toFixed(2)} capital`;
+      }
     }
     return next;
-  }, [sizingSnapshots, sorted]);
+  }, [sizedTrades]);
 
-  const paged = sorted.slice(page * pageSize, (page + 1) * pageSize);
-  const totalPages = Math.ceil(sorted.length / pageSize);
+  const paged = sizedTrades.slice(page * pageSize, (page + 1) * pageSize);
+  const totalPages = Math.ceil(sizedTrades.length / pageSize);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -332,7 +348,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
             ))}
           </div>
             <button
-              onClick={() => exportCSV(sorted, notes, sizingByTrade)}
+              onClick={() => exportCSV(sizedTrades, notes, sizingByTrade)}
               className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
             >
               Export CSV
@@ -447,8 +463,8 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               <th className="text-left px-2 py-2">Dir</th>
               <th className="text-center px-2 py-2">Entry</th>
               <th className="text-center px-2 py-2">Exit</th>
-              <th className="text-center px-2 py-2">Size</th>
-              <th className="text-center px-2 py-2">Sizing</th>
+              <th className="text-center px-2 py-2">Capital In</th>
+              <th className="text-center px-2 py-2">Lev</th>
               <th
                 className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
                 onClick={() => toggleSort("pnl")}
@@ -479,7 +495,6 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
             {paged.map((trade) => {
               const hasNote = !!notes[trade.id];
               const isExpanded = expandedNote === trade.id;
-              const sizing = findSizingForTrade(trade, sizingSnapshots);
               return (
                 <Fragment key={trade.id}>
                   <tr
@@ -529,16 +544,16 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                             maximumFractionDigits: 2,
                           })}
                     </td>
-                    <td className="px-2 py-2 text-center text-zinc-400 font-mono">
-                      {formatUSD(trade.notional)}
+                    <td className="px-2 py-2 text-center text-zinc-300 font-mono">
+                      {trade.capitalUsedUsd != null ? formatUSD(trade.capitalUsedUsd) : "n/a"}
                     </td>
                     <td
                       className={cn(
                         "px-2 py-2 text-center font-mono text-xs",
-                        sizing ? "text-emerald-300" : "text-zinc-600",
+                        trade.leverageUsed ? "text-zinc-300" : "text-zinc-600",
                       )}
                     >
-                      {sizing ? `${sizing.sizingPct.toFixed(1)}%` : "Not captured"}
+                      {trade.leverageUsed ? `${trade.leverageUsed.toFixed(1)}x` : "n/a"}
                     </td>
                     <td
                       className={cn(
@@ -623,10 +638,10 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               </td>
               <td colSpan={3} />
               <td className="px-2 py-2 text-center text-xs font-mono text-zinc-400">
-                {formatUSD(summary.totalVolume)}
+                {summary.totalCapitalIn > 0 ? formatUSD(summary.totalCapitalIn) : "n/a"}
               </td>
               <td className="px-2 py-2 text-center text-xs font-mono text-zinc-500">
-                sizing tracked forward
+                {summary.avgLeverage ? `${summary.avgLeverage.toFixed(1)}x avg` : "lev n/a"}
               </td>
               <td
                 className={cn(

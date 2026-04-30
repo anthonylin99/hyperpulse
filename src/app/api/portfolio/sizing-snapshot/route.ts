@@ -78,6 +78,7 @@ function deriveSnapshots(args: {
     const marginUsedUsd = parseNumber(position.marginUsed);
     const notionalUsd = Math.abs(szi) * Math.max(markPrice, 0);
     const leverage = parseNumber(position.leverage?.value);
+    const liquidationPx = position.liquidationPx == null ? null : parseNumber(position.liquidationPx);
     const sizingPct =
       args.tradeableCapitalUsd > 0 && marginUsedUsd > 0
         ? (marginUsedUsd / args.tradeableCapitalUsd) * 100
@@ -100,6 +101,7 @@ function deriveSnapshots(args: {
       size: absSize,
       notionalUsd,
       marginUsedUsd,
+      liquidationPx,
       accountEquityUsd: args.accountEquityUsd,
       tradeableCapitalUsd: args.tradeableCapitalUsd,
       leverage,

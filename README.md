@@ -75,6 +75,18 @@ Open:
 
 - [http://localhost:3000](http://localhost:3000)
 
+
+## Data Infra
+
+HyperPulse now includes a lean warehouse foundation for market capture and future support/resistance training:
+
+- Canonical SQL migrations via `npm run db:migrate`
+- Market collector worker via `npm run market:collect`
+- Docker Compose local stack via `npm run docker:up`
+- Private read-only MCP server via `npm run mcp:start`
+
+See [`docs/data-infra.md`](docs/data-infra.md).
+
 ## Verification
 
 Build the app:

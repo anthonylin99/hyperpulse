@@ -40,6 +40,12 @@ interface MarketContextValue {
 const MarketContext = createContext<MarketContextValue | null>(null);
 
 let activityIdCounter = 0;
+const SIGNAL_SCAN_LIMIT = 4;
+const SIGNAL_CANDLE_BUCKET_MS = 15 * 60 * 1000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 export function MarketProvider({ children }: { children: ReactNode }) {
   const [assets, setAssets] = useState<MarketAsset[]>([]);
@@ -124,67 +130,67 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchSignalData = useCallback(async (assets: MarketAsset[]) => {
-    const now = Date.now();
+    const now = Math.floor(Date.now() / SIGNAL_CANDLE_BUCKET_MS) * SIGNAL_CANDLE_BUCKET_MS;
     const ONE_HOUR = 60 * 60 * 1000;
-    if (now - signalFetchRef.current < ONE_HOUR) return;
-    signalFetchRef.current = now;
+    const wallClockNow = Date.now();
+    if (wallClockNow - signalFetchRef.current < ONE_HOUR) return;
+    signalFetchRef.current = wallClockNow;
 
     const startTime = now - 30 * 24 * 60 * 60 * 1000;
-    const top10 = [...assets]
+    const topAssets = [...assets]
       .sort((a, b) => b.openInterest - a.openInterest)
-      .slice(0, 10);
+      .slice(0, SIGNAL_SCAN_LIMIT);
 
-    if (top10.length === 0) return;
+    if (topAssets.length === 0) return;
 
     const updates: Record<string, MarketAsset["signal"]> = {};
 
-    await Promise.allSettled(
-      top10.map(async (asset) => {
-        try {
-          const [fundingRes, candleRes] = await Promise.all([
-            fetch(
-              `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`
-            ),
-            fetch(
-              `/api/market/candles?coin=${asset.coin}&interval=1h&startTime=${startTime}&endTime=${now}`
-            ),
-          ]);
-          if (!fundingRes.ok || !candleRes.ok) return;
-          const fundingRaw = await fundingRes.json();
-          const candlesRaw = await candleRes.json();
+    for (const asset of topAssets) {
+      try {
+        const [fundingRes, candleRes] = await Promise.all([
+          fetch(
+            `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`
+          ),
+          fetch(
+            `/api/market/candles?coin=${asset.coin}&interval=1h&startTime=${startTime}&endTime=${now}`
+          ),
+        ]);
+        if (!fundingRes.ok || !candleRes.ok) continue;
+        const fundingRaw = await fundingRes.json();
+        const candlesRaw = await candleRes.json();
 
-          const fundingHistory = (Array.isArray(fundingRaw) ? fundingRaw : []).map(
-            (f: { time: number; fundingRate: string }) => ({
-              time: Number(f.time ?? 0),
-              rate: parseFloat(String(f.fundingRate ?? "0")),
-            })
-          );
+        const fundingHistory = (Array.isArray(fundingRaw) ? fundingRaw : []).map(
+          (f: { time: number; fundingRate: string }) => ({
+            time: Number(f.time ?? 0),
+            rate: parseFloat(String(f.fundingRate ?? "0")),
+          })
+        );
 
-          const candles = (Array.isArray(candlesRaw) ? candlesRaw : []).map(
-            (c: Record<string, unknown>) => ({
-              time: Number(c.t ?? c.T ?? c.time ?? 0),
-              close: parseFloat(String(c.c ?? c.close ?? "0")),
-            })
-          );
+        const candles = (Array.isArray(candlesRaw) ? candlesRaw : []).map(
+          (c: Record<string, unknown>) => ({
+            time: Number(c.t ?? c.T ?? c.time ?? 0),
+            close: parseFloat(String(c.c ?? c.close ?? "0")),
+          })
+        );
 
-          if (fundingHistory.length === 0 || candles.length === 0) return;
+        if (fundingHistory.length === 0 || candles.length === 0) continue;
 
-          const signal = computeFundingSignal({
-            coin: asset.coin,
-            currentFundingAPR: asset.fundingAPR,
-            fundingHistory,
-            candles,
-            horizonHours: 24,
-            oiUSD: asset.openInterest,
-            oiChangePct: asset.oiChangePct ?? 0,
-          });
+        const signal = computeFundingSignal({
+          coin: asset.coin,
+          currentFundingAPR: asset.fundingAPR,
+          fundingHistory,
+          candles,
+          horizonHours: 24,
+          oiUSD: asset.openInterest,
+          oiChangePct: asset.oiChangePct ?? 0,
+        });
 
-          updates[asset.coin] = signal;
-        } catch {
-          // Ignore per-coin signal failures
-        }
-      })
-    );
+        updates[asset.coin] = signal;
+      } catch {
+        // Ignore per-coin signal failures
+      }
+      await sleep(150);
+    }
 
     if (Object.keys(updates).length === 0) return;
 

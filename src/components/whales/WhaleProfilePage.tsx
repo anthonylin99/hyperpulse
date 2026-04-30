@@ -13,12 +13,14 @@ import {
   Download,
   Layers3,
   Radar,
+  Share2,
   Target,
   Trash2,
   Wallet,
   Waves,
 } from "lucide-react";
 import { cn, formatCompact, formatPct, formatUSD, truncateAddress } from "@/lib/format";
+import { buildWalletIntelligenceSummary } from "@/lib/traderIntelligence";
 import type { WhaleAlert, WhalePositionSnapshot, WhaleWalletProfile, WhaleWatchlistEntry } from "@/types";
 import { IconActionButton, SectionEyebrow, SurfaceButton } from "@/components/trading-ui";
 import toast from "react-hot-toast";
@@ -207,6 +209,17 @@ function buildTimingLabel(profile: WhaleWalletProfile) {
   return "No durable timing edge yet";
 }
 
+function buildShareText(profile: WhaleWalletProfile) {
+  const intelligence = profile.intelligenceSummary ?? buildWalletIntelligenceSummary(profile);
+  return [
+    `HyperPulse Whale Dossier: ${profile.address}`,
+    `${intelligence.pnlCohort.label} · ${intelligence.sizeCohort.label} · ${intelligence.directionBias} bias`,
+    `30D P&L ${formatCompact(profile.realizedPnl30d)} · Volume ${formatCompact(profile.baseline.volume30d)} · Win rate ${profile.directionalHitRate30d.toFixed(1)}%`,
+    `Risk: ${intelligence.riskLabel}`,
+    `${window.location.origin}/whales/${profile.address}`,
+  ].join("\n");
+}
+
 export default function WhaleProfilePage({
   address,
   initialAlertId = null,
@@ -297,6 +310,16 @@ export default function WhaleProfilePage({
     }
   };
 
+  const handleCopyShare = async () => {
+    if (!profile) return;
+    try {
+      await navigator.clipboard.writeText(buildShareText(profile));
+      toast.success("Share card text copied");
+    } catch {
+      toast.error("Failed to copy share card");
+    }
+  };
+
   if (profileLoading) {
     return <div className="h-[900px] rounded-3xl border border-zinc-800 skeleton" />;
   }
@@ -315,6 +338,7 @@ export default function WhaleProfilePage({
   const timingLabel = buildTimingLabel(profile);
   const dominantAssets = profile.dominantAssets.slice(0, 4).join(" · ") || "No dominant assets yet";
   const favoriteAssets = profile.baseline.favoriteAssets.slice(0, 3).join(" · ") || "No favorite assets yet";
+  const intelligence = profile.intelligenceSummary ?? buildWalletIntelligenceSummary(profile);
   const topBuckets = profile.bucketExposures
     .filter((bucket) => Math.abs(bucket.netNotionalUsd) > 0)
     .sort((a, b) => Math.abs(b.netNotionalUsd) - Math.abs(a.netNotionalUsd))
@@ -346,6 +370,8 @@ export default function WhaleProfilePage({
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              <SmallPill label={intelligence.sizeCohort.label} tone={intelligence.sizeCohort.tone === "green" ? "green" : intelligence.sizeCohort.tone === "amber" ? "amber" : "neutral"} />
+              <SmallPill label={intelligence.pnlCohort.label} tone={intelligence.pnlCohort.tone === "green" ? "green" : intelligence.pnlCohort.tone === "red" ? "red" : intelligence.pnlCohort.tone === "amber" ? "amber" : "neutral"} />
               <SmallPill label={feedEligible ? "Main tape eligible" : "Review-only wallet"} tone={feedEligible ? "green" : "amber"} />
               <SmallPill
                 label={`${profile.directionalHitRate30d.toFixed(1)}% win rate`}
@@ -358,6 +384,28 @@ export default function WhaleProfilePage({
             </div>
 
             <div className="mt-5 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
+                <SectionEyebrow>How good</SectionEyebrow>
+                <div className="mt-3 text-base font-medium text-zinc-100">{intelligence.qualityLabel}</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">{intelligence.evidence[0]}</div>
+              </div>
+
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
+                <SectionEyebrow>Style</SectionEyebrow>
+                <div className="mt-3 text-base font-medium text-zinc-100">{profile.styleTags.slice(0, 2).join(" · ") || "Review-only"}</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">
+                  {intelligence.directionBias === "balanced" ? "Balanced book" : `${intelligence.directionBias} directional bias`} · {intelligence.riskLabel}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
+                <SectionEyebrow>Focus</SectionEyebrow>
+                <div className="mt-3 text-base font-medium text-zinc-100">{dominantAssets}</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">Favorite tape: {favoriteAssets}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
                 <SectionEyebrow>Current trigger</SectionEyebrow>
                 {selectedAlert ? (
@@ -375,11 +423,9 @@ export default function WhaleProfilePage({
               </div>
 
               <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
-                <SectionEyebrow>Focus map</SectionEyebrow>
-                <div className="mt-3 text-base font-medium text-zinc-100">{dominantAssets}</div>
-                <div className="mt-2 text-sm leading-6 text-zinc-400">
-                  Favorite tape: {favoriteAssets}
-                </div>
+                <SectionEyebrow>Cohort read</SectionEyebrow>
+                <div className="mt-3 text-base font-medium text-zinc-100">{intelligence.pnlCohort.label}</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">{intelligence.pnlCohort.description}</div>
               </div>
 
               <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
@@ -441,6 +487,10 @@ export default function WhaleProfilePage({
                 <Download className="h-4 w-4" />
                 Export episodes
               </Link>
+              <SurfaceButton onClick={handleCopyShare} tone="secondary" className="w-full rounded-2xl py-3">
+                <Share2 className="h-4 w-4" />
+                Copy share card
+              </SurfaceButton>
             </div>
 
             <div className="mt-4 space-y-3">
@@ -473,12 +523,13 @@ export default function WhaleProfilePage({
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <KpiCard label="Realized P&L" value={formatCompact(profile.realizedPnl30d)} helper="30d closed performance" icon={BarChart3 as typeof Activity} tone={profile.realizedPnl30d >= 0 ? "green" : "red"} />
         <KpiCard label="30D Volume" value={formatCompact(profile.baseline.volume30d)} helper="public fills" icon={Waves as typeof Activity} />
         <KpiCard label="Equity" value={formatCompact(profile.accountEquity)} helper="perps + full spot wallet" icon={Wallet as typeof Activity} />
         <KpiCard label="Open Notional" value={formatCompact(profile.totalOpenNotionalUsd)} helper={`${profile.openPositionsCount} live positions`} icon={Layers3 as typeof Activity} />
         <KpiCard label="Median Size" value={formatCompact(profile.medianTradeSize30d)} helper={`${profile.avgHoldHours30d.toFixed(1)}h avg hold`} icon={Target as typeof Activity} />
+        <KpiCard label="Win Rate" value={`${profile.directionalHitRate30d.toFixed(1)}%`} helper={intelligence.riskLabel} icon={Radar as typeof Activity} tone={profile.directionalHitRate30d >= 50 ? "green" : "neutral"} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_360px]">

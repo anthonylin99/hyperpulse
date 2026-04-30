@@ -400,7 +400,7 @@ export default function WhalesPage() {
                     const actionHref =
                       alert.alertType === "high_conviction_whale" && alert.walletAddress
                         ? `/whales/${alert.walletAddress}?alert=${alert.id}`
-                        : `/?tab=markets&asset=${alert.asset}`;
+                        : `/markets?asset=${encodeURIComponent(alert.asset)}`;
                     const actionLabel = alert.alertType === "high_conviction_whale" ? "Open wallet" : "Open market";
                     return (
                       <tr key={alert.id} className="border-b border-zinc-800/80 hover:bg-zinc-950/35">

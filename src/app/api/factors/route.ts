@@ -74,7 +74,7 @@ function isoDaysAgo(days: number): string {
 
 export async function GET(request: Request) {
   if (!isFactorsEnabled()) {
-    return jsonError("Factors are not available on this deployment.", {
+    return jsonError("Not found.", {
       status: 404,
     });
   }
@@ -88,7 +88,7 @@ export async function GET(request: Request) {
 
   const apiKey = process.env.ARTEMIS_API_KEY;
   if (!apiKey) {
-    return jsonError("Factors are unavailable until ARTEMIS_API_KEY is configured.", {
+    return jsonError("Factor data is not available in this demo.", {
       status: 503,
       cache: "public-market",
     });

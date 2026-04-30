@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { DailyMarketPrice, TradeSizingSnapshot } from "@/types";
+import type { DailyMarketPrice, PortfolioTrackedWallet, TradeSizingSnapshot } from "@/types";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
@@ -67,6 +67,7 @@ async function ensureResearchTables(): Promise<void> {
       size double precision not null,
       notional_usd double precision not null,
       margin_used_usd double precision not null,
+      liquidation_px double precision,
       account_equity_usd double precision not null,
       deployable_capital_usd double precision not null,
       leverage double precision not null,
@@ -77,12 +78,29 @@ async function ensureResearchTables(): Promise<void> {
     );
   `);
   await client.query(`
+    alter table portfolio_trade_sizing_snapshots
+    add column if not exists liquidation_px double precision;
+  `);
+  await client.query(`
     create index if not exists portfolio_trade_sizing_wallet_idx
     on portfolio_trade_sizing_snapshots (wallet_address, captured_at desc);
   `);
   await client.query(`
     create index if not exists portfolio_trade_sizing_position_idx
     on portfolio_trade_sizing_snapshots (wallet_address, position_key, captured_at desc);
+  `);
+  await client.query(`
+    create table if not exists portfolio_tracked_wallets (
+      wallet_address text primary key,
+      first_seen_at bigint not null,
+      last_seen_at bigint not null,
+      source text not null,
+      status text not null
+    );
+  `);
+  await client.query(`
+    create index if not exists portfolio_tracked_wallets_status_idx
+    on portfolio_tracked_wallets (status, last_seen_at desc);
   `);
 }
 
@@ -119,12 +137,25 @@ function normalizeSizingSnapshot(row: Record<string, unknown>): TradeSizingSnaps
     size: Number(row.size),
     notionalUsd: Number(row.notional_usd),
     marginUsedUsd: Number(row.margin_used_usd),
+    liquidationPx: row.liquidation_px == null ? null : Number(row.liquidation_px),
     accountEquityUsd: Number(row.account_equity_usd),
     tradeableCapitalUsd: Number(row.deployable_capital_usd),
     leverage: Number(row.leverage),
     sizingPct: Number(row.sizing_pct),
     status: status === "closed" || status === "unknown" ? status : "open",
     source: source === "snapshot" ? "snapshot" : "first_captured",
+  };
+}
+
+function normalizeTrackedWallet(row: Record<string, unknown>): PortfolioTrackedWallet {
+  const source = String(row.source);
+  const status = String(row.status);
+  return {
+    walletAddress: String(row.wallet_address),
+    firstSeenAt: Number(row.first_seen_at),
+    lastSeenAt: Number(row.last_seen_at),
+    source: source === "manual" || source === "worker" ? source : "portfolio",
+    status: status === "paused" ? "paused" : "active",
   };
 }
 
@@ -215,15 +246,16 @@ export async function upsertSizingSnapshots(snapshots: TradeSizingSnapshot[]): P
         `
         insert into portfolio_trade_sizing_snapshots (
           id, wallet_address, asset, side, market_type, position_key, captured_at,
-          entry_time, entry_price, mark_price, size, notional_usd, margin_used_usd,
+          entry_time, entry_price, mark_price, size, notional_usd, margin_used_usd, liquidation_px,
           account_equity_usd, deployable_capital_usd, leverage, sizing_pct, status, source, payload
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::jsonb)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb)
         on conflict (id) do update set
           mark_price = excluded.mark_price,
           size = excluded.size,
           notional_usd = excluded.notional_usd,
           margin_used_usd = excluded.margin_used_usd,
+          liquidation_px = excluded.liquidation_px,
           account_equity_usd = excluded.account_equity_usd,
           deployable_capital_usd = excluded.deployable_capital_usd,
           leverage = excluded.leverage,
@@ -246,6 +278,7 @@ export async function upsertSizingSnapshots(snapshots: TradeSizingSnapshot[]): P
           snapshot.size,
           snapshot.notionalUsd,
           snapshot.marginUsedUsd,
+          snapshot.liquidationPx ?? null,
           snapshot.accountEquityUsd,
           snapshot.tradeableCapitalUsd,
           snapshot.leverage,
@@ -286,6 +319,67 @@ export async function listSizingSnapshots(args: {
     );
 
     return result.rows.map(normalizeSizingSnapshot);
+  } catch (error) {
+    markStoreUnavailable(error);
+    return [];
+  }
+}
+
+export async function upsertTrackedWallet(args: {
+  walletAddress: string;
+  source?: PortfolioTrackedWallet["source"];
+  status?: PortfolioTrackedWallet["status"];
+}): Promise<boolean> {
+  const client = getPool();
+  if (!client) return false;
+  try {
+    await ensureResearchTables();
+    const now = Date.now();
+    await client.query(
+      `
+      insert into portfolio_tracked_wallets (
+        wallet_address, first_seen_at, last_seen_at, source, status
+      )
+      values ($1, $2, $2, $3, $4)
+      on conflict (wallet_address) do update set
+        last_seen_at = excluded.last_seen_at,
+        source = excluded.source,
+        status = excluded.status
+      `,
+      [
+        args.walletAddress.toLowerCase(),
+        now,
+        args.source ?? "portfolio",
+        args.status ?? "active",
+      ],
+    );
+    return true;
+  } catch (error) {
+    markStoreUnavailable(error);
+    return false;
+  }
+}
+
+export async function listTrackedWallets(args: {
+  status?: PortfolioTrackedWallet["status"];
+  limit?: number;
+} = {}): Promise<PortfolioTrackedWallet[]> {
+  const client = getPool();
+  if (!client) return [];
+  try {
+    await ensureResearchTables();
+    const limit = Math.min(Math.max(Math.round(args.limit ?? 100), 1), 500);
+    const result = await client.query(
+      `
+      select *
+      from portfolio_tracked_wallets
+      where status = $1
+      order by last_seen_at desc
+      limit $2
+      `,
+      [args.status ?? "active", limit],
+    );
+    return result.rows.map(normalizeTrackedWallet);
   } catch (error) {
     markStoreUnavailable(error);
     return [];

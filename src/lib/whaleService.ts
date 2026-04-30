@@ -16,6 +16,15 @@ import {
 import { WHALE_PROFILE_LOOKBACK_30D_MS } from "@/lib/constants";
 import type { WhaleWalletProfile } from "@/types";
 
+async function safeStoreRead<T>(read: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await read;
+  } catch (error) {
+    console.warn("[whale-service] store read unavailable; continuing with live profile only", error);
+    return fallback;
+  }
+}
+
 export async function fetchLiveWhaleProfile(address: string): Promise<WhaleWalletProfile> {
   const normalized = validateAddress(address);
   if (!normalized) {
@@ -45,10 +54,10 @@ export async function fetchLiveWhaleProfile(address: string): Promise<WhaleWalle
         startTime,
         endTime: now,
       }),
-      getWhaleAlertsForAddress(normalized, 12),
-      getStoredWhaleProfile(normalized),
+      safeStoreRead(getWhaleAlertsForAddress(normalized, 12), []),
+      safeStoreRead(getStoredWhaleProfile(normalized), null),
       info.spotMetaAndAssetCtxs(),
-      getWalletTimingScores(normalized),
+      safeStoreRead(getWalletTimingScores(normalized), []),
     ]);
 
   const [spotMetaData, spotAssetCtxs] = spotMeta as unknown as [
@@ -79,6 +88,8 @@ export async function fetchLiveWhaleProfile(address: string): Promise<WhaleWalle
   profile.preMoveHitRate4h = score4h?.hitRate ?? null;
   profile.preMoveSampleSize = Math.max(score1h?.sampleSize ?? 0, score4h?.sampleSize ?? 0) || null;
 
-  await upsertWhaleProfile(profile);
+  await upsertWhaleProfile(profile).catch((error) => {
+    console.warn("[whale-service] unable to persist live whale profile; returning volatile profile", error);
+  });
   return profile;
 }

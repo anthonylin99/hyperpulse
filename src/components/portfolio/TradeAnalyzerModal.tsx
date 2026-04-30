@@ -13,6 +13,8 @@ import {
   YAxis,
 } from "recharts";
 import { cn, formatPct, formatUSD } from "@/lib/format";
+import { usePortfolio } from "@/context/PortfolioContext";
+import { enrichTradeWithSizing, findSizingForTrade } from "@/lib/portfolioSizing";
 import type { RoundTripTrade } from "@/types";
 
 type CandleBar = {
@@ -35,6 +37,17 @@ type Verdict = {
   label: "Good Exit" | "Could Have Held Longer" | "Mixed Exit";
   tone: "green" | "orange" | "gray";
   detail: string;
+};
+
+type RiskContext = {
+  leverage: number | null;
+  capitalInUsd: number | null;
+  sizingPct: number | null;
+  estimatedLiquidationPx: number | null;
+  liquidationDistanceAtEntryPct: number | null;
+  minInTradeBufferPct: number | null;
+  riskFlag: "liquidation-pressure" | "high-leverage" | "controlled";
+  riskDetail: string;
 };
 
 function formatDuration(ms: number): string {
@@ -72,6 +85,113 @@ function findCloseAtOrAfter(candles: CandleBar[], target: number): number | null
     if (candle.time >= target) return candle.close;
   }
   return null;
+}
+
+function getDisplayCoin(rawCoin: string): { coin: string; venue: string | null } {
+  const trimmed = rawCoin.trim();
+  const parts = trimmed.split(":");
+  if (parts.length < 2) {
+    return { coin: trimmed, venue: null };
+  }
+  return {
+    venue: parts[0].toUpperCase(),
+    coin: parts[parts.length - 1].toUpperCase(),
+  };
+}
+
+function estimateLiquidationPrice(trade: RoundTripTrade, leverage: number | null): number | null {
+  if (leverage == null || leverage <= 1) return null;
+  const maintenanceBuffer = 0.005;
+  if (trade.direction === "long") {
+    return trade.entryPx * Math.max(0.01, 1 - 1 / leverage + maintenanceBuffer);
+  }
+  return trade.entryPx * (1 + 1 / leverage - maintenanceBuffer);
+}
+
+function getLiquidationLabel(sizingLiquidationPx: number | null | undefined): string {
+  return sizingLiquidationPx != null && Number.isFinite(sizingLiquidationPx) && sizingLiquidationPx > 0
+    ? "Captured liq"
+    : "Approx liq";
+}
+
+function computeBufferPct(trade: RoundTripTrade, liquidationPx: number, price: number): number {
+  if (trade.direction === "long") {
+    return ((price - liquidationPx) / liquidationPx) * 100;
+  }
+  return ((liquidationPx - price) / liquidationPx) * 100;
+}
+
+function buildRiskContext(
+  trade: RoundTripTrade,
+  candles: CandleBar[],
+  leverage: number | null,
+  capitalInUsd: number | null,
+  sizingPct: number | null,
+): RiskContext {
+  const estimatedLiquidationPx = estimateLiquidationPrice(trade, leverage);
+  const liquidationDistanceAtEntryPct =
+    estimatedLiquidationPx != null
+      ? computeBufferPct(trade, estimatedLiquidationPx, trade.entryPx)
+      : null;
+
+  const minInTradeBufferPct =
+    estimatedLiquidationPx != null && candles.length > 0
+      ? candles.reduce((minBuffer, candle) => {
+          const testPrice = trade.direction === "long" ? candle.low : candle.high;
+          const buffer = computeBufferPct(trade, estimatedLiquidationPx, testPrice);
+          return minBuffer == null ? buffer : Math.min(minBuffer, buffer);
+        }, null as number | null)
+      : null;
+
+  if (estimatedLiquidationPx == null || leverage == null) {
+    return {
+      leverage,
+      capitalInUsd,
+      sizingPct,
+      estimatedLiquidationPx,
+      liquidationDistanceAtEntryPct,
+      minInTradeBufferPct,
+      riskFlag: "controlled",
+      riskDetail: "No reliable leverage snapshot was captured for this trade, so liquidation context is unavailable.",
+    };
+  }
+
+  if (minInTradeBufferPct != null && minInTradeBufferPct <= 3) {
+    return {
+      leverage,
+      capitalInUsd,
+      sizingPct,
+      estimatedLiquidationPx,
+      liquidationDistanceAtEntryPct,
+      minInTradeBufferPct,
+      riskFlag: "liquidation-pressure",
+      riskDetail: `This trade came within ${Math.abs(minInTradeBufferPct).toFixed(1)}% of the estimated liquidation line during the hold. That is usually a leverage / liquidation-buffer problem before anything else.`,
+    };
+  }
+
+  if (leverage >= 8) {
+    return {
+      leverage,
+      capitalInUsd,
+      sizingPct,
+      estimatedLiquidationPx,
+      liquidationDistanceAtEntryPct,
+      minInTradeBufferPct,
+      riskFlag: "high-leverage",
+      riskDetail: `Leverage was elevated at ${leverage.toFixed(1)}x. Even with room to the estimated liquidation line, this setup likely needed either lower leverage or a cleaner stop discipline.`,
+    };
+  }
+
+  return {
+    leverage,
+    capitalInUsd,
+    sizingPct,
+    estimatedLiquidationPx,
+    liquidationDistanceAtEntryPct,
+    minInTradeBufferPct,
+    riskFlag: "controlled",
+    riskDetail: "Leverage and liquidation distance looked manageable relative to the captured sizing snapshot. If this trade disappointed, entry timing or stop discipline is more likely than pure liquidation pressure.",
+  };
 }
 
 function getVerdict(
@@ -128,6 +248,7 @@ export default function TradeAnalyzerModal({
   trade,
   onClose,
 }: TradeAnalyzerModalProps) {
+  const { sizingSnapshots } = usePortfolio();
   const marketType = useMemo<"perp" | "spot">(
     () =>
       trade.fills.some((fill) => fill.dir === "Buy" || fill.dir === "Sell")
@@ -135,6 +256,15 @@ export default function TradeAnalyzerModal({
         : "perp",
     [trade.fills],
   );
+  const sizingSnapshot = useMemo(
+    () => findSizingForTrade(trade, sizingSnapshots),
+    [trade, sizingSnapshots],
+  );
+  const sizedTrade = useMemo(
+    () => enrichTradeWithSizing(trade, sizingSnapshots),
+    [trade, sizingSnapshots],
+  );
+  const displayAsset = useMemo(() => getDisplayCoin(trade.coin), [trade.coin]);
 
   const [candles, setCandles] = useState<CandleBar[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,6 +394,31 @@ export default function TradeAnalyzerModal({
       }),
     }));
 
+    const riskContext = buildRiskContext(
+      trade,
+      candles,
+      sizingSnapshot?.leverage ?? null,
+      sizedTrade.capitalUsedUsd,
+      sizingSnapshot?.sizingPct ?? null,
+    );
+    const capturedLiquidationPx =
+      typeof sizingSnapshot?.liquidationPx === "number" && sizingSnapshot.liquidationPx > 0
+        ? sizingSnapshot.liquidationPx
+        : null;
+    const riskContextWithCapturedLiquidation =
+      capturedLiquidationPx != null
+        ? {
+            ...riskContext,
+            estimatedLiquidationPx: capturedLiquidationPx,
+            liquidationDistanceAtEntryPct: computeBufferPct(trade, capturedLiquidationPx, trade.entryPx),
+            minInTradeBufferPct: candles.reduce((minBuffer, candle) => {
+              const testPrice = trade.direction === "long" ? candle.low : candle.high;
+              const buffer = computeBufferPct(trade, capturedLiquidationPx, testPrice);
+              return minBuffer == null ? buffer : Math.min(minBuffer, buffer);
+            }, null as number | null),
+          }
+        : riskContext;
+
     return {
       favorablePct,
       favorableUsd,
@@ -272,8 +427,9 @@ export default function TradeAnalyzerModal({
       horizons,
       verdict,
       chart,
+      riskContext: riskContextWithCapturedLiquidation,
     };
-  }, [candles, trade]);
+  }, [candles, trade, sizingSnapshot, sizedTrade]);
 
   return (
     <div
@@ -291,13 +447,20 @@ export default function TradeAnalyzerModal({
                 Trade Analyzer
               </div>
               <h2 className="mt-1 text-2xl font-semibold text-zinc-100">
-                {trade.coin} {trade.direction === "long" ? "Long" : "Short"}
+                {displayAsset.coin} {trade.direction === "long" ? "Long" : "Short"}
               </h2>
               <p className="mt-1 text-sm text-zinc-400">
                 Review whether this exit was well-timed or whether the market kept paying after you got out.
               </p>
-              <div className="mt-3 inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-                {marketType === "spot" ? "HIP-3 spot" : "Perp"}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                  {marketType === "spot" ? "HIP-3 spot" : "Perp"}
+                </div>
+                {displayAsset.venue ? (
+                  <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                    {displayAsset.venue} venue
+                  </div>
+                ) : null}
               </div>
             </div>
             <button
@@ -314,8 +477,22 @@ export default function TradeAnalyzerModal({
             <MetricCard label="Realized P&L" value={formatUSD(trade.pnl)} tone={trade.pnl >= 0 ? "green" : "red"} />
             <MetricCard label="Entry" value={`$${formatPrice(trade.entryPx)}`} />
             <MetricCard label="Exit" value={`$${formatPrice(trade.exitPx)}`} />
-            <MetricCard label="Size" value={trade.size.toLocaleString("en-US", { maximumFractionDigits: 4 })} />
-            <MetricCard label="Notional" value={formatUSD(trade.notional)} />
+            <MetricCard
+              label="Your Money In"
+              value={sizedTrade.capitalUsedUsd != null ? formatUSD(sizedTrade.capitalUsedUsd) : "n/a"}
+              subValue={
+                sizedTrade.capitalSource === "captured"
+                  ? `${sizingSnapshot?.sizingPct.toFixed(1) ?? "0.0"}% of tradeable capital`
+                  : sizedTrade.capitalSource === "spot"
+                    ? "Spot trade, 1.0x capital"
+                    : "No sizing snapshot"
+              }
+            />
+            <MetricCard
+              label="Leverage"
+              value={sizedTrade.leverageUsed ? `${sizedTrade.leverageUsed.toFixed(1)}x` : "n/a"}
+              subValue={sizedTrade.leverageUsed ? `Notional ${formatUSD(trade.notional)}` : "Notional hidden by default"}
+            />
             <MetricCard label="Hold Time" value={formatDuration(trade.duration)} />
           </section>
 
@@ -409,6 +586,19 @@ export default function TradeAnalyzerModal({
                       strokeDasharray="4 4"
                       label={{ value: "Exit", position: "top", fill: "#5eead4", fontSize: 11 }}
                     />
+                    {analysis.riskContext.estimatedLiquidationPx != null ? (
+                      <ReferenceLine
+                        y={analysis.riskContext.estimatedLiquidationPx}
+                        stroke="#f97316"
+                        strokeDasharray="5 5"
+                        label={{
+                          value: getLiquidationLabel(sizingSnapshot?.liquidationPx),
+                          position: "insideTopRight",
+                          fill: "#fdba74",
+                          fontSize: 11,
+                        }}
+                      />
+                    ) : null}
                     <Line
                       type="monotone"
                       dataKey="close"
@@ -446,6 +636,55 @@ export default function TradeAnalyzerModal({
                 ) : (
                   <p className="mt-3 text-sm text-zinc-500">
                     Waiting for candle data to score this exit.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                  Leverage & Liquidation Context
+                </div>
+                {analysis ? (
+                  <>
+                    <div
+                      className={cn(
+                        "mt-3 inline-flex rounded-full px-3 py-1 text-xs font-medium",
+                        analysis.riskContext.riskFlag === "liquidation-pressure" && "bg-red-500/10 text-red-300",
+                        analysis.riskContext.riskFlag === "high-leverage" && "bg-amber-500/10 text-amber-300",
+                        analysis.riskContext.riskFlag === "controlled" && "bg-emerald-500/10 text-emerald-300",
+                      )}
+                    >
+                      {analysis.riskContext.riskFlag === "liquidation-pressure"
+                        ? "Liquidation problem?"
+                        : analysis.riskContext.riskFlag === "high-leverage"
+                          ? "Too high leverage?"
+                          : "Leverage looked controlled"}
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-zinc-300">
+                      {analysis.riskContext.riskDetail}
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                      <MiniStat
+                        label={getLiquidationLabel(sizingSnapshot?.liquidationPx)}
+                        value={
+                          analysis.riskContext.estimatedLiquidationPx != null
+                            ? `$${formatPrice(analysis.riskContext.estimatedLiquidationPx)}`
+                            : "n/a"
+                        }
+                      />
+                      <MiniStat
+                        label="Closest in-trade buffer"
+                        value={
+                          analysis.riskContext.minInTradeBufferPct != null
+                            ? `${analysis.riskContext.minInTradeBufferPct.toFixed(1)}%`
+                            : "n/a"
+                        }
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-zinc-500">
+                    Waiting for candle data to assess leverage and liquidation risk.
                   </p>
                 )}
               </div>
@@ -497,6 +736,54 @@ export default function TradeAnalyzerModal({
               </div>
             </div>
           </section>
+
+          <section className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                Your Money In
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-zinc-100">
+                {sizedTrade.capitalUsedUsd != null ? formatUSD(sizedTrade.capitalUsedUsd) : "n/a"}
+              </div>
+              <div className="mt-1 text-sm text-zinc-400">
+                {sizingSnapshot
+                  ? "Estimated non-leveraged capital committed at the time of the trade."
+                  : "No sizing snapshot was captured for this trade."}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                Leverage Used
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-zinc-100">
+                {sizedTrade.leverageUsed ? `${sizedTrade.leverageUsed.toFixed(1)}x` : "n/a"}
+              </div>
+              <div className="mt-1 text-sm text-zinc-400">
+                {sizedTrade.capitalUsedUsd != null
+                  ? `${formatUSD(trade.notional)} notional on ${formatUSD(sizedTrade.capitalUsedUsd)} of your own capital.`
+                  : "Leverage unavailable without a captured sizing snapshot."}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                Stop / Exit Read
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-zinc-100">
+                {analysis?.verdict.label ?? "n/a"}
+              </div>
+              <div className="mt-1 text-sm text-zinc-400">
+                {analysis
+                  ? analysis.riskContext.riskFlag === "liquidation-pressure"
+                    ? "This looks more like a liquidation-buffer problem than a bad thesis."
+                    : analysis.riskContext.riskFlag === "high-leverage"
+                      ? "This trade likely needed less leverage or a tighter stop."
+                      : "This looks more like timing or stop discipline than leverage stress."
+                  : "Waiting for candle data to classify the exit path."}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -507,10 +794,12 @@ function MetricCard({
   label,
   value,
   tone,
+  subValue,
 }: {
   label: string;
   value: string;
   tone?: "green" | "red";
+  subValue?: string;
 }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
@@ -526,6 +815,16 @@ function MetricCard({
       >
         {value}
       </div>
+      {subValue ? <div className="mt-1 text-[11px] text-zinc-500">{subValue}</div> : null}
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{label}</div>
+      <div className="mt-2 text-base font-semibold text-zinc-100">{value}</div>
     </div>
   );
 }

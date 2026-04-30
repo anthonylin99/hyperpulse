@@ -1,5 +1,6 @@
 export const ENABLE_TRADING_DEFAULT = false;
 export const ENABLE_WHALES_DEFAULT = false;
+export const ENABLE_FACTORS_DEFAULT = false;
 export const ENABLE_FACTORS_PROD_DEFAULT = false;
 
 function readEnvFlag(value: string | undefined): boolean | null {
@@ -41,7 +42,7 @@ export function isWhalesEnabled() {
 }
 
 export function isFactorsEnabled() {
-  const defaultValue = isPublicProduction() ? ENABLE_FACTORS_PROD_DEFAULT : true;
+  const defaultValue = isPublicProduction() ? ENABLE_FACTORS_PROD_DEFAULT : ENABLE_FACTORS_DEFAULT;
   return (
     resolveFlag(
       readEnvFlag(process.env.ENABLE_FACTORS),

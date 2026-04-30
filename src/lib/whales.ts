@@ -9,6 +9,7 @@ import {
   WHALE_PROFILE_LOOKBACK_7D_MS,
   WHALE_RISK_LOSS_USD,
 } from "@/lib/constants";
+import { buildWalletIntelligenceSummary } from "@/lib/traderIntelligence";
 import { buildSpotMarketMap, classifyWhaleAsset, type WhaleSpotMarketContext } from "@/lib/whaleTaxonomy";
 import type {
   Fill,
@@ -530,6 +531,20 @@ export function buildWhaleProfile(args: {
     ledger.length > 0 ? Math.max(...ledger.map((event) => event.time)) : null,
     (perpState.time as number | undefined) ?? null,
   ].filter((value): value is number => value != null);
+  const intelligenceSummary = buildWalletIntelligenceSummary({
+    accountEquity,
+    perpsEquity,
+    realizedPnl30d,
+    unrealizedPnl,
+    averageLeverage,
+    dominantAssets,
+    behaviorTags,
+    styleTags,
+    focusTags,
+    baseline,
+    positions,
+    bucketExposures,
+  });
 
   return {
     address,
@@ -556,6 +571,9 @@ export function buildWhaleProfile(args: {
     avgHoldHours30d: baseline.avgHoldHours30d,
     directionalHitRate30d: baseline.directionalHitRate30d,
     bucketExposures,
+    sizeCohort: intelligenceSummary.sizeCohort,
+    pnlCohort: intelligenceSummary.pnlCohort,
+    intelligenceSummary,
     narrative: buildNarrative({ styleTags, focusTags, baseline, bucketExposures }),
     positions,
     trades,

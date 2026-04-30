@@ -194,7 +194,7 @@ function coerceBrief(raw: unknown): FactorAiBrief | null {
 
 export async function POST(request: Request) {
   if (!isFactorsEnabled()) {
-    return jsonError("Factors are not available on this deployment.", {
+    return jsonError("Not found.", {
       status: 404,
     });
   }

@@ -121,17 +121,40 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
+  const captureSizingSnapshot = useCallback(async () => {
+    if (!address) return;
+    await fetch(withNetworkParam("/api/portfolio/sizing-snapshot"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    }).catch(() => null);
+  }, [address]);
+
+  const registerTrackedWallet = useCallback(async () => {
+    if (!address) return;
+    await fetch(withNetworkParam("/api/portfolio/tracked-wallets"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    }).catch(() => null);
+  }, [address]);
+
+  const refreshSizingSnapshots = useCallback(async () => {
+    if (!address) return;
+    const sizingRes = await fetch(withNetworkParam(`/api/portfolio/sizing?address=${address}&days=730`));
+    if (sizingRes.ok) {
+      const sizingPayload = await sizingRes.json();
+      setSizingSnapshots(Array.isArray(sizingPayload.snapshots) ? sizingPayload.snapshots : []);
+    }
+  }, [address]);
+
   const fetchResearch = useCallback(async () => {
     if (!address) return;
     setResearchLoading(true);
     setResearchError(null);
 
     try {
-      await fetch(withNetworkParam("/api/portfolio/sizing-snapshot"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address }),
-      }).catch(() => null);
+      await captureSizingSnapshot();
 
       const [sizingRes, correlationRes] = await Promise.all([
         fetch(withNetworkParam(`/api/portfolio/sizing?address=${address}&days=730`)),
@@ -159,7 +182,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     } finally {
       setResearchLoading(false);
     }
-  }, [address]);
+  }, [address, captureSizingSnapshot]);
 
   const fetchData = useCallback(async () => {
     if (!address) return;
@@ -359,6 +382,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   // Fetch on connect + auto-refresh every 12 hours
   useEffect(() => {
     if (isConnected && address) {
+      registerTrackedWallet();
       fetchData();
       fetchResearch();
 
@@ -367,10 +391,18 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         fetchData();
         fetchResearch();
       }, TWELVE_HOURS);
+      const sizingCaptureInterval = setInterval(() => {
+        captureSizingSnapshot()
+          .then(() => refreshSizingSnapshots())
+          .catch(() => null);
+      }, 5 * 60 * 1000);
 
-      return () => clearInterval(refreshInterval);
+      return () => {
+        clearInterval(refreshInterval);
+        clearInterval(sizingCaptureInterval);
+      };
     }
-  }, [isConnected, address, fetchData, fetchResearch]);
+  }, [isConnected, address, fetchData, fetchResearch, captureSizingSnapshot, refreshSizingSnapshots, registerTrackedWallet]);
 
   // Reset on disconnect
   useEffect(() => {

@@ -195,17 +195,17 @@ export default function PortfolioWorkspace() {
       ) : (
         <>
           <section className="space-y-4">
-            <div className="rounded-[22px] border border-zinc-800 bg-zinc-950/70 p-3 sm:p-4">
+            <div className="rounded-[22px] border border-emerald-900/35 bg-[linear-gradient(180deg,rgba(8,18,16,0.92),rgba(9,9,11,0.9))] p-3 shadow-[0_0_0_1px_rgba(16,185,129,0.06)] sm:p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="px-1">
                   <div className="flex items-center gap-2">
                     <CircleDashed className="h-4 w-4 text-emerald-300" />
-                    <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-zinc-500">
-                      Review sections
+                    <div className="text-[12px] font-mono uppercase tracking-[0.2em] text-zinc-100">
+                      Portfolio review
                     </div>
                   </div>
                   <div className="mt-2 text-sm text-zinc-400">
-                    Switch between performance, live exposure, closed trades, and deeper diagnostics.
+                    Overview, live exposure, journal, and diagnostics.
                   </div>
                 </div>
               </div>
@@ -218,20 +218,24 @@ export default function PortfolioWorkspace() {
                       key={tab.key}
                       onClick={() => setSubtab(tab.key)}
                       className={cn(
-                        "flex min-h-[92px] items-start gap-3 rounded-[18px] border px-4 py-3.5 text-left transition-all",
+                        "flex min-h-[104px] items-start gap-3 rounded-[18px] border px-4 py-4 text-left transition-all",
                         subtab === tab.key
-                          ? "border-emerald-500/25 bg-emerald-500/[0.10] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.18)]"
-                          : "border-zinc-800 bg-zinc-950/65 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-950 hover:text-zinc-200",
+                          ? "border-emerald-400/35 bg-emerald-500/[0.13] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.22)]"
+                          : "border-zinc-800 bg-zinc-950/80 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-950 hover:text-zinc-200",
                       )}
                     >
-                      <Icon
+                      <span
                         className={cn(
-                          "mt-0.5 h-4 w-4 shrink-0",
-                          subtab === tab.key ? "text-emerald-300" : "text-zinc-500"
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
+                          subtab === tab.key
+                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                            : "border-zinc-800 bg-zinc-900/60 text-zinc-500"
                         )}
-                      />
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
                       <div className="min-w-0">
-                        <div className="font-mono text-sm uppercase tracking-[0.08em]">{tab.label}</div>
+                        <div className="font-mono text-sm uppercase tracking-[0.08em] text-zinc-100">{tab.label}</div>
                         <div
                           className={cn(
                             "mt-1 text-[11px]",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Search } from "lucide-react";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
@@ -70,7 +70,13 @@ const RWA_SPOT_CATEGORIES = [
 
 const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
 const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
-const SETUP_SCAN_LIMIT = 18;
+const SETUP_SCAN_LIMIT = 6;
+const SETUP_SCAN_INTERVAL_MS = 10 * 60_000;
+const CANDLE_SCAN_BUCKET_MS = 5 * 60_000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 function getPerpSortValue(asset: MarketAsset, key: PerpSortKey): number | string {
   switch (key) {
@@ -113,6 +119,7 @@ export default function MarketTable({
   const [spotSortAsc, setSpotSortAsc] = useState(false);
   const [spotFilter, setSpotFilter] = useState<SpotCategory | "All">("All");
   const [setupSignals, setSetupSignals] = useState<Record<string, MarketSetupSignal>>({});
+  const setupScanRef = useRef({ key: "", timestamp: 0 });
 
   const fetchSpot = useCallback(async () => {
     try {
@@ -182,28 +189,40 @@ export default function MarketTable({
     return arr;
   }, [assets, search, categoryFilter, hideSmallCaps, perpSortKey, perpSortAsc]);
 
-  const scanAssets = useMemo(
-    () => perpsFiltered.slice(0, SETUP_SCAN_LIMIT),
+  const scanAssetCoins = useMemo(
+    () => perpsFiltered.slice(0, SETUP_SCAN_LIMIT).map((asset) => asset.coin),
     [perpsFiltered],
   );
+  const scanAssetKey = scanAssetCoins.join(",");
 
   useEffect(() => {
-    if (mode !== "perps" || scanAssets.length === 0) return;
+    if (mode !== "perps" || scanAssetKey.length === 0) return;
     let cancelled = false;
 
     async function scanSetups() {
-      const now = Date.now();
+      const now = Math.floor(Date.now() / CANDLE_SCAN_BUCKET_MS) * CANDLE_SCAN_BUCKET_MS;
       const startTime = now - 14 * 24 * 60 * 60 * 1000;
+      const coins = scanAssetKey.split(",");
       const nextSignals: Record<string, MarketSetupSignal> = {};
+      const scanKey = `${scanAssetKey}:${now}`;
+      if (
+        setupScanRef.current.key === scanKey ||
+        Date.now() - setupScanRef.current.timestamp < SETUP_SCAN_INTERVAL_MS
+      ) {
+        return;
+      }
+      setupScanRef.current.key = scanKey;
+      setupScanRef.current.timestamp = Date.now();
 
-      await Promise.allSettled(
-        scanAssets.map(async (asset) => {
+      for (const coin of coins) {
+        if (cancelled) return;
+        try {
           const response = await fetch(
             withNetworkParam(
-              `/api/market/candles?coin=${encodeURIComponent(asset.coin)}&interval=15m&startTime=${startTime}&endTime=${now}`,
+              `/api/market/candles?coin=${encodeURIComponent(coin)}&interval=15m&startTime=${startTime}&endTime=${now}`,
             ),
           );
-          if (!response.ok) return;
+          if (!response.ok) continue;
           const rawCandles = (await response.json()) as Array<Record<string, string | number>>;
           const candles: LevelCandle[] = rawCandles
             .map((candle) => ({
@@ -216,9 +235,12 @@ export default function MarketTable({
             }))
             .filter((candle) => Number.isFinite(candle.close) && candle.close > 0);
           const levels = calculateSupportResistanceLevels(candles, "15m");
-          nextSignals[asset.coin] = buildMarketSetupSignal({ candles, levels });
-        }),
-      );
+          nextSignals[coin] = buildMarketSetupSignal({ candles, levels });
+        } catch {
+          // Ignore per-asset setup failures; the base market table still renders.
+        }
+        await sleep(150);
+      }
 
       if (!cancelled) {
         setSetupSignals((prev) => ({ ...prev, ...nextSignals }));
@@ -235,7 +257,7 @@ export default function MarketTable({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [mode, scanAssets]);
+  }, [mode, scanAssetKey]);
 
   const spotFiltered = useMemo(() => {
     let arr = [...rwaSpotAssets];

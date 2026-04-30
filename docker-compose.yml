@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hyperpulse
+      POSTGRES_PASSWORD: hyperpulse
+      POSTGRES_DB: hyperpulse
+    ports:
+      - "15432:5432"
+    volumes:
+      - hyperpulse_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyperpulse -d hyperpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: workers/market-collector/Dockerfile
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      ENABLE_TRADING: "false"
+      ENABLE_FACTORS: "false"
+      ENABLE_WHALES: "false"
+      NEXT_PUBLIC_ENABLE_TRADING: "false"
+      NEXT_PUBLIC_ENABLE_FACTORS: "false"
+      NEXT_PUBLIC_ENABLE_WHALES: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  market-collector:
+    build:
+      context: .
+      dockerfile: workers/market-collector/Dockerfile
+    environment:
+      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
+      MARKET_COLLECTOR_ASSET_LIMIT: "15"
+      MARKET_COLLECTOR_INTERVAL_MS: "300000"
+      MARKET_COLLECTOR_INTERVALS: 5m,15m,1h,1d
+      MARKET_COLLECTOR_LEVEL_INTERVALS: 15m,1h
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  whale-indexer:
+    build:
+      context: ./workers/whale-indexer
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
+      TELEGRAM_ENABLED: "false"
+      GOOGLE_SHEETS_ENABLED: "false"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  hyperpulse_pg:

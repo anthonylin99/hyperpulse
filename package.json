@@ -8,9 +8,16 @@
     "start": "next start",
     "lint": "next lint",
     "digest:manual": "node scripts/run-positioning-digest.mjs",
+    "portfolio:capture": "node scripts/capture-portfolio-sizing.mjs",
+    "portfolio:capture:once": "node scripts/capture-portfolio-sizing.mjs --once",
     "smoke:public": "node scripts/public-smoke.mjs",
     "worker:start": "node workers/whale-indexer/index.mjs",
-    "railway:start": "npm run worker:start"
+    "railway:start": "npm run worker:start",
+    "db:migrate": "node scripts/migrate.mjs",
+    "market:collect": "node workers/market-collector/index.mjs",
+    "market:collect:once": "node workers/market-collector/index.mjs --once",
+    "docker:up": "docker compose up --build",
+    "mcp:start": "node workers/mcp-server/index.mjs"
   },
   "dependencies": {
     "@farcaster/mini-app-solana": "^1.1.3",

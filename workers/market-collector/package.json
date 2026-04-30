@@ -1,0 +1,14 @@
+{
+  "name": "hyperpulse-market-collector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs",
+    "once": "node index.mjs --once",
+    "db:migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@nktkas/hyperliquid": "^0.32.1",
+    "pg": "^8.20.0"
+  }
+}

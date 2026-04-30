@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { MousePointerClick } from "lucide-react";
+import CohortsLitePanel from "@/components/CohortsLitePanel";
+import MarketRadarPanel from "@/components/MarketRadarPanel";
 import MarketOverviewPanel from "@/components/MarketOverviewPanel";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
@@ -9,7 +11,7 @@ import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
 
 export default function MarketsRoutePage({ initialAsset = null }: { initialAsset?: string | null }) {
-  const { tradingEnabled } = useAppConfig();
+  const { tradingEnabled, whalesEnabled } = useAppConfig();
   const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
@@ -30,7 +32,9 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           </div>
         )}
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
+        <MarketRadarPanel variant="hero" />
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
           <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-900/75">
             <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
               <div className="flex flex-col gap-1">
@@ -54,12 +58,13 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             />
           </section>
 
-          <div className="xl:sticky xl:top-[96px]">
+          <div className="space-y-4 xl:sticky xl:top-[96px]">
             <MarketOverviewPanel
               title="Tape Context"
               description="Next-session bias and major benchmark context stay close, but secondary to the directory."
               variant="compact"
             />
+            {whalesEnabled ? <CohortsLitePanel /> : null}
           </div>
         </div>
       </div>

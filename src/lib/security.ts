@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
-const COIN_REGEX = /^[A-Z0-9][A-Z0-9/_-]{0,23}$/;
+const COIN_REGEX = /^[A-Z0-9][A-Z0-9/:_-]{0,31}$/;
 const VALID_INTERVALS = [
   "1m",
   "3m",

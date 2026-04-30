@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { enforceRateLimit, jsonError, jsonSuccess, validateCoin } from "@/lib/security";
+import { enforceRateLimit, jsonError, jsonSuccess, logServerError, validateCoin } from "@/lib/security";
 import { isWhalesEnabled } from "@/lib/appConfig";
 import {
   getWhaleWorkerStatus,
@@ -41,17 +41,30 @@ export async function GET(req: NextRequest) {
     return jsonError("Invalid cursor.", { status: 400 });
   }
 
+  let storeUnavailable = false;
   const alerts = await listPositioningAlerts({
-    severity,
-    asset,
-    alertType: alertType as PositioningAlertType | "all" | null,
-    regime: regime as PositioningRegime | "all" | null,
-    timeframeMs: TIMEFRAME_TO_MS[timeframe] ?? TIMEFRAME_TO_MS["24h"],
-    cursor,
-    limit: 40,
+      severity,
+      asset,
+      alertType: alertType as PositioningAlertType | "all" | null,
+      regime: regime as PositioningRegime | "all" | null,
+      timeframeMs: TIMEFRAME_TO_MS[timeframe] ?? TIMEFRAME_TO_MS["24h"],
+      cursor,
+      limit: 40,
+    }).catch((error) => {
+      storeUnavailable = true;
+      logServerError("api/whales/feed:listPositioningAlerts", error);
+      return [];
+    });
+  const digests = await listPositioningDigests(8).catch((error) => {
+    storeUnavailable = true;
+    logServerError("api/whales/feed:listPositioningDigests", error);
+    return [];
   });
-  const digests = await listPositioningDigests(8);
-  const workerStatus = await getWhaleWorkerStatus();
+  const workerStatus = await getWhaleWorkerStatus().catch((error) => {
+    storeUnavailable = true;
+    logServerError("api/whales/feed:getWhaleWorkerStatus", error);
+    return null;
+  });
   const uniqueAssets = new Set(alerts.map((alert) => alert.asset)).size;
   const topSeverity = alerts.reduce((best, alert) => {
     const rank = { low: 1, medium: 2, high: 3 } satisfies Record<WhaleSeverity, number>;
@@ -72,6 +85,13 @@ export async function GET(req: NextRequest) {
       topSeverity,
     },
     workerConfigured: isWhaleStoreConfigured(),
-    workerStatus,
+    workerStatus: workerStatus ?? (storeUnavailable ? {
+      updatedAt: Date.now(),
+      payload: {
+        status: "store-unavailable",
+        message: "Whale database is unavailable; wallet lookup can still build live profiles.",
+      },
+    } : null),
+    storeUnavailable,
   });
 }

@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import toast from "react-hot-toast";
-import { ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
+import { ENABLE_FACTORS_DEFAULT, ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
 
 type PublicAppConfig = {
   tradingEnabled: boolean;
@@ -32,7 +32,7 @@ const fallbackTradingEnabled =
 const fallbackFactorsEnabled =
   process.env.NEXT_PUBLIC_ENABLE_FACTORS === "true" ||
   (process.env.NEXT_PUBLIC_ENABLE_FACTORS !== "false" &&
-    process.env.NEXT_PUBLIC_VERCEL_ENV !== "production");
+    ENABLE_FACTORS_DEFAULT);
 
 const fallbackConfig: PublicAppConfig = {
   tradingEnabled: fallbackTradingEnabled,

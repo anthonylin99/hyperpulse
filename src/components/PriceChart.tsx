@@ -5,6 +5,7 @@ import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
+  LineSeries,
   LineStyle,
   createChart,
   type CandlestickData,
@@ -15,6 +16,7 @@ import { withNetworkParam } from "@/lib/hyperliquid";
 import { calculateSupportResistanceLevels } from "@/lib/supportResistance";
 import { buildTradePlan } from "@/lib/tradePlan";
 import { SectionEyebrow } from "@/components/trading-ui";
+import type { SupportResistanceLevel } from "@/types";
 
 interface PriceChartProps {
   coin: string;
@@ -43,6 +45,14 @@ const LOOKBACK_MS: Record<TradingInterval, number> = {
   D: 120 * 24 * 60 * 60 * 1000,
 };
 
+const INTERVAL_MS: Record<TradingInterval, number> = {
+  "5": 5 * 60 * 1000,
+  "15": 15 * 60 * 1000,
+  "60": 60 * 60 * 1000,
+  "240": 4 * 60 * 60 * 1000,
+  D: 24 * 60 * 60 * 1000,
+};
+
 const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
   { label: "5m", value: "5" },
   { label: "15m", value: "15" },
@@ -58,6 +68,12 @@ type CandleDatum = {
   low: number;
   close: number;
   volume: number;
+};
+
+type LevelsResponse = {
+  configured?: boolean;
+  source?: "db-observed" | "empty";
+  levels?: SupportResistanceLevel[];
 };
 
 function normalizeTime(time: number): number {
@@ -93,6 +109,27 @@ function toCandlestickData(candles: CandleDatum[]): CandlestickData[] {
     });
 }
 
+function formatLevelPrice(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 6 : value < 100 ? 3 : 0 });
+}
+
+function formatTimeMs(timeMs: number | null | undefined): string {
+  if (!timeMs || !Number.isFinite(timeMs)) return "n/a";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(timeMs));
+}
+
+function confidenceClass(confidence: "low" | "medium" | "high" | undefined): string {
+  if (confidence === "high") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  if (confidence === "medium") return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+  return "border-zinc-700 bg-zinc-900 text-zinc-400";
+}
+
 export default function PriceChart({
   coin,
   marketType = "perp",
@@ -105,13 +142,29 @@ export default function PriceChart({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
+  const [dbLevels, setDbLevels] = useState<SupportResistanceLevel[]>([]);
+  const [dbLevelsConfigured, setDbLevelsConfigured] = useState(false);
+  const [levelsUnavailable, setLevelsUnavailable] = useState(false);
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
 
-  const levels = useMemo(
+  const calculatedLevels = useMemo(
     () => calculateSupportResistanceLevels(candles, API_INTERVAL[interval]),
     [candles, interval],
   );
+  const levels = dbLevels.length > 0 ? dbLevels : calculatedLevels;
+  const levelsSource = dbLevels.length > 0 ? "stored" : "calculated";
   const currentPrice = candles.at(-1)?.close ?? null;
+  const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
+  const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
+  const latestLevelTimeMs = useMemo(
+    () =>
+      levels.reduce<number | null>((latest, level) => {
+        const time = level.discoveredTimeMs ?? level.updatedAtMs ?? null;
+        if (time == null) return latest;
+        return latest == null ? time : Math.max(latest, time);
+      }, null),
+    [levels],
+  );
   const tradePlan = useMemo(
     () =>
       buildTradePlan({
@@ -185,6 +238,44 @@ export default function PriceChart({
   }, [coin, interval, marketType]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function fetchStoredLevels() {
+      setLevelsUnavailable(false);
+      setDbLevels([]);
+
+      if (marketType !== "perp") {
+        setDbLevelsConfigured(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          withNetworkParam(
+            `/api/market/levels?coin=${encodeURIComponent(coin)}&interval=${API_INTERVAL[interval]}&limit=18`,
+          ),
+        );
+        if (!response.ok) throw new Error("Unable to fetch stored levels.");
+        const payload = (await response.json()) as LevelsResponse;
+        if (cancelled) return;
+        setDbLevelsConfigured(Boolean(payload.configured));
+        setDbLevels(Array.isArray(payload.levels) ? payload.levels : []);
+      } catch {
+        if (!cancelled) {
+          setDbLevelsConfigured(false);
+          setDbLevels([]);
+          setLevelsUnavailable(true);
+        }
+      }
+    }
+
+    fetchStoredLevels();
+    return () => {
+      cancelled = true;
+    };
+  }, [coin, interval, marketType]);
+
+  useEffect(() => {
     const container = chartContainerRef.current;
     const data = toCandlestickData(candles);
     if (!container || data.length === 0) return;
@@ -233,33 +324,52 @@ export default function PriceChart({
 
     candleSeries.setData(data);
 
-    visibleSupports.forEach((level, index) => {
-      candleSeries.createPriceLine({
-        id: `support-${index}`,
-        price: level.price,
-        color: "#22c55e",
-        lineWidth: index === 0 ? 2 : 1,
-        lineStyle: index === 0 ? LineStyle.Solid : LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: index === 0 ? "Support" : `S${index + 1}`,
-        axisLabelColor: "#14532d",
-        axisLabelTextColor: "#dcfce7",
-      });
-    });
+    const firstTime = normalizeTime(candles[0]?.time ?? 0);
+    const lastTime = normalizeTime(candles.at(-1)?.time ?? 0);
+    const renderLevel = (
+      level: ReturnType<typeof calculateSupportResistanceLevels>[number],
+      index: number,
+      kind: "support" | "resistance",
+    ) => {
+      const discovered = Math.max(normalizeTime(level.discoveredTimeMs ?? firstTime), firstTime);
+      if (!Number.isFinite(discovered) || discovered > lastTime) return;
+      const start = toChartTime(discovered);
+      const end = toChartTime(lastTime);
+      const color = kind === "support" ? "#22c55e" : "#fb7185";
+      const softColor = kind === "support" ? "rgba(34, 197, 94, 0.38)" : "rgba(251, 113, 133, 0.38)";
+      const lineWidth = index === 0 ? 2 : 1;
 
-    visibleResistances.forEach((level, index) => {
-      candleSeries.createPriceLine({
-        id: `resistance-${index}`,
-        price: level.price,
-        color: "#ef4444",
-        lineWidth: index === 0 ? 2 : 1,
+      const center = chart.addSeries(LineSeries, {
+        color,
+        lineWidth,
         lineStyle: index === 0 ? LineStyle.Solid : LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: index === 0 ? "Resistance" : `R${index + 1}`,
-        axisLabelColor: "#7f1d1d",
-        axisLabelTextColor: "#fee2e2",
+        lastValueVisible: false,
+        priceLineVisible: false,
       });
-    });
+      center.setData([
+        { time: start, value: level.price },
+        { time: end, value: level.price },
+      ]);
+
+      if (level.zoneLow != null && level.zoneHigh != null && index <= 1) {
+        for (const zonePrice of [level.zoneLow, level.zoneHigh]) {
+          const edge = chart.addSeries(LineSeries, {
+            color: softColor,
+            lineWidth: 1,
+            lineStyle: LineStyle.Dotted,
+            lastValueVisible: false,
+            priceLineVisible: false,
+          });
+          edge.setData([
+            { time: start, value: zonePrice },
+            { time: end, value: zonePrice },
+          ]);
+        }
+      }
+    };
+
+    visibleSupports.forEach((level, index) => renderLevel(level, index, "support"));
+    visibleResistances.forEach((level, index) => renderLevel(level, index, "resistance"));
 
     chart.timeScale().fitContent();
     chartRef.current = chart;
@@ -296,6 +406,12 @@ export default function PriceChart({
                 </div>
               )}
             </div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
+              Forecast zones use closed candles only. Lines start where the pivot became knowable, not where it happened.
+              {latestLevelTimeMs != null ? (
+                <span className="ml-1 text-zinc-400">Latest level confirmed {formatTimeMs(latestLevelTimeMs)}.</span>
+              ) : null}
+            </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
@@ -321,7 +437,14 @@ export default function PriceChart({
               Red resistance
             </span>
             <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-              Structure pivots
+              Anti-repaint
+            </span>
+            <span className={`rounded-full border px-2 py-1 ${
+              levelsSource === "stored"
+                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                : "border-zinc-800 bg-zinc-950/70 text-zinc-500"
+            }`}>
+              {levelsSource === "stored" ? "Stored observations" : "Live fallback"}
             </span>
           </div>
         </div>
@@ -345,6 +468,11 @@ export default function PriceChart({
 
       {!loading && !error && candles.length > 0 ? (
         <div className="shrink-0 border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
+          <div className="mb-3 grid gap-2 lg:grid-cols-2">
+            <LevelStack title="Nearest support zones" levels={visibleSupports} />
+            <LevelStack title="Nearest resistance zones" levels={visibleResistances} />
+          </div>
+
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -382,9 +510,65 @@ export default function PriceChart({
                 {item}
               </div>
             ))}
+            {dataThroughTimeMs != null ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
+                Levels are generated as-of {formatTimeMs(dataThroughTimeMs)} and should be judged only after that point.
+              </div>
+            ) : null}
+            {levelsSource === "calculated" ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
+                {levelsUnavailable
+                  ? "Stored level history is temporarily unavailable, so this view is using the anti-repaint live fallback."
+                  : dbLevelsConfigured
+                    ? "No stored observations matched this interval yet, so this view is using the anti-repaint live fallback."
+                    : "Connect the market collector database to unlock replayable stored levels."}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function LevelStack({
+  title,
+  levels,
+}: {
+  title: string;
+  levels: ReturnType<typeof calculateSupportResistanceLevels>;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
+      <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-600">{title}</div>
+      {levels.length === 0 ? (
+        <div className="text-xs text-zinc-500">No confirmed forecast zone yet.</div>
+      ) : (
+        <div className="grid gap-2">
+          {levels.map((level) => (
+            <div key={level.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+              <div>
+                <div className="font-mono text-xs text-zinc-200">
+                  {level.zoneLow != null && level.zoneHigh != null
+                    ? `${formatLevelPrice(level.zoneLow)}-${formatLevelPrice(level.zoneHigh)}`
+                    : formatLevelPrice(level.price)}
+                </div>
+                <div className="mt-0.5 text-[10px] text-zinc-500">
+                  Confirmed {formatTimeMs(level.discoveredTimeMs)} · {level.touches ?? 1} touch{(level.touches ?? 1) === 1 ? "" : "es"}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] ${confidenceClass(level.confidence)}`}>
+                  {level.confidence ?? "low"}
+                </span>
+                <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] text-zinc-500">
+                  {level.status ?? "active"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
