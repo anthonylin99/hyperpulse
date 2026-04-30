@@ -41,6 +41,15 @@ function kindLabel(kind: MarketRadarSignal["kind"]) {
   }
 }
 
+function formatRadarTime(time: number | undefined): string {
+  if (!time || !Number.isFinite(time)) return "waiting";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(time));
+}
+
 export default function MarketRadarPanel({ variant = "compact" }: { variant?: "compact" | "hero" }) {
   const [data, setData] = useState<RadarResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,12 +85,17 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
             <SectionEyebrow className="text-teal-300">Market Radar v1</SectionEyebrow>
             <div className="mt-1 text-sm font-medium text-zinc-100">Quick context before the directory</div>
             <div className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
-              Live strength, weakness, and funding crowding from Hyperliquid.
+              Current strength, weakness, and funding crowding from Hyperliquid. Refreshes every 2m.
             </div>
           </div>
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-300">
-            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
-            {data?.source === "market-plus-tracked-flow" ? "Market + tracked flow" : "Market-only scan"}
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-emerald-300">
+              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
+              {data?.source === "market-plus-tracked-flow" ? "Market + tracked flow" : "Market-only scan"}
+            </div>
+            <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1.5 font-mono text-zinc-500">
+              Updated {formatRadarTime(data?.generatedAt)}
+            </div>
           </div>
         </div>
 
@@ -125,8 +139,9 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
           <SectionEyebrow>Market Radar</SectionEyebrow>
           <div className="mt-1 text-sm font-medium text-zinc-100">What stands out now</div>
           <div className="mt-1 text-[11px] text-zinc-500">
-            {data?.source === "market-plus-tracked-flow" ? "Market + tracked flow" : "Market-only scan"}
+            {data?.source === "market-plus-tracked-flow" ? "Market + tracked flow" : "Market-only scan"} · refreshes every 2m
           </div>
+          <div className="mt-0.5 font-mono text-[10px] text-zinc-600">Updated {formatRadarTime(data?.generatedAt)}</div>
         </div>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-300">
           {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}

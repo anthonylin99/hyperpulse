@@ -130,6 +130,19 @@ function confidenceClass(confidence: "low" | "medium" | "high" | undefined): str
   return "border-zinc-700 bg-zinc-900 text-zinc-400";
 }
 
+function isActionableLevel(level: SupportResistanceLevel): boolean {
+  return level.status !== "expired" && level.status !== "broken";
+}
+
+function formatLevelDistance(level: SupportResistanceLevel, currentPrice: number | null): string {
+  if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return "";
+  const distance = ((level.price - currentPrice) / currentPrice) * 100;
+  const absDistance = Math.abs(distance);
+  if (level.kind === "support") return `${absDistance.toFixed(2)}% below`;
+  if (level.kind === "resistance") return `${absDistance.toFixed(2)}% above`;
+  return `${distance >= 0 ? "+" : ""}${distance.toFixed(2)}%`;
+}
+
 export default function PriceChart({
   coin,
   marketType = "perp",
@@ -143,19 +156,17 @@ export default function PriceChart({
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
   const [dbLevels, setDbLevels] = useState<SupportResistanceLevel[]>([]);
-  const [dbLevelsConfigured, setDbLevelsConfigured] = useState(false);
-  const [levelsUnavailable, setLevelsUnavailable] = useState(false);
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
 
   const calculatedLevels = useMemo(
     () => calculateSupportResistanceLevels(candles, API_INTERVAL[interval]),
     [candles, interval],
   );
-  const levels = dbLevels.length > 0 ? dbLevels : calculatedLevels;
-  const levelsSource = dbLevels.length > 0 ? "stored" : "calculated";
+  const usableDbLevels = useMemo(() => dbLevels.filter(isActionableLevel), [dbLevels]);
+  const usableCalculatedLevels = useMemo(() => calculatedLevels.filter(isActionableLevel), [calculatedLevels]);
+  const levels = usableDbLevels.length > 0 ? usableDbLevels : usableCalculatedLevels;
   const currentPrice = candles.at(-1)?.close ?? null;
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
-  const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
   const latestLevelTimeMs = useMemo(
     () =>
       levels.reduce<number | null>((latest, level) => {
@@ -179,18 +190,22 @@ export default function PriceChart({
   const visibleSupports = useMemo(
     () =>
       levels
-        .filter((level) => level.kind === "support")
-        .sort((a, b) => b.price - a.price)
-        .slice(0, 3),
-    [levels],
+        .filter((level) => level.kind === "support" && (currentPrice == null || level.price < currentPrice))
+        .sort((a, b) =>
+          currentPrice == null ? b.price - a.price : Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice),
+        )
+        .slice(0, 2),
+    [currentPrice, levels],
   );
   const visibleResistances = useMemo(
     () =>
       levels
-        .filter((level) => level.kind === "resistance")
-        .sort((a, b) => a.price - b.price)
-        .slice(0, 3),
-    [levels],
+        .filter((level) => level.kind === "resistance" && (currentPrice == null || level.price > currentPrice))
+        .sort((a, b) =>
+          currentPrice == null ? a.price - b.price : Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice),
+        )
+        .slice(0, 2),
+    [currentPrice, levels],
   );
 
   useEffect(() => {
@@ -241,11 +256,9 @@ export default function PriceChart({
     let cancelled = false;
 
     async function fetchStoredLevels() {
-      setLevelsUnavailable(false);
       setDbLevels([]);
 
       if (marketType !== "perp") {
-        setDbLevelsConfigured(false);
         return;
       }
 
@@ -258,13 +271,10 @@ export default function PriceChart({
         if (!response.ok) throw new Error("Unable to fetch stored levels.");
         const payload = (await response.json()) as LevelsResponse;
         if (cancelled) return;
-        setDbLevelsConfigured(Boolean(payload.configured));
         setDbLevels(Array.isArray(payload.levels) ? payload.levels : []);
       } catch {
         if (!cancelled) {
-          setDbLevelsConfigured(false);
           setDbLevels([]);
-          setLevelsUnavailable(true);
         }
       }
     }
@@ -389,8 +399,16 @@ export default function PriceChart({
     };
   }, [candles, visibleResistances, visibleSupports]);
 
+  const levelSourceNote =
+    latestLevelTimeMs != null
+      ? `Closed-candle levels · last confirmed ${formatTimeMs(latestLevelTimeMs)}`
+      : lastCandleTimeMs != null
+        ? `Closed-candle levels · data through ${formatTimeMs(lastCandleTimeMs + INTERVAL_MS[interval])}`
+        : "Closed-candle levels";
+  const hasActionablePlan = tradePlan.bias !== "wait";
+
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
+    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
       <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -405,12 +423,6 @@ export default function PriceChart({
                   {currentPrice.toLocaleString(undefined, { maximumFractionDigits: currentPrice < 1 ? 6 : 2 })}
                 </div>
               )}
-            </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Forecast zones use closed candles only. Lines start where the pivot became knowable, not where it happened.
-              {latestLevelTimeMs != null ? (
-                <span className="ml-1 text-zinc-400">Latest level confirmed {formatTimeMs(latestLevelTimeMs)}.</span>
-              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -430,47 +442,32 @@ export default function PriceChart({
                 </button>
               ))}
             </div>
-            <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
-              Green support
-            </span>
-            <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-rose-300">
-              Red resistance
-            </span>
-            <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-              Anti-repaint
-            </span>
-            <span className={`rounded-full border px-2 py-1 ${
-              levelsSource === "stored"
-                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-                : "border-zinc-800 bg-zinc-950/70 text-zinc-500"
-            }`}>
-              {levelsSource === "stored" ? "Stored observations" : "Live fallback"}
-            </span>
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-2.5">
-        <div className="relative h-full min-h-[240px] overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950">
+      <div className="p-3">
+        <div className="relative h-[360px] overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]">
           {loading ? (
-            <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
               Loading price structure...
             </div>
           ) : error || candles.length === 0 ? (
-            <div className="flex h-full min-h-[240px] items-center justify-center px-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
               {error ?? "No price candles available."}
             </div>
           ) : (
             <div ref={chartContainerRef} className="absolute inset-0" />
           )}
         </div>
+        <div className="mt-2 text-[11px] leading-5 text-zinc-500">{levelSourceNote}</div>
       </div>
 
       {!loading && !error && candles.length > 0 ? (
         <div className="shrink-0 border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
           <div className="mb-3 grid gap-2 lg:grid-cols-2">
-            <LevelStack title="Nearest support zones" levels={visibleSupports} />
-            <LevelStack title="Nearest resistance zones" levels={visibleResistances} />
+            <LevelStack title="Support" levels={visibleSupports} currentPrice={currentPrice} />
+            <LevelStack title="Resistance" levels={visibleResistances} currentPrice={currentPrice} />
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -494,36 +491,26 @@ export default function PriceChart({
             </div>
 
             <div className="grid gap-2 text-xs md:grid-cols-3">
-              <PlanBox label="Trigger" value={tradePlan.trigger} />
-              <PlanBox label="Invalidation" value={tradePlan.invalidation} tone="danger" />
+              <PlanBox label="Confirmation level" value={tradePlan.trigger} />
               <PlanBox
-                label="Targets"
-                value={tradePlan.targets.length > 0 ? tradePlan.targets.join(" → ") : "n/a"}
-                tone="success"
+                label="Invalidation"
+                value={hasActionablePlan ? tradePlan.invalidation : "Defined after confirmation."}
+                tone={hasActionablePlan ? "danger" : "neutral"}
+              />
+              <PlanBox
+                label="Target"
+                value={hasActionablePlan && tradePlan.targets.length > 0 ? tradePlan.targets.join(" → ") : "Appears after confirmation."}
+                tone={hasActionablePlan ? "success" : "neutral"}
               />
             </div>
           </div>
 
           <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {tradePlan.context.slice(0, 4).map((item) => (
+            {tradePlan.context.slice(0, 3).map((item) => (
               <div key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
                 {item}
               </div>
             ))}
-            {dataThroughTimeMs != null ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                Levels are generated as-of {formatTimeMs(dataThroughTimeMs)} and should be judged only after that point.
-              </div>
-            ) : null}
-            {levelsSource === "calculated" ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                {levelsUnavailable
-                  ? "Stored level history is temporarily unavailable, so this view is using the anti-repaint live fallback."
-                  : dbLevelsConfigured
-                    ? "No stored observations matched this interval yet, so this view is using the anti-repaint live fallback."
-                    : "Connect the market collector database to unlock replayable stored levels."}
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -534,15 +521,17 @@ export default function PriceChart({
 function LevelStack({
   title,
   levels,
+  currentPrice,
 }: {
   title: string;
   levels: ReturnType<typeof calculateSupportResistanceLevels>;
+  currentPrice: number | null;
 }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
       <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-600">{title}</div>
       {levels.length === 0 ? (
-        <div className="text-xs text-zinc-500">No confirmed forecast zone yet.</div>
+        <div className="text-xs text-zinc-500">No active zone nearby.</div>
       ) : (
         <div className="grid gap-2">
           {levels.map((level) => (
@@ -554,15 +543,14 @@ function LevelStack({
                     : formatLevelPrice(level.price)}
                 </div>
                 <div className="mt-0.5 text-[10px] text-zinc-500">
-                  Confirmed {formatTimeMs(level.discoveredTimeMs)} · {level.touches ?? 1} touch{(level.touches ?? 1) === 1 ? "" : "es"}
+                  {formatLevelDistance(level, currentPrice)}
+                  {formatLevelDistance(level, currentPrice) ? " · " : ""}
+                  {level.touches ?? 1} touch{(level.touches ?? 1) === 1 ? "" : "es"}
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] ${confidenceClass(level.confidence)}`}>
                   {level.confidence ?? "low"}
-                </span>
-                <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] text-zinc-500">
-                  {level.status ?? "active"}
                 </span>
               </div>
             </div>

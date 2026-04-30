@@ -216,10 +216,10 @@ export function buildMarketSetupSignal({
     type: "none",
     label: "Range wait",
     detail: resistance
-      ? `Next trigger ${formatPrice(resistance.price)}`
+      ? `Watch reclaim above ${formatPrice(resistance.price)}`
       : support
-        ? `Watch ${formatPrice(support.price)}`
-        : "No nearby trigger",
+        ? `Watch support near ${formatPrice(support.price)}`
+        : "No nearby confirmation",
     tone: "neutral",
     level: resistance?.price ?? support?.price ?? null,
     distancePct: resistanceDistance ?? supportDistance,
@@ -284,7 +284,7 @@ export function buildTradePlan({
     support ? `Nearest support: ${formatPrice(support.price)} (${supportDistance?.toFixed(2)}% below).` : "No nearby support detected.",
     resistance ? `Nearest resistance: ${formatPrice(resistance.price)} (${resistanceDistance?.toFixed(2)}% above).` : "No nearby resistance detected.",
     fundingNote,
-    "Use the trigger first; do not enter just because a level exists.",
+    "Use confirmation first; do not enter just because a level exists.",
   ].filter((item): item is string => Boolean(item));
 
   if (supportReclaim && support) {
@@ -294,7 +294,7 @@ export function buildTradePlan({
       bias: "long-setup",
       title: "Support reclaim long setup",
       summary: `Price swept or tagged support near ${formatPrice(support.price)} and reclaimed. This is the cleanest long pattern HyperPulse sees right now.`,
-      trigger: `Long only while price holds above ${formatPrice(support.price)} after a reclaim close on ${interval}.`,
+      trigger: `Hold above ${formatPrice(support.price)} after a reclaim close on ${interval}.`,
       invalidation: `Close back below ${formatPrice(support.price - Math.max(atr * 0.35, support.price * 0.0015))}.`,
       targets: [formatPrice(firstTarget), formatPrice(secondTarget)],
       confidence: cheapFunding ? "high" : richFunding ? "low" : "medium",
@@ -308,7 +308,7 @@ export function buildTradePlan({
       bias: "long-setup",
       title: "Breakout-and-hold long setup",
       summary: `Price broke above resistance near ${formatPrice(resistance.price)}. The better entry is usually a hold or retest, not chasing the first candle.`,
-      trigger: `Long a retest/hold of ${formatPrice(resistance.price)} after breakout confirmation.`,
+      trigger: `Retest or hold above ${formatPrice(resistance.price)} after breakout confirmation.`,
       invalidation: `Close back below ${formatPrice(resistance.price - Math.max(atr * 0.3, resistance.price * 0.0012))}.`,
       targets: [formatPrice(nextTarget)],
       confidence: richFunding ? "low" : "medium",
@@ -323,7 +323,7 @@ export function buildTradePlan({
       bias: "short-setup",
       title: "Resistance rejection short setup",
       summary: `Price rejected resistance near ${formatPrice(resistance.price)}. This favors patience on longs until the level is reclaimed.`,
-      trigger: `Short bias only while price stays below ${formatPrice(resistance.price)}.`,
+      trigger: `Stay below ${formatPrice(resistance.price)} after rejection confirmation.`,
       invalidation: `Close above ${formatPrice(resistance.price + Math.max(atr * 0.35, resistance.price * 0.0015))}.`,
       targets: [formatPrice(firstTarget), formatPrice(secondTarget)],
       confidence: richFunding ? "medium" : "low",
@@ -338,17 +338,15 @@ export function buildTradePlan({
 
   return {
     bias: "wait",
-    title: "Wait for level interaction",
+    title: "No trade yet",
     summary: noTradeReason,
     trigger: resistance
-      ? `Long trigger: reclaim/break and hold above ${formatPrice(resistance.price)}.`
+      ? `Watch reclaim or break-and-hold above ${formatPrice(resistance.price)}.`
       : support
-        ? `Long trigger: sweep and reclaim ${formatPrice(support.price)}.`
+        ? `Watch sweep and reclaim near ${formatPrice(support.price)}.`
         : "Wait for a new confirmed support/resistance level.",
-    invalidation: support
-      ? `If longing support, invalidate below ${formatPrice(support.price - Math.max(atr * 0.35, support.price * 0.0015))}.`
-      : "n/a",
-    targets: resistance ? [formatPrice(resistance.price)] : [],
+    invalidation: "Defined after confirmation.",
+    targets: [],
     confidence: "low",
     context,
   };

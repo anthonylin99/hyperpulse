@@ -226,7 +226,7 @@ export default function AssetDetail({
       {/* Chart area */}
       <div className="px-4 pb-3">
         {tab === "price" ? (
-          <div className="h-[700px] max-h-[82vh] min-h-[620px]">
+          <div className="min-h-[720px]">
             <PriceChart
               coin={asset.coin}
               compact
