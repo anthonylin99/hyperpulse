@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isFactorsEnabled, isWhalesEnabled } from "@/lib/appConfig";
+import { isWhalesEnabled } from "@/lib/appConfig";
 
 function buildCsp() {
   const directives = [
@@ -52,10 +52,7 @@ function applySecurityHeaders(response: NextResponse) {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (
-    (!isFactorsEnabled() && pathname.startsWith("/factors")) ||
-    (!isWhalesEnabled() && pathname.startsWith("/whales"))
-  ) {
+  if (!isWhalesEnabled() && pathname.startsWith("/whales")) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/markets";
     redirectUrl.search = "";

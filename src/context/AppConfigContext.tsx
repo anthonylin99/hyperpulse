@@ -11,12 +11,11 @@ import {
   type ReactNode,
 } from "react";
 import toast from "react-hot-toast";
-import { ENABLE_FACTORS_DEFAULT, ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
+import { ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
 
 type PublicAppConfig = {
   tradingEnabled: boolean;
   whalesEnabled: boolean;
-  factorsEnabled: boolean;
   deploymentMode: "trading" | "read-only";
 };
 
@@ -29,15 +28,10 @@ type AppConfigContextValue = PublicAppConfig & {
 const fallbackTradingEnabled =
   process.env.NEXT_PUBLIC_ENABLE_TRADING === "true" ||
   ENABLE_TRADING_DEFAULT;
-const fallbackFactorsEnabled =
-  process.env.NEXT_PUBLIC_ENABLE_FACTORS === "true" ||
-  (process.env.NEXT_PUBLIC_ENABLE_FACTORS !== "false" &&
-    ENABLE_FACTORS_DEFAULT);
 
 const fallbackConfig: PublicAppConfig = {
   tradingEnabled: fallbackTradingEnabled,
   whalesEnabled: process.env.NEXT_PUBLIC_ENABLE_WHALES === "true",
-  factorsEnabled: fallbackFactorsEnabled,
   deploymentMode: fallbackTradingEnabled ? "trading" : "read-only",
 };
 
@@ -64,7 +58,7 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
       if (!fetchFailureWarnedRef.current) {
         fetchFailureWarnedRef.current = true;
         toast.error(
-          "Couldn't load runtime config — using defaults. Trading features may be limited."
+          "Couldn't load runtime config - using defaults. Trading features may be limited."
         );
       }
     } finally {

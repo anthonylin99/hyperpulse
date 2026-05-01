@@ -20,8 +20,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/portfolio/") ||
     pathname === "/docs" ||
     pathname.startsWith("/docs/") ||
-    pathname === "/factors" ||
-    pathname.startsWith("/factors/") ||
     pathname === "/whales" ||
     pathname.startsWith("/whales/");
   const buildStamp = getBuildStamp();

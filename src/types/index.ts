@@ -93,7 +93,7 @@ export interface AccountState {
   spotPositions: Position[];
 }
 
-// ─── Portfolio Analytics Types ───────────────────────────────────
+// â”€â”€â”€ Portfolio Analytics Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Fill {
   coin: string;
@@ -158,8 +158,8 @@ export interface PortfolioStats {
   maxDrawdownPeriod: { start: number; end: number } | null;
   calmarRatio: number;
   recoveryFactor: number; // net profit / max drawdown (absolute)
-  avgWinDuration: number; // ms — how long winning trades last
-  avgLossDuration: number; // ms — how long losing trades last
+  avgWinDuration: number; // ms â€” how long winning trades last
+  avgLossDuration: number; // ms â€” how long losing trades last
   avgTradeDuration: number; // ms
   totalPnl: number;
   grossProfit: number;
@@ -214,7 +214,7 @@ export interface EquityPoint {
   drawdown: number; // 0 to -1 (percentage from peak)
 }
 
-// ─── Research Store Types ───────────────────────────────────────
+// â”€â”€â”€ Research Store Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface DailyMarketPrice {
   asset: string;
@@ -290,7 +290,12 @@ export interface SupportResistanceLevel {
   id: string;
   label: string;
   kind: "support" | "resistance" | "pivot";
-  source: "traditional_pivot" | "swing_pivot" | "structure_pivot" | "structure_trendline";
+  source:
+    | "traditional_pivot"
+    | "swing_pivot"
+    | "structure_pivot"
+    | "structure_trendline"
+    | "leverage_liquidation";
   price: number;
   zoneLow?: number;
   zoneHigh?: number;
@@ -305,9 +310,99 @@ export interface SupportResistanceLevel {
   status?: "forecast" | "active" | "tested" | "broken" | "expired";
   confirmationBars?: number;
   reason?: string;
+  explanation?: string;
+  evidence?: string[];
+  notionalUsd?: number;
+  weightedLeverage?: number;
+  leverageMultiplier?: number;
+  pressureScore?: number;
+  lfxScore?: number;
+  depthAdjustedImpact?: number | null;
+  volatilityReach?: number;
+  distanceDecay?: number;
+  flowSide?: PressureFlowSide;
+  zoneType?: PressureZoneType;
+  coverage?: PressureCoverage;
+  flowRank?: number;
+  flowRelative?: number;
+  leverageBucket?: string;
+  walletCount?: number;
+  pressureSide?: PressureLevelSide;
+  pressureSource?: PressureLevelSource;
 }
 
-// ─── Activity Types ─────────────────────────────────────────────
+export type PressureLevelSide = "long_liq" | "short_liq";
+export type PressureFlowSide = "forced_sell" | "forced_buy";
+export type PressureZoneType =
+  | "downside_cascade"
+  | "upside_squeeze"
+  | "absorption_support"
+  | "absorption_resistance"
+  | "magnet"
+  | "dead_zone";
+export type PressureCoverage = "market_only" | "wallet_sample";
+export type PressureLevelSource = "market_inferred" | "tracked_liquidation" | "estimated_leverage";
+export type PressureConfidence = "low" | "medium" | "high";
+
+export interface PressureLevel {
+  id: string;
+  price: number;
+  side: PressureLevelSide;
+  source: PressureLevelSource;
+  distancePct: number;
+  notionalUsd: number;
+  weightedLeverage: number;
+  leverageMultiplier: number;
+  pressureScore: number;
+  lfxScore: number;
+  depthAdjustedImpact: number | null;
+  volatilityReach: number;
+  distanceDecay: number;
+  flowSide: PressureFlowSide;
+  zoneType: PressureZoneType;
+  coverage: PressureCoverage;
+  explanation?: string;
+  evidence?: string[];
+  flowRank?: number;
+  flowRelative?: number;
+  leverageBucket?: string;
+  confidence: PressureConfidence;
+  walletCount: number;
+}
+
+export interface PressurePayload {
+  coin: string;
+  coverage: PressureCoverage;
+  currentPrice: number;
+  updatedAt: number;
+  market: {
+    fundingAPR: number | null;
+    openInterestUsd: number | null;
+    oiChangePct: number | null;
+    maxLeverage: number | null;
+    bidDepthUsd: number | null;
+    askDepthUsd: number | null;
+    topBookImbalancePct: number | null;
+    pressureScore: number;
+  };
+  levels: PressureLevel[];
+  summary: {
+    nearestPressureLevel: PressureLevel | null;
+    dominantPressureLevel: PressureLevel | null;
+    strongestLongLiquidationLevel: PressureLevel | null;
+    strongestShortLiquidationLevel: PressureLevel | null;
+    longLiquidationNotionalUsd: number;
+    shortLiquidationNotionalUsd: number;
+    trackedWallets: number;
+  };
+}
+
+export interface PressureBatchPayload {
+  updatedAt: number;
+  assets: Record<string, PressurePayload>;
+}
+
+// â”€â”€â”€ Activity Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type ActivityType = "liquidation" | "whale" | "oi-spike";
 
@@ -321,196 +416,8 @@ export interface ActivityEntry {
   count?: number;
 }
 
-// ─── Factor Types ───────────────────────────────────────────────
 
-export interface FactorHolding {
-  symbol: string;
-  weight?: number;
-  note?: string;
-}
-
-export interface FactorSnapshot {
-  id: string;
-  name: string;
-  shortLabel: string;
-  description: string;
-  methodology: string;
-  reportDate: string;
-  sourceUrl: string;
-  sourceTitle: string;
-  narrativeTags: string[];
-  constructionType: "long-only" | "long-short";
-  coverageNote: string;
-  longs: FactorHolding[];
-  shorts: FactorHolding[];
-}
-
-export interface FactorPerformanceWindow {
-  days: number;
-  longReturn: number | null;
-  shortReturn: number | null;
-  spreadReturn: number | null;
-}
-
-export interface FactorContributor {
-  symbol: string;
-  role: "long" | "short";
-  returnPct: number;
-  contributionPct: number;
-  livePrice: number | null;
-  liveChange24h: number | null;
-  signalLabel?: string;
-}
-
-export interface FactorTradeCandidate {
-  symbol: string;
-  role: "long" | "short";
-  thesis: string;
-  score: number;
-  liveChange24h: number | null;
-  fundingAPR: number | null;
-  signalLabel: string | null;
-  confidence: "high" | "medium" | "low";
-  trendStatus: "trend-confirmed" | "watchlist-only";
-}
-
-export interface FactorConstituentPerformance {
-  symbol: string;
-  role: "long" | "short";
-  mappedToHyperliquid: boolean;
-  latestPrice: number | null;
-  return1d: number | null;
-  return7d: number | null;
-  return30d: number | null;
-  liveChange24h: number | null;
-  fundingAPR: number | null;
-  signalLabel: string | null;
-}
-
-export interface LiveFactorState {
-  snapshot: FactorSnapshot;
-  windows: FactorPerformanceWindow[];
-  longsReturnToday: number | null;
-  shortsReturnToday: number | null;
-  spreadToday: number | null;
-  mappedHyperliquidAssets: string[];
-  unmappedAssets: string[];
-  basketCoverage: number;
-  hyperliquidCoverage: number;
-  confidence: "high" | "medium" | "low";
-  stalenessDays: number;
-  topContributors: FactorContributor[];
-  topDetractors: FactorContributor[];
-  tradeCandidates: FactorTradeCandidate[];
-  constituents: FactorConstituentPerformance[];
-}
-
-export interface EditableFactorLeg {
-  symbol: string;
-  enabled: boolean;
-  side: "long" | "short";
-  weight: number;
-  sourceRole: "long" | "short";
-}
-
-export interface FactorTradePreset {
-  id: string;
-  factorId: string;
-  name: string;
-  longGrossUsd: number;
-  shortGrossUsd: number;
-  leverage: number;
-  slippageBps: number;
-  legs: EditableFactorLeg[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface FactorExecutionLeg {
-  symbol: string;
-  assetIndex: number | null;
-  enabled: boolean;
-  side: "long" | "short";
-  sourceRole: "long" | "short";
-  weightInput: number;
-  normalizedWeight: number;
-  markPx: number | null;
-  priceDecimals: number;
-  sizeDecimals: number;
-  currentQty: number;
-  targetQty: number;
-  deltaQty: number;
-  targetNotionalUsd: number;
-  deltaNotionalUsd: number;
-  orderPrice: string | null;
-  marginRequiredUsd: number;
-  liveChange24h: number | null;
-  fundingAPR: number | null;
-  signalLabel: string | null;
-  status: "ready" | "skipped" | "unmapped";
-  statusReason: string | null;
-}
-
-export interface FactorExecutionSummary {
-  longGrossUsd: number;
-  shortGrossUsd: number;
-  grossUsd: number;
-  netUsd: number;
-  estimatedMarginUsd: number;
-  activeLongLegs: number;
-  activeShortLegs: number;
-  tradableCoverage: number;
-}
-
-export interface FactorDeploymentRecordLeg {
-  symbol: string;
-  side: "buy" | "sell";
-  phase: "rebalance-close" | "rebalance-open" | "delta";
-  targetSize: string;
-  executedQty: number | null;
-  avgPx: number | null;
-  status: "filled" | "resting" | "waiting" | "error" | "skipped";
-  error: string | null;
-}
-
-export interface FactorDeploymentRecord {
-  id: string;
-  factorId: string;
-  factorName: string;
-  timestamp: number;
-  mainnet: boolean;
-  address: string;
-  legs: FactorDeploymentRecordLeg[];
-}
-
-export interface FactorExecutionPlan {
-  factorId: string;
-  factorName: string;
-  leverage: number;
-  slippageBps: number;
-  summary: FactorExecutionSummary;
-  legs: FactorExecutionLeg[];
-  executableLegs: FactorExecutionLeg[];
-  skippedLegs: FactorExecutionLeg[];
-}
-
-export interface FactorAiInsight {
-  title: string;
-  body: string;
-  tone: "bullish" | "cautious" | "neutral";
-  tickers: string[];
-}
-
-export interface FactorAiBrief {
-  headline: string;
-  summary: string;
-  insights: FactorAiInsight[];
-  disclaimer?: string;
-  generatedAt: string;
-}
-
-
-// ─── Whale Intelligence Types ─────────────────────────────────
+// â”€â”€â”€ Whale Intelligence Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type WhaleSeverity = "high" | "medium" | "low";
 

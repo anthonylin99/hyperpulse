@@ -5,7 +5,6 @@ import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
-  LineSeries,
   LineStyle,
   createChart,
   type CandlestickData,
@@ -13,10 +12,14 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
-import { calculateSupportResistanceLevels } from "@/lib/supportResistance";
+import {
+  buildLocalProjectedLfxLevels,
+  isLfxMajorCoin,
+  pressureLevelsToSupportResistanceLevels,
+} from "@/lib/pressureLevels";
 import { buildTradePlan } from "@/lib/tradePlan";
 import { SectionEyebrow } from "@/components/trading-ui";
-import type { SupportResistanceLevel } from "@/types";
+import type { PressurePayload, SupportResistanceLevel } from "@/types";
 
 interface PriceChartProps {
   coin: string;
@@ -42,7 +45,7 @@ const LOOKBACK_MS: Record<TradingInterval, number> = {
   "15": 5 * 24 * 60 * 60 * 1000,
   "60": 30 * 24 * 60 * 60 * 1000,
   "240": 90 * 24 * 60 * 60 * 1000,
-  D: 180 * 24 * 60 * 60 * 1000,
+  D: 119 * 24 * 60 * 60 * 1000,
 };
 
 const INTERVAL_MS: Record<TradingInterval, number> = {
@@ -68,12 +71,6 @@ type CandleDatum = {
   low: number;
   close: number;
   volume: number;
-};
-
-type LevelsResponse = {
-  configured?: boolean;
-  source?: "db-observed" | "empty";
-  levels?: SupportResistanceLevel[];
 };
 
 function normalizeTime(time: number): number {
@@ -109,9 +106,42 @@ function toCandlestickData(candles: CandleDatum[]): CandlestickData[] {
     });
 }
 
+function averageTrueRangePct(candles: CandleDatum[], length = 14): number | null {
+  const scoped = candles.slice(-length);
+  const lastClose = scoped.at(-1)?.close;
+  if (scoped.length === 0 || lastClose == null || lastClose <= 0) return null;
+
+  const atr =
+    scoped.reduce((sum, candle, index) => {
+      const previousClose = index === 0 ? candle.close : scoped[index - 1].close;
+      const trueRange = Math.max(
+        candle.high - candle.low,
+        Math.abs(candle.high - previousClose),
+        Math.abs(candle.low - previousClose),
+      );
+      return sum + Math.max(trueRange, 0);
+    }, 0) / scoped.length;
+
+  return atr > 0 ? Number(((atr / lastClose) * 100).toFixed(4)) : null;
+}
+
 function formatLevelPrice(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "n/a";
   return value.toLocaleString(undefined, { maximumFractionDigits: value < 1 ? 6 : value < 100 ? 2 : 0 });
+}
+
+function formatLevelRange(level: SupportResistanceLevel | null | undefined): string {
+  if (!level) return "n/a";
+  if (
+    level.zoneLow != null &&
+    level.zoneHigh != null &&
+    Number.isFinite(level.zoneLow) &&
+    Number.isFinite(level.zoneHigh) &&
+    level.zoneHigh > level.zoneLow
+  ) {
+    return `${formatLevelPrice(level.zoneLow)}-${formatLevelPrice(level.zoneHigh)}`;
+  }
+  return formatLevelPrice(level.price);
 }
 
 function pricePrecision(value: number | null | undefined): number {
@@ -146,18 +176,113 @@ function confidenceClass(confidence: "low" | "medium" | "high" | undefined): str
   return "border-zinc-700 bg-zinc-900 text-zinc-400";
 }
 
-function isActionableLevel(level: SupportResistanceLevel): boolean {
-  return level.status !== "expired" && level.status !== "broken";
+function formatCompactUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return "n/a";
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+  return `$${value.toFixed(0)}`;
 }
 
-function formatLevelDistance(level: SupportResistanceLevel, currentPrice: number | null): string {
-  if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return "";
-  const distance = ((level.price - currentPrice) / currentPrice) * 100;
-  const absDistance = Math.abs(distance);
-  if (level.kind === "support") return `${absDistance.toFixed(2)}% below`;
-  if (level.kind === "resistance") return `${absDistance.toFixed(2)}% above`;
-  return `${distance >= 0 ? "+" : ""}${distance.toFixed(2)}%`;
+function riskCopy(level: SupportResistanceLevel): string {
+  return level.flowSide === "forced_sell" ? "sell-risk" : "buy-risk";
 }
+
+function flowSummary(level: SupportResistanceLevel): string {
+  if (level.pressureSource === "estimated_leverage") {
+    return `Near mark / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / LFX ${
+      level.lfxScore ?? level.pressureScore ?? "n/a"
+    }`;
+  }
+
+  const rank =
+    level.flowRank != null && level.flowRank <= 2
+      ? `Top #${level.flowRank}`
+      : (level.flowRelative ?? 0) >= 1.15
+        ? "Above avg"
+        : "Market flow";
+  return `${rank} / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / LFX ${level.lfxScore ?? level.pressureScore ?? "n/a"}`;
+}
+
+function nearestLower(levels: SupportResistanceLevel[], price: number): SupportResistanceLevel | null {
+  return levels.filter((level) => level.price < price).sort((a, b) => b.price - a.price)[0] ?? null;
+}
+
+function nearestHigher(levels: SupportResistanceLevel[], price: number): SupportResistanceLevel | null {
+  return levels.filter((level) => level.price > price).sort((a, b) => a.price - b.price)[0] ?? null;
+}
+
+function describeFlowPath(
+  level: SupportResistanceLevel,
+  sameSideLevels: SupportResistanceLevel[],
+  oppositeLevels: SupportResistanceLevel[],
+): string {
+  if (level.kind === "support") {
+    const holdTarget = nearestHigher(oppositeLevels, level.price);
+    const failTarget = nearestLower(sameSideLevels, level.price);
+    return `Hold -> ${holdTarget ? formatLevelRange(holdTarget) : "next upside flow"}; fail -> ${
+      failTarget ? formatLevelRange(failTarget) : "lower flow"
+    }`;
+  }
+
+  const clearTarget = nearestHigher(sameSideLevels, level.price);
+  const rejectTarget = nearestLower(oppositeLevels, level.price);
+  return `Clear -> ${clearTarget ? formatLevelRange(clearTarget) : "higher flow"}; reject -> ${
+    rejectTarget ? formatLevelRange(rejectTarget) : "nearest downside flow"
+  }`;
+}
+
+function evidenceToneClass(text: string): string {
+  const normalized = text.toLowerCase();
+  if (normalized.includes("thin") || normalized.includes("sell-risk") || normalized.includes("buy-risk")) {
+    return "border-amber-500/25 bg-amber-500/10 text-amber-200";
+  }
+  if (
+    normalized.includes("top #") ||
+    normalized.includes("above-average") ||
+    normalized.includes("high leverage") ||
+    normalized.includes("near current") ||
+    normalized.includes("projected")
+  ) {
+    return "border-sky-500/25 bg-sky-500/10 text-sky-200";
+  }
+  if (normalized.includes("high reach") || normalized.includes("deep")) {
+    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
+  }
+  return "border-zinc-800 bg-zinc-950 text-zinc-500";
+}
+
+function levelLineWidth(level: SupportResistanceLevel, index: number): 1 | 2 | 3 {
+  const score = level.lfxScore ?? level.pressureScore ?? level.strength;
+  if (score >= 70 || index === 0) return 3;
+  if (score >= 38) return 2;
+  return 1;
+}
+
+function levelAlpha(level: SupportResistanceLevel, index: number): number {
+  const score = level.lfxScore ?? level.pressureScore ?? level.strength;
+  return Math.min(0.95, Math.max(index === 0 ? 0.72 : 0.35, 0.3 + score / 125));
+}
+
+function chartTagForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): string {
+  if (level.pressureSource === "estimated_leverage") return `near ${side === "downside" ? "sell" : "buy"} flow`;
+  if (level.flowRank != null) return `#${level.flowRank} ${side === "downside" ? "sell" : "buy"} flow`;
+  return level.label;
+}
+
+type ChartZoneBand = {
+  id: string;
+  level: SupportResistanceLevel;
+  side: "downside" | "upside";
+  top: number;
+  height: number;
+  centerY: number;
+  arrowTop: number | null;
+  arrowHeight: number | null;
+  arrowDirection: "up" | "down" | null;
+  arrowRight: number;
+  alpha: number;
+};
 
 export default function PriceChart({
   coin,
@@ -171,37 +296,45 @@ export default function PriceChart({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
-  const [dbLevels, setDbLevels] = useState<SupportResistanceLevel[]>([]);
+  const [pressurePayload, setPressurePayload] = useState<PressurePayload | null>(null);
+  const [pressureUnavailable, setPressureUnavailable] = useState(false);
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
+  const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
+  const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
 
-  const calculatedLevels = useMemo(
-    () => calculateSupportResistanceLevels(candles, API_INTERVAL[interval]),
-    [candles, interval],
-  );
-  const usableDbLevels = useMemo(() => dbLevels.filter(isActionableLevel), [dbLevels]);
-  const usableCalculatedLevels = useMemo(() => calculatedLevels.filter(isActionableLevel), [calculatedLevels]);
-  const levels = useMemo(() => {
-    const dbSupports = usableDbLevels.filter((level) => level.kind === "support");
-    const dbResistances = usableDbLevels.filter((level) => level.kind === "resistance");
-    const calculatedSupports = usableCalculatedLevels.filter((level) => level.kind === "support");
-    const calculatedResistances = usableCalculatedLevels.filter((level) => level.kind === "resistance");
-
-    return [
-      ...(dbSupports.length > 0 ? dbSupports : calculatedSupports),
-      ...(dbResistances.length > 0 ? dbResistances : calculatedResistances),
-    ];
-  }, [usableCalculatedLevels, usableDbLevels]);
-  const currentPrice = candles.at(-1)?.close ?? null;
-  const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
-  const latestLevelTimeMs = useMemo(
+  const atrPct = useMemo(() => averageTrueRangePct(candles), [candles]);
+  const lfxSupported = marketType === "perp" && isLfxMajorCoin(coin);
+  const currentPrice = pressurePayload?.currentPrice ?? candles.at(-1)?.close ?? null;
+  const chartPressureLevels = useMemo(() => {
+    if (!lfxSupported || currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return [];
+    const baseLevels = pressurePayload?.levels ?? [];
+    const localLevels = buildLocalProjectedLfxLevels({
+      coin,
+      currentPrice,
+      candles,
+      fundingAPR: pressurePayload?.market.fundingAPR ?? null,
+      openInterestUsd: pressurePayload?.market.openInterestUsd ?? null,
+      maxLeverage: pressurePayload?.market.maxLeverage ?? null,
+      topBookImbalancePct: pressurePayload?.market.topBookImbalancePct ?? null,
+      atrPct,
+      maxLevels: 4,
+    });
+    return [...baseLevels, ...localLevels];
+  }, [atrPct, candles, coin, currentPrice, lfxSupported, pressurePayload]);
+  const levels = useMemo(
     () =>
-      levels.reduce<number | null>((latest, level) => {
-        const time = level.discoveredTimeMs ?? level.updatedAtMs ?? null;
-        if (time == null) return latest;
-        return latest == null ? time : Math.max(latest, time);
-      }, null),
-    [levels],
+      lfxSupported
+        ? pressureLevelsToSupportResistanceLevels({
+            levels: chartPressureLevels,
+            currentPrice,
+            maxPerSide: 4,
+          })
+        : [],
+    [chartPressureLevels, currentPrice, lfxSupported],
   );
+  const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
+  const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
+  const latestLevelTimeMs = pressurePayload?.updatedAt ?? null;
   const tradePlan = useMemo(
     () =>
       buildTradePlan({
@@ -213,24 +346,24 @@ export default function PriceChart({
       }),
     [candles, fundingAPR, fundingPercentile, interval, levels],
   );
-  const visibleSupports = useMemo(
+  const visibleDownsideFlows = useMemo(
     () =>
       levels
         .filter((level) => level.kind === "support" && (currentPrice == null || level.price < currentPrice))
         .sort((a, b) =>
           currentPrice == null ? b.price - a.price : Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice),
         )
-        .slice(0, 2),
+        .slice(0, 4),
     [currentPrice, levels],
   );
-  const visibleResistances = useMemo(
+  const visibleUpsideFlows = useMemo(
     () =>
       levels
         .filter((level) => level.kind === "resistance" && (currentPrice == null || level.price > currentPrice))
         .sort((a, b) =>
           currentPrice == null ? a.price - b.price : Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice),
         )
-        .slice(0, 2),
+        .slice(0, 4),
     [currentPrice, levels],
   );
 
@@ -281,35 +414,35 @@ export default function PriceChart({
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchStoredLevels() {
-      setDbLevels([]);
+    async function fetchPressureLevels() {
+      setPressureUnavailable(false);
+      setPressurePayload(null);
 
-      if (marketType !== "perp") {
+      if (!lfxSupported) {
+        setPressureUnavailable(marketType === "perp");
         return;
       }
 
       try {
-        const response = await fetch(
-          withNetworkParam(
-            `/api/market/levels?coin=${encodeURIComponent(coin)}&interval=${API_INTERVAL[interval]}&limit=18`,
-          ),
-        );
-        if (!response.ok) throw new Error("Unable to fetch stored levels.");
-        const payload = (await response.json()) as LevelsResponse;
-        if (cancelled) return;
-        setDbLevels(Array.isArray(payload.levels) ? payload.levels : []);
+        const params = new URLSearchParams({ coin });
+        if (atrPct != null) params.set("atrPct", String(atrPct));
+        const response = await fetch(withNetworkParam(`/api/market/pressure?${params.toString()}`));
+        if (!response.ok) throw new Error("Unable to fetch LFX map.");
+        const payload = (await response.json()) as PressurePayload;
+        if (!cancelled) setPressurePayload(payload);
       } catch {
         if (!cancelled) {
-          setDbLevels([]);
+          setPressurePayload(null);
+          setPressureUnavailable(true);
         }
       }
     }
 
-    fetchStoredLevels();
+    fetchPressureLevels();
     return () => {
       cancelled = true;
     };
-  }, [coin, interval, marketType]);
+  }, [atrPct, coin, lfxSupported, marketType]);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -370,71 +503,87 @@ export default function PriceChart({
 
     candleSeries.setData(data);
 
-    const firstTime = normalizeTime(candles[0]?.time ?? 0);
-    const lastTime = normalizeTime(candles.at(-1)?.time ?? 0);
-    const renderLevel = (
-      level: ReturnType<typeof calculateSupportResistanceLevels>[number],
-      index: number,
-      kind: "support" | "resistance",
-    ) => {
-      const color = kind === "support" ? "#22c55e" : "#fb7185";
-      const softColor = kind === "support" ? "rgba(34, 197, 94, 0.35)" : "rgba(251, 113, 133, 0.35)";
-      const start = toChartTime(firstTime);
-      const end = toChartTime(lastTime);
-
-      const center = chart.addSeries(LineSeries, {
-        color,
-        lineWidth: index === 0 ? 2 : 1,
-        lineStyle: index === 0 ? LineStyle.Solid : LineStyle.Dashed,
-        lastValueVisible: false,
-        priceLineVisible: false,
-        crosshairMarkerVisible: false,
-      });
-      center.setData([
-        { time: start, value: level.price },
-        { time: end, value: level.price },
-      ]);
+    const renderLevel = (level: SupportResistanceLevel, index: number, side: "downside" | "upside") => {
+      const alpha = levelAlpha(level, index);
+      const color = side === "downside" ? `rgba(20, 184, 166, ${alpha})` : `rgba(244, 63, 94, ${alpha})`;
+      const edgeColor =
+        side === "downside" ? `rgba(20, 184, 166, ${Math.max(0.28, alpha * 0.45)})` : `rgba(244, 63, 94, ${Math.max(0.28, alpha * 0.45)})`;
+      const lineWidth = levelLineWidth(level, index);
 
       candleSeries.createPriceLine({
         price: level.price,
         color,
-        lineWidth: index === 0 ? 2 : 1,
-        lineStyle: index === 0 ? LineStyle.Solid : LineStyle.Dashed,
-        axisLabelVisible: index === 0,
-        title: index === 0 ? (kind === "support" ? "Support" : "Resistance") : "",
+        lineWidth,
+        lineStyle: lineWidth >= 3 ? LineStyle.Solid : lineWidth === 2 ? LineStyle.Dashed : LineStyle.Dotted,
+        axisLabelVisible: false,
+        title: "",
       });
 
-      if (level.zoneLow != null && level.zoneHigh != null && index === 0) {
-        for (const zonePrice of [level.zoneLow, level.zoneHigh]) {
-          const edge = chart.addSeries(LineSeries, {
-            color: softColor,
-            lineWidth: 1,
-            lineStyle: LineStyle.Dotted,
-            lastValueVisible: false,
-            priceLineVisible: false,
-            crosshairMarkerVisible: false,
-          });
-          edge.setData([
-            { time: start, value: zonePrice },
-            { time: end, value: zonePrice },
-          ]);
-
+      if (level.zoneLow != null && level.zoneHigh != null) {
+        [level.zoneLow, level.zoneHigh].forEach((price) => {
           candleSeries.createPriceLine({
-            price: zonePrice,
-            color: softColor,
+            price,
+            color: edgeColor,
             lineWidth: 1,
             lineStyle: LineStyle.Dotted,
             axisLabelVisible: false,
             title: "",
           });
-        }
+        });
       }
     };
+    let zoneFrame: number | null = null;
+    const renderZoneBands = () => {
+      const currentY = currentPrice != null ? candleSeries.priceToCoordinate(currentPrice) : null;
+      const nextBands: ChartZoneBand[] = [];
 
-    visibleSupports.slice(0, 1).forEach((level, index) => renderLevel(level, index, "support"));
-    visibleResistances.slice(0, 1).forEach((level, index) => renderLevel(level, index, "resistance"));
+      [
+        ...visibleDownsideFlows.map((level, index) => ({ level, index, side: "downside" as const })),
+        ...visibleUpsideFlows.map((level, index) => ({ level, index, side: "upside" as const })),
+      ].forEach(({ level, index, side }) => {
+        const low = level.zoneLow ?? level.price;
+        const high = level.zoneHigh ?? level.price;
+        const yLow = candleSeries.priceToCoordinate(low);
+        const yHigh = candleSeries.priceToCoordinate(high);
+        const yCenter = candleSeries.priceToCoordinate(level.price);
+        if (yLow == null || yHigh == null || yCenter == null) return;
+
+        const alpha = levelAlpha(level, index);
+        const top = Math.min(yLow, yHigh);
+        const height = Math.max(4, Math.abs(yLow - yHigh));
+        const arrowHeight = currentY == null ? null : Math.max(18, Math.abs(yCenter - currentY));
+        const arrowTop = currentY == null ? null : Math.min(yCenter, currentY);
+        const arrowDirection = currentY == null ? null : yCenter < currentY ? "up" : "down";
+
+        nextBands.push({
+          id: level.id,
+          level,
+          side,
+          top,
+          height,
+          centerY: yCenter,
+          arrowTop,
+          arrowHeight,
+          arrowDirection,
+          arrowRight: side === "upside" ? 172 + index * 18 : 104 + index * 18,
+          alpha,
+        });
+      });
+      setZoneBands(nextBands);
+    };
+    const scheduleZoneBandRender = () => {
+      if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
+      zoneFrame = window.requestAnimationFrame(() => {
+        zoneFrame = null;
+        renderZoneBands();
+      });
+    };
+
+    visibleDownsideFlows.forEach((level, index) => renderLevel(level, index, "downside"));
+    visibleUpsideFlows.forEach((level, index) => renderLevel(level, index, "upside"));
 
     chart.timeScale().fitContent();
+    renderZoneBands();
     chartRef.current = chart;
 
     const resizeObserver = new ResizeObserver(() => {
@@ -442,22 +591,38 @@ export default function PriceChart({
         width: container.clientWidth,
         height: container.clientHeight,
       });
+      scheduleZoneBandRender();
     });
     resizeObserver.observe(container);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
+    chart.timeScale().subscribeVisibleTimeRangeChange(scheduleZoneBandRender);
+    chart.subscribeCrosshairMove(scheduleZoneBandRender);
+    container.addEventListener("wheel", scheduleZoneBandRender, { passive: true });
+    container.addEventListener("pointermove", scheduleZoneBandRender);
+    container.addEventListener("pointerup", scheduleZoneBandRender);
 
     return () => {
       resizeObserver.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(scheduleZoneBandRender);
+      chart.unsubscribeCrosshairMove(scheduleZoneBandRender);
+      container.removeEventListener("wheel", scheduleZoneBandRender);
+      container.removeEventListener("pointermove", scheduleZoneBandRender);
+      container.removeEventListener("pointerup", scheduleZoneBandRender);
+      if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
+      setZoneBands([]);
+      setHoveredZoneId(null);
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, visibleResistances, visibleSupports]);
+  }, [candles, currentPrice, visibleDownsideFlows, visibleUpsideFlows]);
 
   const levelSourceNote =
     latestLevelTimeMs != null
-      ? `Closed-candle levels · last confirmed ${formatTimeMs(latestLevelTimeMs)}`
-      : lastCandleTimeMs != null
-        ? `Closed-candle levels · data through ${formatTimeMs(lastCandleTimeMs + INTERVAL_MS[interval])}`
-        : "Closed-candle levels";
+      ? `Market-inferred LFX - refreshed ${formatTimeMs(latestLevelTimeMs)}`
+      : dataThroughTimeMs != null
+        ? `Market-inferred LFX - candles through ${formatTimeMs(dataThroughTimeMs)}`
+        : "Market-inferred LFX";
   const hasActionablePlan = tradePlan.bias !== "wait";
 
   return (
@@ -465,7 +630,7 @@ export default function PriceChart({
       <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <SectionEyebrow>{marketType === "spot" ? "RWA chart proxy" : "Price structure"}</SectionEyebrow>
+            <SectionEyebrow>{marketType === "spot" ? "RWA chart proxy" : "LFX map"}</SectionEyebrow>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <div className={compact ? "font-mono text-base font-semibold text-zinc-100" : "font-mono text-lg font-semibold text-zinc-100"}>{coin}</div>
               <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
@@ -476,6 +641,9 @@ export default function PriceChart({
                   {formatLevelPrice(currentPrice)}
                 </div>
               )}
+            </div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
+              Market-inferred forced-flow zones. Use as a risk map, not wallet-confirmed triggers.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -495,6 +663,22 @@ export default function PriceChart({
                 </button>
               ))}
             </div>
+            {marketType === "perp" ? (
+              <>
+                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
+                  Downside flow
+                </span>
+                <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-rose-300">
+                  Upside flow
+                </span>
+                <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
+                  Intensity = LFX
+                </span>
+                <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
+                  Market-inferred
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -503,24 +687,32 @@ export default function PriceChart({
         <div className="relative h-[360px] overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]">
           {loading ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
-              Loading price structure...
+              Loading LFX map...
             </div>
           ) : error || candles.length === 0 ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
               {error ?? "No price candles available."}
             </div>
           ) : (
-            <div ref={chartContainerRef} className="absolute inset-0" />
+            <>
+              <div ref={chartContainerRef} className="absolute inset-0" />
+              <FlowZoneOverlay
+                bands={zoneBands}
+                hoveredZoneId={hoveredZoneId}
+                onHover={setHoveredZoneId}
+                downsideLevels={visibleDownsideFlows}
+                upsideLevels={visibleUpsideFlows}
+              />
+            </>
           )}
         </div>
         <div className="mt-2 text-[11px] leading-5 text-zinc-500">{levelSourceNote}</div>
       </div>
 
       {!loading && !error && candles.length > 0 ? (
-        <div className="shrink-0 border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
-          <div className="mb-3 grid gap-2 lg:grid-cols-2">
-            <LevelStack title="Support" levels={visibleSupports} currentPrice={currentPrice} />
-            <LevelStack title="Resistance" levels={visibleResistances} currentPrice={currentPrice} />
+        <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
+          <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
+            Hover chart bands for flow size, depth, leverage, and path. Near tags are projected from recent entry flow.
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -552,7 +744,7 @@ export default function PriceChart({
               />
               <PlanBox
                 label="Target"
-                value={hasActionablePlan && tradePlan.targets.length > 0 ? tradePlan.targets.join(" → ") : "Appears after confirmation."}
+                value={hasActionablePlan && tradePlan.targets.length > 0 ? tradePlan.targets.join(" -> ") : "Appears after confirmation."}
                 tone={hasActionablePlan ? "success" : "neutral"}
               />
             </div>
@@ -564,6 +756,18 @@ export default function PriceChart({
                 {item}
               </div>
             ))}
+            {dataThroughTimeMs != null ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
+                Candles through {formatTimeMs(dataThroughTimeMs)}. LFX refreshes from current perp market data.
+              </div>
+            ) : null}
+            {pressureUnavailable || (lfxSupported && levels.length === 0) ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
+                {lfxSupported
+                  ? "LFX data is temporarily unavailable."
+                  : "LFX v1 covers BTC, ETH, SOL, HYPE."}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -571,45 +775,155 @@ export default function PriceChart({
   );
 }
 
-function LevelStack({
-  title,
-  levels,
-  currentPrice,
+function FlowZoneOverlay({
+  bands,
+  hoveredZoneId,
+  onHover,
+  downsideLevels,
+  upsideLevels,
 }: {
-  title: string;
-  levels: ReturnType<typeof calculateSupportResistanceLevels>;
-  currentPrice: number | null;
+  bands: ChartZoneBand[];
+  hoveredZoneId: string | null;
+  onHover: (id: string | null) => void;
+  downsideLevels: SupportResistanceLevel[];
+  upsideLevels: SupportResistanceLevel[];
 }) {
+  const hoveredBand = bands.find((band) => band.id === hoveredZoneId) ?? null;
+
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
-      <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-zinc-600">{title}</div>
-      {levels.length === 0 ? (
-        <div className="text-xs text-zinc-500">No active zone nearby.</div>
-      ) : (
-        <div className="grid gap-2">
-          {levels.map((level) => (
-            <div key={level.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-              <div>
-                <div className="font-mono text-xs text-zinc-200">
-                  {level.zoneLow != null && level.zoneHigh != null
-                    ? `${formatLevelPrice(level.zoneLow)}-${formatLevelPrice(level.zoneHigh)}`
-                    : formatLevelPrice(level.price)}
-                </div>
-                <div className="mt-0.5 text-[10px] text-zinc-500">
-                  {formatLevelDistance(level, currentPrice)}
-                  {formatLevelDistance(level, currentPrice) ? " · " : ""}
-                  {level.touches ?? 1} touch{(level.touches ?? 1) === 1 ? "" : "es"}
-                </div>
+    <div className="pointer-events-none absolute inset-0 z-20">
+      {bands.map((band) => {
+        const isDownside = band.side === "downside";
+        const color = isDownside ? "20, 184, 166" : "244, 63, 94";
+        const textColor = isDownside ? "text-teal-200" : "text-rose-200";
+        const borderColor = isDownside ? "border-teal-400/35" : "border-rose-400/35";
+        const active = hoveredZoneId === band.id;
+
+        return (
+          <div key={band.id}>
+            <button
+              type="button"
+              className={`pointer-events-auto absolute left-0 right-[58px] cursor-help border-y border-transparent bg-transparent transition focus:outline-none focus:ring-1 focus:ring-white/40 ${
+                active ? "shadow-[0_0_28px_rgba(255,255,255,0.12)]" : ""
+              }`}
+              style={{
+                top: band.top,
+                height: band.height,
+                backgroundColor: active ? `rgba(${color}, ${Math.max(0.1, band.alpha * 0.12)})` : "transparent",
+                borderTopColor: active ? `rgba(${color}, 0.65)` : "transparent",
+                borderBottomColor: active ? `rgba(${color}, 0.65)` : "transparent",
+              }}
+              aria-label={`${formatLevelRange(band.level)} ${band.level.label}`}
+              onClick={() => onHover(band.id)}
+              onMouseEnter={() => onHover(band.id)}
+              onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(band.id)}
+              onBlur={() => onHover(null)}
+            />
+
+            {band.arrowTop != null && band.arrowHeight != null && band.arrowDirection != null ? (
+              <div
+                className="pointer-events-auto absolute"
+                style={{ right: band.arrowRight, top: band.arrowTop, height: band.arrowHeight }}
+                onMouseEnter={() => onHover(band.id)}
+                onMouseLeave={() => onHover(null)}
+              >
+                <div
+                  className="h-full border-l border-dashed"
+                  style={{ borderColor: `rgba(${color}, ${active ? 0.9 : 0.45})` }}
+                />
+                <div
+                  className="absolute left-[-4px]"
+                  style={{
+                    ...(band.arrowDirection === "up"
+                      ? {
+                          top: -3,
+                          borderLeft: "4px solid transparent",
+                          borderRight: "4px solid transparent",
+                          borderBottom: `7px solid rgba(${color}, ${active ? 0.95 : 0.62})`,
+                        }
+                      : {
+                          bottom: -3,
+                          borderLeft: "4px solid transparent",
+                          borderRight: "4px solid transparent",
+                          borderTop: `7px solid rgba(${color}, ${active ? 0.95 : 0.62})`,
+                        }),
+                  }}
+                />
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] ${confidenceClass(level.confidence)}`}>
-                  {level.confidence ?? "low"}
-                </span>
-              </div>
-            </div>
+            ) : null}
+
+            <button
+              type="button"
+              className={`pointer-events-auto absolute right-16 max-w-[124px] cursor-help truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 ${borderColor} ${textColor}`}
+              style={{ top: Math.max(8, band.centerY - 10) }}
+              onMouseEnter={() => onHover(band.id)}
+              onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(band.id)}
+              onBlur={() => onHover(null)}
+              onClick={() => onHover(band.id)}
+            >
+              {chartTagForLevel(band.level, band.side)}
+            </button>
+          </div>
+        );
+      })}
+
+      {hoveredBand ? (
+        <LevelHoverCard band={hoveredBand} downsideLevels={downsideLevels} upsideLevels={upsideLevels} />
+      ) : null}
+    </div>
+  );
+}
+
+function LevelHoverCard({
+  band,
+  downsideLevels,
+  upsideLevels,
+}: {
+  band: ChartZoneBand;
+  downsideLevels: SupportResistanceLevel[];
+  upsideLevels: SupportResistanceLevel[];
+}) {
+  const sameSideLevels = band.side === "downside" ? downsideLevels : upsideLevels;
+  const oppositeLevels = band.side === "downside" ? upsideLevels : downsideLevels;
+  const path = describeFlowPath(band.level, sameSideLevels, oppositeLevels);
+  const isDownside = band.side === "downside";
+  const cardTop = Math.max(10, band.centerY - 88);
+
+  return (
+    <div
+      className={`pointer-events-none absolute right-16 w-[min(340px,calc(100%_-_5rem))] rounded-xl border bg-zinc-950/92 p-3 shadow-2xl backdrop-blur-md ${
+        isDownside ? "border-teal-400/30" : "border-rose-400/30"
+      }`}
+      style={{ top: cardTop }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-xs text-zinc-100">{formatLevelRange(band.level)}</span>
+        <span className={isDownside ? "text-[10px] text-teal-300" : "text-[10px] text-rose-300"}>
+          {band.level.label}
+        </span>
+        <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] ${confidenceClass(band.level.confidence)}`}>
+          {band.level.confidence ?? "low"}
+        </span>
+      </div>
+      <div className="mt-1 text-[11px] text-zinc-500">{flowSummary(band.level)}</div>
+      <div className="mt-2 text-[11px] leading-5 text-zinc-300">
+        {band.level.explanation ?? band.level.reason ?? "Market-inferred forced-flow zone."}
+      </div>
+      <div className="mt-1 text-[10px] leading-4 text-zinc-500">Path: {path}</div>
+      {band.level.evidence && band.level.evidence.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {band.level.evidence.slice(0, 4).map((item) => (
+            <span
+              key={item}
+              className={`rounded-full border px-2 py-0.5 text-[10px] leading-4 ${evidenceToneClass(item)}`}
+            >
+              {item}
+            </span>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

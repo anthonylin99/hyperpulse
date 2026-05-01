@@ -1,7 +1,5 @@
 export const ENABLE_TRADING_DEFAULT = false;
 export const ENABLE_WHALES_DEFAULT = false;
-export const ENABLE_FACTORS_DEFAULT = false;
-export const ENABLE_FACTORS_PROD_DEFAULT = false;
 
 function readEnvFlag(value: string | undefined): boolean | null {
   if (value === "true") return true;
@@ -14,13 +12,6 @@ function resolveFlag(...values: Array<boolean | null>): boolean | null {
     if (value != null) return value;
   }
   return null;
-}
-
-function isPublicProduction() {
-  return (
-    process.env.VERCEL_ENV === "production" ||
-    process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
-  );
 }
 
 export function isTradingEnabled() {
@@ -38,16 +29,6 @@ export function isWhalesEnabled() {
       readEnvFlag(process.env.ENABLE_WHALES),
       readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_WHALES),
     ) ?? ENABLE_WHALES_DEFAULT
-  );
-}
-
-export function isFactorsEnabled() {
-  const defaultValue = isPublicProduction() ? ENABLE_FACTORS_PROD_DEFAULT : ENABLE_FACTORS_DEFAULT;
-  return (
-    resolveFlag(
-      readEnvFlag(process.env.ENABLE_FACTORS),
-      readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_FACTORS),
-    ) ?? defaultValue
   );
 }
 

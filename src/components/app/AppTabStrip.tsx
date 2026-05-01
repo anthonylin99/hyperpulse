@@ -8,10 +8,9 @@ import { useAppConfig } from "@/context/AppConfigContext";
 
 export default function AppTabStrip() {
   const pathname = usePathname();
-  const { whalesEnabled, factorsEnabled } = useAppConfig();
+  const { whalesEnabled } = useAppConfig();
   const tabs = APP_TABS.filter((tab) => {
     if (!whalesEnabled && tab.key === "whales") return false;
-    if (!factorsEnabled && tab.key === "factors") return false;
     return true;
   });
 

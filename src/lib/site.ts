@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { isFactorsEnabled, isTradingEnabled, isWhalesEnabled } from "@/lib/appConfig";
+import { isTradingEnabled, isWhalesEnabled } from "@/lib/appConfig";
 
 const DEFAULT_SITE_URL = "https://hyperpulse-gold.vercel.app";
 const DEFAULT_OG_IMAGE = "/opengraph-image";
@@ -25,10 +25,6 @@ export function getPublicAppRoutes() {
     { path: "/portfolio", label: "Portfolio" },
     { path: "/docs", label: "Docs" },
   ];
-
-  if (isFactorsEnabled()) {
-    routes.push({ path: "/factors", label: "Factors" });
-  }
 
   if (isWhalesEnabled()) {
     routes.push({ path: "/whales", label: "Whales" });

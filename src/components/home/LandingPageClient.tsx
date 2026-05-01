@@ -9,7 +9,7 @@ function LandingContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { whalesEnabled, factorsEnabled } = useAppConfig();
+  const { whalesEnabled } = useAppConfig();
 
   const redirectHref = useMemo(() => {
     const tab = searchParams.get("tab");
@@ -25,9 +25,6 @@ function LandingContent() {
         return asset ? `/markets?asset=${encodeURIComponent(asset)}` : "/markets";
       case "portfolio":
         return "/portfolio";
-      case "factors":
-        if (!factorsEnabled) return "/markets";
-        return "/factors";
       case "docs":
         return "/docs";
       case "whales":
@@ -36,7 +33,7 @@ function LandingContent() {
       default:
         return null;
     }
-  }, [factorsEnabled, searchParams, whalesEnabled]);
+  }, [searchParams, whalesEnabled]);
 
   useEffect(() => {
     if (!redirectHref) return;

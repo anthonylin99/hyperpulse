@@ -131,10 +131,10 @@ function nextSupport(
 function fundingContext(fundingAPR?: number | null, fundingPercentile?: number | null): string | null {
   if (fundingAPR == null || !Number.isFinite(fundingAPR)) return null;
   if (fundingAPR < -8 || (fundingPercentile != null && fundingPercentile <= 20)) {
-    return "Funding is negative/cheap, so shorts may be crowded. That can support long squeezes only if price reclaims a level.";
+    return "Funding is negative/cheap, so shorts may be crowded. Upside squeezes still need price confirmation.";
   }
   if (fundingAPR > 8 || (fundingPercentile != null && fundingPercentile >= 80)) {
-    return "Funding is elevated, so longs may be crowded. Longs need cleaner confirmation and tighter invalidation.";
+    return "Funding is elevated, so longs may be crowded. Downside flow can accelerate if mark breaks lower.";
   }
   return "Funding is not extreme enough to drive the setup by itself.";
 }
@@ -315,16 +315,24 @@ export function buildTradePlan({
   const sorted = [...candles].sort((a, b) => normalizeTimestamp(a.time) - normalizeTimestamp(b.time));
   const latest = sorted.at(-1);
   const previous = sorted.at(-2);
+  const lfxMode =
+    levels.length === 0 ||
+    levels.every((level) => level.source === "leverage_liquidation" || level.pressureSource === "market_inferred");
+  const lowerLevelName = lfxMode ? "downside flow zone" : "support";
+  const upperLevelName = lfxMode ? "upside flow zone" : "resistance";
+
   if (!latest || !previous || levels.length === 0) {
     return {
       bias: "wait",
       title: "No clean setup yet",
-      summary: "HyperPulse needs more candles or cleaner structure levels before generating a useful plan.",
-      trigger: "Wait for support/resistance to populate.",
+      summary: lfxMode
+        ? "HyperPulse needs more candles or cleaner LFX zones before generating a useful plan."
+        : "HyperPulse needs more candles or cleaner structure levels before generating a useful plan.",
+      trigger: lfxMode ? "Wait for LFX map to populate." : "Wait for support/resistance to populate.",
       invalidation: "n/a",
       targets: [],
       confidence: "low",
-      context: ["This is decision support, not an automated trading signal."],
+      context: [lfxMode ? "This is a decision aid, not an automated trading signal." : "This is decision support, not an automated trading signal."],
     };
   }
 
@@ -354,8 +362,12 @@ export function buildTradePlan({
 
   const fundingNote = fundingContext(fundingAPR, fundingPercentile);
   const context = [
-    support ? `Nearest support: ${formatPrice(support.price)} (${supportDistance?.toFixed(2)}% below).` : "No nearby support detected.",
-    resistance ? `Nearest resistance: ${formatPrice(resistance.price)} (${resistanceDistance?.toFixed(2)}% above).` : "No nearby resistance detected.",
+    support
+      ? `Nearest ${lowerLevelName}: ${formatPrice(support.price)} (${supportDistance?.toFixed(2)}% below).`
+      : `No nearby ${lowerLevelName} detected.`,
+    resistance
+      ? `Nearest ${upperLevelName}: ${formatPrice(resistance.price)} (${resistanceDistance?.toFixed(2)}% above).`
+      : `No nearby ${upperLevelName} detected.`,
     fundingNote,
     "Use confirmation first; do not enter just because a level exists.",
   ].filter((item): item is string => Boolean(item));
@@ -375,9 +387,9 @@ export function buildTradePlan({
     const secondTarget = nextResistance(levels, firstTarget, resistance?.price)?.price ?? firstTarget + atr * 2.5;
     return {
       bias: "long-setup",
-      title: "Support reclaim long setup",
-      summary: `Price swept or tagged support near ${formatPrice(support.price)} and reclaimed. This is the cleanest long pattern HyperPulse sees right now.`,
-      trigger: `Hold above ${formatPrice(support.price)} after a reclaim close on ${interval}.`,
+      title: lfxMode ? "Downside flow reclaim" : "Support reclaim long setup",
+      summary: `Price swept or tagged ${lowerLevelName} near ${formatPrice(support.price)} and reclaimed. This is the cleanest long pattern HyperPulse sees right now.`,
+      trigger: `Long only while price holds above ${formatPrice(support.price)} after a reclaim close on ${interval}.`,
       invalidation: `Close back below ${formatPrice(support.price - riskBuffer(support.price, atr))}.`,
       targets: [formatPrice(firstTarget), formatPrice(secondTarget)],
       confidence: cheapFunding ? "high" : richFunding ? "low" : "medium",
@@ -410,9 +422,9 @@ export function buildTradePlan({
     }
     return {
       bias: "long-setup",
-      title: "Breakout-and-hold long setup",
-      summary: `Price broke above resistance near ${formatPrice(resistance.price)}. The better entry is usually a hold or retest, not chasing the first candle.`,
-      trigger: `Retest or hold above ${formatPrice(resistance.price)} after breakout confirmation.`,
+      title: lfxMode ? "Upside flow break-and-hold" : "Breakout-and-hold long setup",
+      summary: `Price broke above ${upperLevelName} near ${formatPrice(resistance.price)}. The better entry is usually a hold or retest, not chasing the first candle.`,
+      trigger: `Long a retest/hold of ${formatPrice(resistance.price)} after breakout confirmation.`,
       invalidation: `Close back below ${formatPrice(breakoutStop)}.`,
       targets: [formatPrice(nextTarget)],
       confidence: richFunding ? "low" : "medium",
@@ -435,9 +447,9 @@ export function buildTradePlan({
     const secondTarget = nextSupport(levels, firstTarget, support?.price)?.price ?? firstTarget - atr * 2.5;
     return {
       bias: "short-setup",
-      title: "Resistance rejection short setup",
-      summary: `Price rejected resistance near ${formatPrice(resistance.price)}. This favors patience on longs until the level is reclaimed.`,
-      trigger: `Stay below ${formatPrice(resistance.price)} after rejection confirmation.`,
+      title: lfxMode ? "Upside flow rejection" : "Resistance rejection short setup",
+      summary: `Price rejected ${upperLevelName} near ${formatPrice(resistance.price)}. This favors patience on longs until the level is reclaimed.`,
+      trigger: `Short bias only while price stays below ${formatPrice(resistance.price)}.`,
       invalidation: `Close above ${formatPrice(resistance.price + riskBuffer(resistance.price, atr))}.`,
       targets: [formatPrice(firstTarget), formatPrice(secondTarget)],
       confidence: richFunding ? "medium" : "low",
@@ -451,9 +463,13 @@ export function buildTradePlan({
       : null;
   const noTradeReason =
     rangePct != null && rangePct < minimumRewardPct
-      ? `Nearest support/resistance are only ${rangePct.toFixed(2)}% apart, so the setup is too tight for a useful risk/reward plan.`
+      ? lfxMode
+        ? `Nearest LFX zones are only ${rangePct.toFixed(2)}% apart, so the setup is too tight for a useful risk/reward plan.`
+        : `Nearest support/resistance are only ${rangePct.toFixed(2)}% apart, so the setup is too tight for a useful risk/reward plan.`
       : supportDistance != null && resistanceDistance != null
-        ? `Price is between support and resistance; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
+        ? lfxMode
+          ? `Price is between LFX zones; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
+          : `Price is between support and resistance; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
         : "Price is not interacting with a clean level yet.";
 
   return {
@@ -464,9 +480,15 @@ export function buildTradePlan({
       ? `Watch reclaim or break-and-hold above ${formatPrice(resistance.price)}.`
       : support
         ? `Watch sweep and reclaim near ${formatPrice(support.price)}.`
-        : "Wait for a new confirmed support/resistance level.",
-    invalidation: "Defined after confirmation.",
-    targets: [],
+        : lfxMode
+          ? "Wait for a new LFX zone."
+          : "Wait for a new confirmed support/resistance level.",
+    invalidation: support
+      ? lfxMode
+        ? `If taking the reclaim, invalidate below ${formatPrice(support.price - Math.max(atr * 0.35, support.price * 0.0015))}.`
+        : `If longing support, invalidate below ${formatPrice(support.price - Math.max(atr * 0.35, support.price * 0.0015))}.`
+      : "n/a",
+    targets: resistance ? [formatPrice(resistance.price)] : [],
     confidence: "low",
     context,
   };

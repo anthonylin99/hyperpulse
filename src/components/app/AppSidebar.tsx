@@ -7,7 +7,6 @@ import {
   BookOpenText,
   BriefcaseBusiness,
   House,
-  Layers3,
   Shield,
   Waves,
 } from "lucide-react";
@@ -19,7 +18,6 @@ import { cn } from "@/lib/format";
 const TAB_ICONS: Record<AppTabKey, typeof BarChart3> = {
   home: House,
   markets: BarChart3,
-  factors: Layers3,
   whales: Waves,
   portfolio: BriefcaseBusiness,
   docs: Shield,
@@ -28,7 +26,6 @@ const TAB_ICONS: Record<AppTabKey, typeof BarChart3> = {
 const TAB_HELPERS: Record<AppTabKey, string> = {
   home: "Landing + proof",
   markets: "Directory + context",
-  factors: "Research regimes",
   whales: "Tracked flow",
   portfolio: "Review workspace",
   docs: "Methodology",
@@ -36,11 +33,10 @@ const TAB_HELPERS: Record<AppTabKey, string> = {
 
 export default function AppSidebar() {
   const pathname = usePathname();
-  const { whalesEnabled, factorsEnabled } = useAppConfig();
+  const { whalesEnabled } = useAppConfig();
 
   const tabs = APP_TABS.filter((tab) => {
     if (!whalesEnabled && tab.key === "whales") return false;
-    if (!factorsEnabled && tab.key === "factors") return false;
     return true;
   });
 

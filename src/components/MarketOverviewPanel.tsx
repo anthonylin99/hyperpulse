@@ -1,11 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
 import { cn, formatFundingAPR, formatPct, formatUSD } from "@/lib/format";
 import SentimentSlider from "./SentimentSlider";
-import FactorLeaderStrip from "./factors/FactorLeaderStrip";
 
 const DASHBOARD_MAJORS = ["BTC", "ETH", "SOL", "HYPE"] as const;
 
@@ -18,12 +16,11 @@ interface MarketOverviewPanelProps {
 
 export default function MarketOverviewPanel({
   title = "Market Overview",
-  description = "Live Hyperliquid context across bias, factor regime, and major perp benchmarks.",
+  description = "Live Hyperliquid context across next-session bias and major perp benchmarks.",
   showHeading = true,
   variant = "hero",
 }: MarketOverviewPanelProps) {
   const { assets, loading, selectedAsset, setSelectedAsset } = useMarket();
-  const { factorsEnabled } = useAppConfig();
   const compact = variant === "compact";
 
   const majors = useMemo(
@@ -51,20 +48,15 @@ export default function MarketOverviewPanel({
               {title}
             </h2>
             <p className={cn("text-zinc-400", compact ? "mt-1 text-[11px] leading-4" : "mt-2 text-sm leading-6")}>
-              {factorsEnabled
-                ? description
-                : compact
-                  ? "Bias and benchmark context."
-                  : "Live Hyperliquid context across next-session bias and major perp benchmarks before you scan the full market table."}
+              {compact ? "Bias and benchmark context." : description}
             </p>
           </div>
         </div>
       )}
 
-      <div className={cn("grid gap-4", compact ? "lg:grid-cols-1" : factorsEnabled ? "xl:grid-cols-[1.15fr_0.85fr]" : "xl:grid-cols-[0.9fr_1.1fr]")}>
+      <div className={cn("grid gap-4", compact ? "lg:grid-cols-1" : "xl:grid-cols-[0.9fr_1.1fr]")}>
         <div className={cn(compact ? "space-y-3" : "space-y-4")}>
           <SentimentSlider variant={compact ? "compact" : "hero"} />
-          {!compact && factorsEnabled ? <FactorLeaderStrip variant="hero" /> : null}
         </div>
 
         <div className={cn("grid min-w-0 gap-2.5", compact ? "" : "sm:grid-cols-2")}>

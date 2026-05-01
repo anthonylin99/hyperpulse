@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   PUBLIC_DEPLOYMENT_MODE,
-  isFactorsEnabled,
   isTradingEnabled,
   isWhalesEnabled,
 } from "@/lib/appConfig";
@@ -22,7 +21,6 @@ export async function GET() {
     featureFlags: {
       tradingEnabled: isTradingEnabled(),
       whalesEnabled: isWhalesEnabled(),
-      factorsEnabled: isFactorsEnabled(),
     },
     timestamp: new Date().toISOString(),
   };

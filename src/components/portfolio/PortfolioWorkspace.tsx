@@ -5,7 +5,6 @@ import { BarChart3, CircleDashed, FolderKanban, Rows3, SlidersHorizontal } from 
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import StatsGrid from "@/components/portfolio/StatsGrid";
-import FactorLeaderStrip from "@/components/factors/FactorLeaderStrip";
 import RiskStrip from "@/components/portfolio/RiskStrip";
 import CorrelationMap from "@/components/portfolio/CorrelationMap";
 import PositionsTable from "@/components/portfolio/PositionsTable";
@@ -20,7 +19,6 @@ import FundingAnalysis from "@/components/portfolio/FundingAnalysis";
 import SystemProfile from "@/components/portfolio/SystemProfile";
 import TradeSignals from "@/components/portfolio/TradeSignals";
 import MoreStats from "@/components/portfolio/MoreStats";
-import { useAppConfig } from "@/context/AppConfigContext";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatUSD } from "@/lib/format";
@@ -118,7 +116,6 @@ function DetailSection({
 }
 
 export default function PortfolioWorkspace() {
-  const { factorsEnabled } = useAppConfig();
   const { trades, loading, error } = usePortfolio();
   const { accountState } = useWallet();
   const [subtab, setSubtab] = useState<PortfolioSubtab>("overview");
@@ -139,7 +136,6 @@ export default function PortfolioWorkspace() {
         <StatsGrid density={density} />
         <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
           <div className="space-y-4">
-            {factorsEnabled ? <FactorLeaderStrip /> : null}
             <RiskStrip density={density} />
           </div>
           {hasPositions ? (
@@ -178,7 +174,7 @@ export default function PortfolioWorkspace() {
         {hasPositions ? <CorrelationMap /> : null}
       </>
     ),
-    [accountValue, factorsEnabled, hasPositions, hasTrades, totalHoldings],
+    [accountValue, hasPositions, hasTrades, totalHoldings],
   );
 
   return (

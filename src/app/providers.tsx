@@ -4,7 +4,6 @@ import { ReactNode } from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { Toaster } from "react-hot-toast";
 import { MarketProvider } from "@/context/MarketContext";
-import { FactorProvider } from "@/context/FactorContext";
 import { AppConfigProvider } from "@/context/AppConfigContext";
 import { WalletProvider } from "@/context/WalletContext";
 import { PortfolioProvider } from "@/context/PortfolioContext";
@@ -17,24 +16,22 @@ export default function Providers({ children }: { children: ReactNode }) {
   const content = (
     <AppConfigProvider>
       <MarketProvider>
-        <FactorProvider>
-          <WalletProvider>
-            <PortfolioProvider>
-              {children}
-            </PortfolioProvider>
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                style: {
-                  background: "#18181b",
-                  color: "#fafafa",
-                  border: "1px solid #27272a",
-                  fontSize: "13px",
-                },
-              }}
-            />
-          </WalletProvider>
-        </FactorProvider>
+        <WalletProvider>
+          <PortfolioProvider>
+            {children}
+          </PortfolioProvider>
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: "#18181b",
+                color: "#fafafa",
+                border: "1px solid #27272a",
+                fontSize: "13px",
+              },
+            }}
+          />
+        </WalletProvider>
       </MarketProvider>
     </AppConfigProvider>
   );
