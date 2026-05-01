@@ -324,6 +324,86 @@ function buildTrendlineLevels(
   return levels;
 }
 
+function fallbackLookbackBars(interval: ChartInterval, candleCount: number): number {
+  const bars =
+    interval === "5m" ? 144 :
+      interval === "15m" ? 120 :
+        interval === "1h" ? 96 :
+          interval === "4h" ? 84 :
+            60;
+  return Math.max(12, Math.min(bars, candleCount - 1));
+}
+
+function buildRangeFallbackLevel(
+  candles: NormalizedCandle[],
+  interval: ChartInterval,
+  currentPrice: number,
+  kind: "support" | "resistance",
+): SupportResistanceLevel | null {
+  const lookbackBars = fallbackLookbackBars(interval, candles.length);
+  const scoped = candles.slice(Math.max(0, candles.length - lookbackBars - 1), -1);
+  if (scoped.length < 8) return null;
+
+  const atr = averageTrueRange(candles);
+  const intervalMs = INTERVAL_MS[interval] ?? INTERVAL_MS["15m"];
+  const tolerance = Math.max(currentPrice * 0.0011, atr * 0.35);
+  const totalSpan = Math.max(scoped[scoped.length - 1].timeMs - scoped[0].timeMs, 1);
+
+  const candidates = scoped
+    .map((candle, index) => {
+      const price = kind === "support" ? candle.low : candle.high;
+      const distancePct = ((price - currentPrice) / currentPrice) * 100;
+      if (kind === "support" && price >= currentPrice) return null;
+      if (kind === "resistance" && price <= currentPrice) return null;
+      if (Math.abs(distancePct) > 12 || Math.abs(distancePct) < 0.12) return null;
+
+      const previous = scoped[Math.max(index - 1, 0)];
+      const next = scoped[Math.min(index + 1, scoped.length - 1)];
+      const isLocal =
+        kind === "support"
+          ? candle.low <= previous.low && candle.low <= next.low
+          : candle.high >= previous.high && candle.high >= next.high;
+      const recency = (candle.timeMs - scoped[0].timeMs) / totalSpan;
+      const closeness = 1 / Math.max(Math.abs(distancePct), 0.2);
+      const rejection = candleRejection(candle, kind);
+      const touches = scoped.filter((test) => Math.abs((kind === "support" ? test.low : test.high) - price) <= tolerance).length;
+      const score = (isLocal ? 2 : 0.6) + recency * 1.2 + closeness * 1.8 + rejection + Math.min(touches, 4) * 0.35;
+
+      return {
+        candle,
+        price,
+        distancePct,
+        score,
+        touches: Math.max(touches, 1),
+      };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate != null)
+    .sort((a, b) => b.score - a.score);
+
+  const best = candidates[0];
+  if (!best) return null;
+
+  return {
+    id: `range-fallback-${kind}-${best.price.toFixed(4)}`,
+    label: kind === "support" ? "Range Support" : "Range Resistance",
+    kind,
+    source: "swing_pivot",
+    price: best.price,
+    ...levelBand(best.price, atr, kind),
+    strength: Math.max(best.score, 1),
+    touches: best.touches,
+    distancePct: best.distancePct,
+    pivotTimeMs: best.candle.timeMs,
+    discoveredTimeMs: best.candle.timeMs + intervalMs,
+    updatedAtMs: best.candle.timeMs,
+    expiresAtMs: candles[candles.length - 1].timeMs + intervalMs * 12,
+    confidence: "low",
+    status: "active",
+    confirmationBars: 1,
+    reason: "Low-confidence range level from closed candles when no confirmed structure zone is available.",
+  };
+}
+
 export function calculateSupportResistanceLevels(
   candles: LevelCandle[],
   interval: ChartInterval,
@@ -347,7 +427,7 @@ export function calculateSupportResistanceLevels(
       return true;
     });
 
-  return combined
+  const ranked: SupportResistanceLevel[] = combined
     .sort((a, b) => {
       const aDistance = Math.abs(a.distancePct ?? Infinity);
       const bDistance = Math.abs(b.distancePct ?? Infinity);
@@ -356,6 +436,19 @@ export function calculateSupportResistanceLevels(
       return bScore - aScore;
     })
     .slice(0, 8);
+
+  const withFallbacks = [...ranked];
+  for (const kind of ["support", "resistance"] as const) {
+    if (withFallbacks.some((level) => level.kind === kind && level.status !== "expired" && level.status !== "broken")) continue;
+    const fallback = buildRangeFallbackLevel(normalized, interval, currentPrice, kind);
+    if (fallback) withFallbacks.push(fallback);
+  }
+
+  return withFallbacks.sort((a, b) => {
+    const aDistance = Math.abs(a.distancePct ?? Infinity);
+    const bDistance = Math.abs(b.distancePct ?? Infinity);
+    return aDistance - bDistance;
+  });
 }
 
 export function nearestLevel(

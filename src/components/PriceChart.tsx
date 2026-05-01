@@ -180,7 +180,17 @@ export default function PriceChart({
   );
   const usableDbLevels = useMemo(() => dbLevels.filter(isActionableLevel), [dbLevels]);
   const usableCalculatedLevels = useMemo(() => calculatedLevels.filter(isActionableLevel), [calculatedLevels]);
-  const levels = usableDbLevels.length > 0 ? usableDbLevels : usableCalculatedLevels;
+  const levels = useMemo(() => {
+    const dbSupports = usableDbLevels.filter((level) => level.kind === "support");
+    const dbResistances = usableDbLevels.filter((level) => level.kind === "resistance");
+    const calculatedSupports = usableCalculatedLevels.filter((level) => level.kind === "support");
+    const calculatedResistances = usableCalculatedLevels.filter((level) => level.kind === "resistance");
+
+    return [
+      ...(dbSupports.length > 0 ? dbSupports : calculatedSupports),
+      ...(dbResistances.length > 0 ? dbResistances : calculatedResistances),
+    ];
+  }, [usableCalculatedLevels, usableDbLevels]);
   const currentPrice = candles.at(-1)?.close ?? null;
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const latestLevelTimeMs = useMemo(
