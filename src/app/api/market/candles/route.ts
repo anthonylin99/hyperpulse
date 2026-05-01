@@ -6,7 +6,7 @@ import {
   logServerError,
   parseInterval,
   parseTimestamp,
-  validateCoin,
+  validateMarketCoin,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { resolveSpotCoinForCandles } from "@/lib/spotMarkets";
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   if (limited) return limited;
 
   const { searchParams } = new URL(request.url);
-  const coin = validateCoin(searchParams.get("coin"));
+  const coin = validateMarketCoin(searchParams.get("coin"));
   const marketType = searchParams.get("marketType") || "perp";
   const interval = parseInterval(searchParams.get("interval"), "1h");
   const now = Date.now();

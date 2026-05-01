@@ -7,7 +7,7 @@ import {
   logServerError,
   parseInterval,
   parseTimestamp,
-  validateCoin,
+  validateMarketCoin,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { resolveSpotCoinForCandles } from "@/lib/spotMarkets";
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   });
   if (limited) return limited;
 
-  const coin = validateCoin(req.nextUrl.searchParams.get("coin"));
+  const coin = validateMarketCoin(req.nextUrl.searchParams.get("coin"));
   const marketType = req.nextUrl.searchParams.get("marketType") || "perp";
   if (!coin) {
     return jsonError("A valid coin is required.", { status: 400 });
