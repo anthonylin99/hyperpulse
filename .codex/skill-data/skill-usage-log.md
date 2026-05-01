@@ -85,3 +85,19 @@
 - What helped: inspecting the chart effect showed range bands were visible DOM overlays while chart-native series only drew partial historical lines.
 - Friction or missing capability: none.
 - Recommendation: keep.
+
+## 2026-05-01
+
+- Request summary: add Rejection, Break, and Pivot hover reads to LFX chart levels.
+- Skills used: `prompt-master`, `brainstorming`, `verification-gate`, `visual-first-product-thinking`, `ui-ux-pro-max`, `webapp-testing`, `browser-use:browser`.
+- What helped: existing LFX zone types already carried enough pressure/depth information to classify the hover read without adding a new API.
+- Friction or missing capability: Browser Use/node REPL is lazy-loaded through tool discovery; before discovery it can look unavailable even though it is installed.
+- Recommendation: keep.
+
+## 2026-05-01
+
+- Request summary: prevent LFX chart wheel scrolling from pulling the page and increase visible level-strength contrast.
+- Skills used: `verification-gate`, `ui-ux-pro-max`, `webapp-testing`, `browser-use:browser`.
+- What helped: Browser Use reproduced the scroll jump and then verified the chart remained in view after the lock was added.
+- Friction or missing capability: CUA scroll has to start from an actually visible chart area; an early test from the page top produced a false negative.
+- Recommendation: keep.

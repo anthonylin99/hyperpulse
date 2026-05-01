@@ -176,6 +176,62 @@ function confidenceClass(confidence: "low" | "medium" | "high" | undefined): str
   return "border-zinc-700 bg-zinc-900 text-zinc-400";
 }
 
+type LevelRead = {
+  label: "Rejection" | "Break" | "Pivot";
+  summary: string;
+  reason: string;
+  className: string;
+};
+
+function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
+  const isUpside = side === "upside";
+  const impact = level.depthAdjustedImpact;
+  const score = level.lfxScore ?? level.pressureScore ?? level.strength;
+  const thinBook = impact != null && impact >= 6;
+  const deepBook = impact != null && impact < 6;
+  const closeToMark = Math.abs(level.distancePct ?? Infinity) <= 1.2;
+
+  if (level.zoneType === "magnet" || closeToMark) {
+    return {
+      label: "Pivot",
+      summary: isUpside
+        ? "Decision zone. It can reject here or flip into breakout fuel if price accepts above."
+        : "Decision zone. It can bounce here or flip into breakdown fuel if price accepts below.",
+      reason: "Price is close enough that confirmation matters more than the raw level.",
+      className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
+    };
+  }
+
+  if (level.zoneType === "upside_squeeze" || level.zoneType === "downside_cascade" || (thinBook && score >= 38)) {
+    return {
+      label: "Break",
+      summary: isUpside
+        ? "Sell level is weakening. A clean push and hold above can carry price toward the next level."
+        : "Buy level is weakening. A clean push and hold below can carry price toward the next level.",
+      reason: isUpside ? "Asks look thin against nearby buy-risk." : "Bids look thin against nearby sell-risk.",
+      className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
+    };
+  }
+
+  if (level.zoneType === "absorption_resistance" || level.zoneType === "absorption_support" || (deepBook && score >= 28)) {
+    return {
+      label: "Rejection",
+      summary: isUpside
+        ? "Sell level looks strong. Buyers need a clean hold above it before trusting the break."
+        : "Buy level looks strong. Sellers need a clean hold below it before trusting the break.",
+      reason: isUpside ? "Asks look deep enough to absorb the first push." : "Bids look deep enough to absorb the first push.",
+      className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+    };
+  }
+
+  return {
+    label: "Pivot",
+    summary: "Decision zone. Wait for either a clean rejection or a clean hold through the level.",
+    reason: "The level is active, but the strength read is not one-sided yet.",
+    className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
+  };
+}
+
 function formatCompactUsd(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return "n/a";
   if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
@@ -220,14 +276,14 @@ function describeFlowPath(
   if (level.kind === "support") {
     const holdTarget = nearestHigher(oppositeLevels, level.price);
     const failTarget = nearestLower(sameSideLevels, level.price);
-    return `Hold -> ${holdTarget ? formatLevelRange(holdTarget) : "next upside flow"}; fail -> ${
+    return `Reject -> ${holdTarget ? formatLevelRange(holdTarget) : "next upside flow"}; break -> ${
       failTarget ? formatLevelRange(failTarget) : "lower flow"
     }`;
   }
 
   const clearTarget = nearestHigher(sameSideLevels, level.price);
   const rejectTarget = nearestLower(oppositeLevels, level.price);
-  return `Clear -> ${clearTarget ? formatLevelRange(clearTarget) : "higher flow"}; reject -> ${
+  return `Break -> ${clearTarget ? formatLevelRange(clearTarget) : "higher flow"}; reject -> ${
     rejectTarget ? formatLevelRange(rejectTarget) : "nearest downside flow"
   }`;
 }
@@ -252,16 +308,35 @@ function evidenceToneClass(text: string): string {
   return "border-zinc-800 bg-zinc-950 text-zinc-500";
 }
 
-function levelLineWidth(level: SupportResistanceLevel, index: number): 1 | 2 | 3 {
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function levelVisualStrength(level: SupportResistanceLevel, index: number): number {
   const score = level.lfxScore ?? level.pressureScore ?? level.strength;
-  if (score >= 70 || index === 0) return 3;
-  if (score >= 38) return 2;
+  const scoreTerm = clamp(score / 85, 0.08, 1);
+  const rankTerm =
+    level.flowRank != null
+      ? clamp(1 - (level.flowRank - 1) * 0.16, 0.46, 1)
+      : clamp(1 - index * 0.12, 0.5, 1);
+  const impactTerm =
+    level.depthAdjustedImpact == null ? 0.72 : clamp(Math.log10(level.depthAdjustedImpact + 1) / 1.1, 0.45, 1);
+  const sourceTerm = level.pressureSource === "estimated_leverage" ? 0.82 : 1;
+
+  return clamp(scoreTerm * 0.48 + rankTerm * 0.3 + impactTerm * 0.22, 0.22, 1) * sourceTerm;
+}
+
+function levelLineWidth(level: SupportResistanceLevel, index: number): 1 | 2 | 3 | 4 {
+  const strength = levelVisualStrength(level, index);
+  if (strength >= 0.82) return 4;
+  if (strength >= 0.62) return 3;
+  if (strength >= 0.4) return 2;
   return 1;
 }
 
 function levelAlpha(level: SupportResistanceLevel, index: number): number {
-  const score = level.lfxScore ?? level.pressureScore ?? level.strength;
-  return Math.min(0.95, Math.max(index === 0 ? 0.72 : 0.35, 0.3 + score / 125));
+  const strength = levelVisualStrength(level, index);
+  return Number(clamp(0.2 + strength * 0.72, 0.28, 0.96).toFixed(3));
 }
 
 function chartTagForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): string {
@@ -291,8 +366,10 @@ export default function PriceChart({
   fundingAPR = null,
   fundingPercentile = null,
 }: PriceChartProps) {
+  const chartFrameRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const pageScrollLockRef = useRef<{ htmlOverflow: string; bodyOverflow: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
@@ -366,6 +443,23 @@ export default function PriceChart({
         .slice(0, 4),
     [currentPrice, levels],
   );
+
+  const lockPageScrollInChart = () => {
+    if (typeof document === "undefined" || pageScrollLockRef.current) return;
+    pageScrollLockRef.current = {
+      htmlOverflow: document.documentElement.style.overflow,
+      bodyOverflow: document.body.style.overflow,
+    };
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+  };
+
+  const unlockPageScrollInChart = () => {
+    if (typeof document === "undefined" || !pageScrollLockRef.current) return;
+    document.documentElement.style.overflow = pageScrollLockRef.current.htmlOverflow;
+    document.body.style.overflow = pageScrollLockRef.current.bodyOverflow;
+    pageScrollLockRef.current = null;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -445,6 +539,22 @@ export default function PriceChart({
   }, [atrPct, coin, lfxSupported, marketType]);
 
   useEffect(() => {
+    const frame = chartFrameRef.current;
+    if (!frame) return;
+
+    const stopPageScroll = (event: WheelEvent) => {
+      event.preventDefault();
+    };
+
+    frame.addEventListener("wheel", stopPageScroll, { passive: false });
+    return () => {
+      frame.removeEventListener("wheel", stopPageScroll);
+    };
+  }, []);
+
+  useEffect(() => () => unlockPageScrollInChart(), []);
+
+  useEffect(() => {
     const container = chartContainerRef.current;
     const data = toCandlestickData(candles);
     if (!container || data.length === 0) return;
@@ -507,7 +617,7 @@ export default function PriceChart({
       const alpha = levelAlpha(level, index);
       const color = side === "downside" ? `rgba(20, 184, 166, ${alpha})` : `rgba(244, 63, 94, ${alpha})`;
       const edgeColor =
-        side === "downside" ? `rgba(20, 184, 166, ${Math.max(0.28, alpha * 0.45)})` : `rgba(244, 63, 94, ${Math.max(0.28, alpha * 0.45)})`;
+        side === "downside" ? `rgba(20, 184, 166, ${Math.max(0.18, alpha * 0.34)})` : `rgba(244, 63, 94, ${Math.max(0.18, alpha * 0.34)})`;
       const lineWidth = levelLineWidth(level, index);
 
       candleSeries.createPriceLine({
@@ -524,7 +634,7 @@ export default function PriceChart({
           candleSeries.createPriceLine({
             price,
             color: edgeColor,
-            lineWidth: 1,
+            lineWidth: lineWidth >= 3 ? 2 : 1,
             lineStyle: LineStyle.Dotted,
             axisLabelVisible: false,
             title: "",
@@ -684,7 +794,13 @@ export default function PriceChart({
       </div>
 
       <div className="p-3">
-        <div className="relative h-[360px] overflow-hidden rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]">
+        <div
+          ref={chartFrameRef}
+          className="relative h-[360px] overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
+          onPointerEnter={lockPageScrollInChart}
+          onPointerLeave={unlockPageScrollInChart}
+          onBlur={unlockPageScrollInChart}
+        >
           {loading ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
               Loading LFX map...
@@ -712,7 +828,7 @@ export default function PriceChart({
       {!loading && !error && candles.length > 0 ? (
         <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
           <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
-            Hover chart bands for flow size, depth, leverage, and path. Near tags are projected from recent entry flow.
+            Hover chart bands for Rejection, Break, or Pivot. Near tags are projected from recent entry flow.
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -794,9 +910,12 @@ function FlowZoneOverlay({
     <div className="pointer-events-none absolute inset-0 z-20">
       {bands.map((band) => {
         const isDownside = band.side === "downside";
+        const read = levelReadFor(band.level, band.side);
         const color = isDownside ? "20, 184, 166" : "244, 63, 94";
         const textColor = isDownside ? "text-teal-200" : "text-rose-200";
         const borderColor = isDownside ? "border-teal-400/35" : "border-rose-400/35";
+        const idleBandAlpha = band.alpha * 0.06;
+        const idleBorderAlpha = band.alpha * 0.3;
         const active = hoveredZoneId === band.id;
 
         return (
@@ -809,11 +928,13 @@ function FlowZoneOverlay({
               style={{
                 top: band.top,
                 height: band.height,
-                backgroundColor: active ? `rgba(${color}, ${Math.max(0.1, band.alpha * 0.12)})` : "transparent",
-                borderTopColor: active ? `rgba(${color}, 0.65)` : "transparent",
-                borderBottomColor: active ? `rgba(${color}, 0.65)` : "transparent",
+                backgroundColor: active
+                  ? `rgba(${color}, ${Math.max(0.11, band.alpha * 0.14)})`
+                  : `rgba(${color}, ${idleBandAlpha})`,
+                borderTopColor: active ? `rgba(${color}, 0.72)` : `rgba(${color}, ${idleBorderAlpha})`,
+                borderBottomColor: active ? `rgba(${color}, 0.72)` : `rgba(${color}, ${idleBorderAlpha})`,
               }}
-              aria-label={`${formatLevelRange(band.level)} ${band.level.label}`}
+              aria-label={`${formatLevelRange(band.level)} ${read.label} ${band.level.label}`}
               onClick={() => onHover(band.id)}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
@@ -830,7 +951,7 @@ function FlowZoneOverlay({
               >
                 <div
                   className="h-full border-l border-dashed"
-                  style={{ borderColor: `rgba(${color}, ${active ? 0.9 : 0.45})` }}
+                  style={{ borderColor: `rgba(${color}, ${active ? 0.9 : Math.max(0.28, band.alpha * 0.52)})` }}
                 />
                 <div
                   className="absolute left-[-4px]"
@@ -856,7 +977,13 @@ function FlowZoneOverlay({
             <button
               type="button"
               className={`pointer-events-auto absolute right-16 max-w-[124px] cursor-help truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 ${borderColor} ${textColor}`}
-              style={{ top: Math.max(8, band.centerY - 10) }}
+              style={{
+                top: Math.max(8, band.centerY - 10),
+                backgroundColor: `rgba(9, 9, 11, ${Math.max(0.74, 0.94 - band.alpha * 0.14)})`,
+                borderColor: `rgba(${color}, ${Math.max(0.28, band.alpha * 0.72)})`,
+                boxShadow: band.alpha >= 0.72 ? `0 0 ${Math.round(10 + band.alpha * 16)}px rgba(${color}, ${band.alpha * 0.18})` : "none",
+                opacity: Math.max(0.62, band.alpha),
+              }}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
@@ -889,6 +1016,7 @@ function LevelHoverCard({
   const oppositeLevels = band.side === "downside" ? upsideLevels : downsideLevels;
   const path = describeFlowPath(band.level, sameSideLevels, oppositeLevels);
   const isDownside = band.side === "downside";
+  const read = levelReadFor(band.level, band.side);
   const cardTop = Math.max(10, band.centerY - 88);
 
   return (
@@ -900,21 +1028,25 @@ function LevelHoverCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs text-zinc-100">{formatLevelRange(band.level)}</span>
-        <span className={isDownside ? "text-[10px] text-teal-300" : "text-[10px] text-rose-300"}>
-          {band.level.label}
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${read.className}`}>
+          {read.label}
         </span>
         <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] ${confidenceClass(band.level.confidence)}`}>
           {band.level.confidence ?? "low"}
         </span>
       </div>
-      <div className="mt-1 text-[11px] text-zinc-500">{flowSummary(band.level)}</div>
-      <div className="mt-2 text-[11px] leading-5 text-zinc-300">
-        {band.level.explanation ?? band.level.reason ?? "Market-inferred forced-flow zone."}
+      <div className={isDownside ? "mt-1 text-[10px] text-teal-300" : "mt-1 text-[10px] text-rose-300"}>
+        {band.level.label}
       </div>
-      <div className="mt-1 text-[10px] leading-4 text-zinc-500">Path: {path}</div>
+      <div className="mt-2 text-[12px] leading-5 text-zinc-100">
+        {read.summary}
+      </div>
+      <div className="mt-1 text-[11px] leading-5 text-zinc-400">{read.reason}</div>
+      <div className="mt-2 text-[10px] leading-4 text-zinc-500">{flowSummary(band.level)}</div>
+      <div className="mt-1 text-[10px] leading-4 text-zinc-500">Next: {path}</div>
       {band.level.evidence && band.level.evidence.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {band.level.evidence.slice(0, 4).map((item) => (
+          {band.level.evidence.slice(0, 3).map((item) => (
             <span
               key={item}
               className={`rounded-full border px-2 py-0.5 text-[10px] leading-4 ${evidenceToneClass(item)}`}

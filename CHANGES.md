@@ -67,3 +67,17 @@
 - Attempted: fetched/pulled latest `origin/main`, moved visible LFX center/range lines to native lightweight-charts price lines, made DOM bands transparent hover targets only, and subscribed overlay coordinate refresh to chart range/crosshair/wheel/pointer changes.
 - Decision: chart canvas owns visible prices; React overlay only owns tooltips, tags, and arrows.
 - Result: `docker compose build web` passes, container route smoke passes, and Browser Use verifies the BTC chart renders with LFX/near-flow content and no candle error.
+
+## 2026-05-01
+
+- Request: add simple hover reads for LFX sell/buy levels so testing can classify each level as Rejection, Break, or Pivot.
+- Attempted: fetched/pulled latest `origin/main`, mapped existing LFX zone data into the three plain-English reads, and made the chart hover card lead with the read before showing compact evidence.
+- Decision: kept the classification inside the existing chart hover UI; no new API shape or persistent test data was added.
+- Result: `docker compose build web` passes, temporary `3002` route smoke passes for health/pressure/markets. Later Browser Use discovery exposed `mcp__node_repl__js`, confirming the runtime is lazy-loaded rather than missing.
+
+## 2026-05-01
+
+- Request: stop fast chart scrolling from pulling the page upward and make LFX level strength visually clearer.
+- Attempted: added chart-frame scroll containment, temporarily locks page scroll while the pointer is inside the chart, and drove line width, opacity, band fill, arrows, and tag glow from a shared visual-strength score.
+- Decision: kept the interaction local to `PriceChart`; no global page scroll behavior changed outside chart hover.
+- Result: Docker web build passes, Browser Use verifies fast scrolling inside the chart keeps the viewport on the chart, and the rebuilt preview remains available at `http://localhost:3002/markets`.
