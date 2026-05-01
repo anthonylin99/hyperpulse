@@ -22,6 +22,9 @@ export interface MarketSetupSignal {
   isActive: boolean;
 }
 
+const MIN_ACTIONABLE_REWARD_PCT = 0.9;
+const MIN_ACTIONABLE_RR = 1.3;
+
 function normalizeTimestamp(time: number): number {
   return time > 10_000_000_000 ? time : time * 1000;
 }
@@ -48,6 +51,35 @@ function averageTrueRange(candles: LevelCandle[], length = 14): number {
       return sum + Math.max(trueRange, 0);
     }, 0) / scoped.length
   );
+}
+
+function minRewardPct(currentPrice: number, atr: number): number {
+  const atrPct = currentPrice > 0 && atr > 0 ? (atr / currentPrice) * 100 : 0;
+  return Math.max(MIN_ACTIONABLE_REWARD_PCT, atrPct * 1.35);
+}
+
+function riskBuffer(price: number, atr: number): number {
+  return Math.max(atr * 0.75, price * 0.0035);
+}
+
+function hasCleanRewardRisk(args: {
+  direction: "long" | "short";
+  entry: number;
+  target: number | null | undefined;
+  stop: number | null | undefined;
+  minRewardPct: number;
+}): boolean {
+  const { direction, entry, target, stop, minRewardPct: minimumRewardPct } = args;
+  if (entry <= 0 || target == null || stop == null) return false;
+  if (!Number.isFinite(entry) || !Number.isFinite(target) || !Number.isFinite(stop)) return false;
+
+  const reward = direction === "long" ? target - entry : entry - target;
+  const risk = direction === "long" ? entry - stop : stop - entry;
+  if (reward <= 0 || risk <= 0) return false;
+
+  const rewardPct = (reward / entry) * 100;
+  if (rewardPct < minimumRewardPct) return false;
+  return reward / risk >= MIN_ACTIONABLE_RR;
 }
 
 function nearestLevel(
@@ -137,13 +169,26 @@ export function buildMarketSetupSignal({
   const supportDistance = support ? ((currentPrice - support.price) / currentPrice) * 100 : null;
   const resistanceDistance = resistance ? ((resistance.price - currentPrice) / currentPrice) * 100 : null;
   const breakBuffer = Math.max(atr * 0.12, currentPrice * 0.001);
+  const minimumRewardPct = minRewardPct(currentPrice, atr);
   const proximityPct = 0.55;
+  const resistanceTarget = resistance ? nextResistance(levels, resistance.price, resistance.price)?.price ?? currentPrice + atr * 2.5 : null;
+  const supportTarget = support ? nextSupport(levels, support.price, support.price)?.price ?? currentPrice - atr * 2.5 : null;
 
   const resistanceBreak =
     resistance != null &&
     previous.close <= resistance.price &&
     latest.close > resistance.price + breakBuffer;
-  if (resistanceBreak && resistance) {
+  if (
+    resistanceBreak &&
+    resistance &&
+    hasCleanRewardRisk({
+      direction: "long",
+      entry: currentPrice,
+      target: resistanceTarget,
+      stop: resistance.price - riskBuffer(resistance.price, atr),
+      minRewardPct: minimumRewardPct,
+    })
+  ) {
     return {
       type: "resistance-break",
       label: "Resistance break",
@@ -160,7 +205,17 @@ export function buildMarketSetupSignal({
     latest.low <= support.price + atr * 0.35 &&
     latest.close > support.price + breakBuffer &&
     latest.close > previous.close;
-  if (supportReclaim && support) {
+  if (
+    supportReclaim &&
+    support &&
+    hasCleanRewardRisk({
+      direction: "long",
+      entry: currentPrice,
+      target: resistance?.price,
+      stop: support.price - riskBuffer(support.price, atr),
+      minRewardPct: minimumRewardPct,
+    })
+  ) {
     return {
       type: "support-reclaim",
       label: "Support reclaim",
@@ -176,7 +231,17 @@ export function buildMarketSetupSignal({
     support != null &&
     previous.close >= support.price &&
     latest.close < support.price - breakBuffer;
-  if (supportBreak && support) {
+  if (
+    supportBreak &&
+    support &&
+    hasCleanRewardRisk({
+      direction: "short",
+      entry: currentPrice,
+      target: supportTarget,
+      stop: support.price + riskBuffer(support.price, atr),
+      minRewardPct: minimumRewardPct,
+    })
+  ) {
     return {
       type: "support-break",
       label: "Support break",
@@ -214,14 +279,21 @@ export function buildMarketSetupSignal({
 
   return {
     type: "none",
-    label: "Range wait",
+    label:
+      support &&
+      resistance &&
+      resistanceDistance != null &&
+      supportDistance != null &&
+      resistanceDistance + supportDistance < minimumRewardPct
+        ? "Range too tight"
+        : "Range wait",
     detail: resistance
-      ? `Watch reclaim above ${formatPrice(resistance.price)}`
+      ? `Need clean hold above ${formatPrice(resistance.price)}`
       : support
-        ? `Watch support near ${formatPrice(support.price)}`
+        ? `Need sweep/reclaim near ${formatPrice(support.price)}`
         : "No nearby confirmation",
     tone: "neutral",
-    level: resistance?.price ?? support?.price ?? null,
+    level: null,
     distancePct: resistanceDistance ?? supportDistance,
     isActive: false,
   };
@@ -262,6 +334,7 @@ export function buildTradePlan({
   const resistance = nearestLevel(levels, "resistance", currentPrice);
   const supportDistance = support ? ((currentPrice - support.price) / currentPrice) * 100 : null;
   const resistanceDistance = resistance ? ((resistance.price - currentPrice) / currentPrice) * 100 : null;
+  const minimumRewardPct = minRewardPct(currentPrice, atr);
   const cheapFunding = fundingAPR != null && fundingAPR < -8;
   const richFunding = fundingAPR != null && fundingAPR > 8;
   const supportReclaim =
@@ -287,7 +360,17 @@ export function buildTradePlan({
     "Use confirmation first; do not enter just because a level exists.",
   ].filter((item): item is string => Boolean(item));
 
-  if (supportReclaim && support) {
+  if (
+    supportReclaim &&
+    support &&
+    hasCleanRewardRisk({
+      direction: "long",
+      entry: currentPrice,
+      target: resistance?.price,
+      stop: support.price - riskBuffer(support.price, atr),
+      minRewardPct: minimumRewardPct,
+    })
+  ) {
     const firstTarget = resistance?.price ?? currentPrice + atr * 2.5;
     const secondTarget = nextResistance(levels, firstTarget, resistance?.price)?.price ?? firstTarget + atr * 2.5;
     return {
@@ -295,7 +378,7 @@ export function buildTradePlan({
       title: "Support reclaim long setup",
       summary: `Price swept or tagged support near ${formatPrice(support.price)} and reclaimed. This is the cleanest long pattern HyperPulse sees right now.`,
       trigger: `Hold above ${formatPrice(support.price)} after a reclaim close on ${interval}.`,
-      invalidation: `Close back below ${formatPrice(support.price - Math.max(atr * 0.35, support.price * 0.0015))}.`,
+      invalidation: `Close back below ${formatPrice(support.price - riskBuffer(support.price, atr))}.`,
       targets: [formatPrice(firstTarget), formatPrice(secondTarget)],
       confidence: cheapFunding ? "high" : richFunding ? "low" : "medium",
       context,
@@ -304,19 +387,50 @@ export function buildTradePlan({
 
   if (breakout && resistance) {
     const nextTarget = nextResistance(levels, currentPrice, resistance.price)?.price ?? currentPrice + atr * 3;
+    const breakoutStop = resistance.price - riskBuffer(resistance.price, atr);
+    if (
+      !hasCleanRewardRisk({
+        direction: "long",
+        entry: currentPrice,
+        target: nextTarget,
+        stop: breakoutStop,
+        minRewardPct: minimumRewardPct,
+      })
+    ) {
+      return {
+        bias: "wait",
+        title: "Breakout target too close",
+        summary: `Price cleared ${formatPrice(resistance.price)}, but the next target is not far enough to justify the risk buffer.`,
+        trigger: `Wait for a retest to improve R/R or a cleaner target above ${formatPrice(nextTarget)}.`,
+        invalidation: "Defined after confirmation.",
+        targets: [],
+        confidence: "low",
+        context,
+      };
+    }
     return {
       bias: "long-setup",
       title: "Breakout-and-hold long setup",
       summary: `Price broke above resistance near ${formatPrice(resistance.price)}. The better entry is usually a hold or retest, not chasing the first candle.`,
       trigger: `Retest or hold above ${formatPrice(resistance.price)} after breakout confirmation.`,
-      invalidation: `Close back below ${formatPrice(resistance.price - Math.max(atr * 0.3, resistance.price * 0.0012))}.`,
+      invalidation: `Close back below ${formatPrice(breakoutStop)}.`,
       targets: [formatPrice(nextTarget)],
       confidence: richFunding ? "low" : "medium",
       context,
     };
   }
 
-  if (rejectedResistance && resistance) {
+  if (
+    rejectedResistance &&
+    resistance &&
+    hasCleanRewardRisk({
+      direction: "short",
+      entry: currentPrice,
+      target: support?.price,
+      stop: resistance.price + riskBuffer(resistance.price, atr),
+      minRewardPct: minimumRewardPct,
+    })
+  ) {
     const firstTarget = support?.price ?? currentPrice - atr * 2;
     const secondTarget = nextSupport(levels, firstTarget, support?.price)?.price ?? firstTarget - atr * 2.5;
     return {
@@ -324,17 +438,23 @@ export function buildTradePlan({
       title: "Resistance rejection short setup",
       summary: `Price rejected resistance near ${formatPrice(resistance.price)}. This favors patience on longs until the level is reclaimed.`,
       trigger: `Stay below ${formatPrice(resistance.price)} after rejection confirmation.`,
-      invalidation: `Close above ${formatPrice(resistance.price + Math.max(atr * 0.35, resistance.price * 0.0015))}.`,
+      invalidation: `Close above ${formatPrice(resistance.price + riskBuffer(resistance.price, atr))}.`,
       targets: [formatPrice(firstTarget), formatPrice(secondTarget)],
       confidence: richFunding ? "medium" : "low",
       context,
     };
   }
 
-  const noTradeReason =
+  const rangePct =
     supportDistance != null && resistanceDistance != null
-      ? `Price is between support and resistance; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
-      : "Price is not interacting with a clean level yet.";
+      ? supportDistance + resistanceDistance
+      : null;
+  const noTradeReason =
+    rangePct != null && rangePct < minimumRewardPct
+      ? `Nearest support/resistance are only ${rangePct.toFixed(2)}% apart, so the setup is too tight for a useful risk/reward plan.`
+      : supportDistance != null && resistanceDistance != null
+        ? `Price is between support and resistance; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
+        : "Price is not interacting with a clean level yet.";
 
   return {
     bias: "wait",

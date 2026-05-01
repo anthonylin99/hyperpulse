@@ -10,9 +10,11 @@ const TONE_CLASS: Record<MarketSetupSignal["tone"], string> = {
 };
 
 function setupAction(setup: MarketSetupSignal): string {
-  if (setup.type === "support-break") return "Short <";
-  if (setup.type === "near-support") return "Long @";
-  if (setup.level != null) return "Long >";
+  if (setup.type === "resistance-break") return "Long if holds >";
+  if (setup.type === "support-reclaim") return "Long reclaim";
+  if (setup.type === "support-break") return "Short below";
+  if (setup.type === "near-support") return "Watch support";
+  if (setup.type === "near-resistance") return "Watch resistance";
   return "Wait";
 }
 
@@ -32,7 +34,7 @@ export default function SetupBadge({ setup }: { setup?: MarketSetupSignal | null
 
   return (
     <span
-      className={`inline-flex min-w-[82px] items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium transition ${
+      className={`inline-flex min-w-[104px] items-center justify-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium transition ${
         TONE_CLASS[setup.tone]
       } ${setup.isActive ? "animate-pulse" : ""}`}
       title={`${setup.label}: ${setup.detail}`}
