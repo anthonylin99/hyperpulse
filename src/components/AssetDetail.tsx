@@ -21,6 +21,7 @@ import {
   type OrderbookSnapshot,
 } from "@/lib/positioningContext";
 import PriceChart from "./PriceChart";
+import LiquidityMapPanel from "./LiquidityMapPanel";
 import { CompactStat, FilterChip, SectionEyebrow } from "@/components/trading-ui";
 
 interface AssetDetailProps {
@@ -53,7 +54,7 @@ export default function AssetDetail({
   const [loadingOrderbook, setLoadingOrderbook] = useState(false);
   const [orderbook, setOrderbook] = useState<OrderbookSnapshot | null>(null);
   const [orderbookError, setOrderbookError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"price" | "funding" | "leverage">("price");
+  const [tab, setTab] = useState<"price" | "liquidity" | "funding" | "leverage">("price");
   const [fundingView, setFundingView] = useState<"apr" | "hourly">("apr");
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
@@ -219,6 +220,7 @@ export default function AssetDetail({
       {/* Tab selector */}
       <div className="flex items-center gap-1 px-4 pb-2">
         <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
+        <FilterChip label="Liquidity map" active={tab === "liquidity"} onClick={() => setTab("liquidity")} className="py-1.5 text-xs" />
         <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
         <FilterChip label="Leverage / Crowd" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
       </div>
@@ -234,6 +236,8 @@ export default function AssetDetail({
               fundingPercentile={fundingRegime.percentile}
             />
           </div>
+        ) : tab === "liquidity" ? (
+          <LiquidityMapPanel coin={asset.coin} />
         ) : tab === "funding" ? (
           <div>
             {/* Funding range selector */}
