@@ -9,6 +9,7 @@ import FactorLeaderStrip from "@/components/factors/FactorLeaderStrip";
 import RiskStrip from "@/components/portfolio/RiskStrip";
 import CorrelationMap from "@/components/portfolio/CorrelationMap";
 import PositionsTable from "@/components/portfolio/PositionsTable";
+import PositionTradeLevelsPanel from "@/components/portfolio/PositionTradeLevelsPanel";
 import MonthlyPnL from "@/components/portfolio/MonthlyPnL";
 import TradeJournal from "@/components/portfolio/TradeJournal";
 import PnLWaterfall from "@/components/portfolio/PnLWaterfall";
@@ -257,6 +258,7 @@ export default function PortfolioWorkspace() {
               {subtab === "positions" && (
                 <div className="space-y-4">
                   <RiskStrip density={density} />
+                  {hasPositions ? <PositionTradeLevelsPanel /> : null}
                   {hasPositions ? <PositionsTable density={density} /> : <EmptyPositionsState />}
                 </div>
               )}

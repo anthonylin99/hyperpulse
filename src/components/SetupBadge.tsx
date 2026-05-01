@@ -9,14 +9,12 @@ const TONE_CLASS: Record<MarketSetupSignal["tone"], string> = {
   neutral: "border-zinc-800 bg-zinc-900/65 text-zinc-500",
 };
 
-const SHORT_LABEL: Record<MarketSetupSignal["type"], string> = {
-  "support-reclaim": "Reclaim",
-  "resistance-break": "Breakout",
-  "support-break": "Breakdown",
-  "near-resistance": "At R",
-  "near-support": "At S",
-  none: "Wait",
-};
+function setupAction(setup: MarketSetupSignal): string {
+  if (setup.type === "support-break") return "Short <";
+  if (setup.type === "near-support") return "Long @";
+  if (setup.level != null) return "Long >";
+  return "Wait";
+}
 
 function formatSetupLevel(value: number | null | undefined): string | null {
   if (value == null || !Number.isFinite(value)) return null;
@@ -40,7 +38,7 @@ export default function SetupBadge({ setup }: { setup?: MarketSetupSignal | null
       title={`${setup.label}: ${setup.detail}`}
     >
       {setup.isActive ? <span className="h-1.5 w-1.5 rounded-full bg-current" /> : null}
-      {SHORT_LABEL[setup.type]}
+      {setupAction(setup)}
       {level ? <span className="font-mono opacity-80">{level}</span> : null}
     </span>
   );
