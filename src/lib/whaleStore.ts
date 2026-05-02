@@ -3,6 +3,7 @@ import type {
   PositioningAlert,
   PositioningDigestRun,
   PositioningMarketSnapshot,
+  TrackedLiquidationBucket,
   WalletTimingScore,
   WhaleAlert,
   WhaleDirectionality,
@@ -35,6 +36,7 @@ const memoryWatchlist = new Map<string, WhaleWatchlistEntry>();
 const memoryPositioningAlerts = new Map<string, PositioningAlert>();
 const memoryPositioningSnapshots = new Map<string, PositioningMarketSnapshot>();
 const memoryPositioningDigests = new Map<string, PositioningDigestRun>();
+const memoryTrackedLiquidationBuckets = new Map<string, TrackedLiquidationBucket>();
 const memoryTimingScores = new Map<string, WalletTimingScore>();
 const memoryWorkerStatus: { updatedAt: number; payload: Record<string, unknown> | null } | null = null;
 
@@ -55,7 +57,7 @@ function normalizePositioningAlert(alert: PositioningAlert): PositioningAlert {
     const liquidationSide = normalized.regime === "downside_magnet" ? "long" : "short";
     const consequence = normalized.regime === "downside_magnet" ? "downside pressure can accelerate" : "squeeze pressure rises";
     normalized.whyItMatters =
-      `Tracked-book ${liquidationSide} liquidations sit ${clusterDistancePct > 0 ? "+" : ""}${clusterDistancePct.toFixed(1)}% from price ` +
+      `Tracked trader ${liquidationSide} liquidations sit ${clusterDistancePct > 0 ? "+" : ""}${clusterDistancePct.toFixed(1)}% from price ` +
       `near ${clusterPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })} with ${formatCompactSignedUsd(normalized.trackedLiquidationClusterUsd).replace(/^\+/, "")} at risk. ` +
       `If price trades into that zone, ${consequence}.`;
   }
@@ -226,6 +228,54 @@ async function ensureTables() {
       primary key (address, asset, lookahead_hours)
     );
   `);
+  await client.query(`
+    create table if not exists tracked_position_snapshots (
+      id text primary key,
+      wallet_address text not null,
+      wallet_hash text not null,
+      asset text not null,
+      side text not null,
+      market_type text not null,
+      captured_at bigint not null,
+      entry_px double precision not null,
+      entry_bucket_price double precision,
+      mark_px double precision not null,
+      size double precision not null,
+      signed_size double precision not null,
+      notional_usd double precision not null,
+      margin_used_usd double precision,
+      liquidation_px double precision,
+      liquidation_bucket_price double precision,
+      leverage_value double precision,
+      leverage_type text,
+      account_equity_usd double precision,
+      realized_pnl_30d double precision,
+      source text not null,
+      payload jsonb not null
+    );
+  `);
+  await client.query(`
+    create table if not exists liq_heatmap_buckets (
+      id text primary key,
+      asset text not null,
+      side text not null,
+      created_at bigint not null,
+      bucket_size double precision not null,
+      bucket_price double precision not null,
+      current_price double precision not null,
+      distance_pct double precision not null,
+      long_notional_usd double precision not null default 0,
+      short_notional_usd double precision not null default 0,
+      total_notional_usd double precision not null,
+      margin_usd double precision,
+      weighted_avg_leverage double precision,
+      avg_entry_price double precision,
+      position_count integer not null,
+      wallet_count integer not null,
+      source text not null,
+      payload jsonb not null
+    );
+  `);
   await client.query(`alter table whale_alerts add column if not exists directionality text;`);
   await client.query(`alter table whale_alerts add column if not exists market_type text;`);
   await client.query(`alter table whale_alerts add column if not exists risk_bucket text;`);
@@ -237,6 +287,11 @@ async function ensureTables() {
   await client.query(`create index if not exists positioning_alerts_created_at_idx on positioning_alerts (created_at desc);`);
   await client.query(`create index if not exists positioning_alerts_asset_idx on positioning_alerts (asset, created_at desc);`);
   await client.query(`create index if not exists positioning_market_snapshots_asset_idx on positioning_market_snapshots (asset, created_at desc);`);
+  await client.query(`create index if not exists tracked_position_snapshots_asset_idx on tracked_position_snapshots (asset, captured_at desc);`);
+  await client.query(`create index if not exists tracked_position_snapshots_wallet_idx on tracked_position_snapshots (wallet_address, captured_at desc);`);
+  await client.query(`create index if not exists tracked_position_snapshots_liq_idx on tracked_position_snapshots (asset, side, liquidation_bucket_price, captured_at desc);`);
+  await client.query(`create index if not exists liq_heatmap_buckets_asset_latest_idx on liq_heatmap_buckets (asset, created_at desc);`);
+  await client.query(`create index if not exists liq_heatmap_buckets_asset_side_idx on liq_heatmap_buckets (asset, side, bucket_price, created_at desc);`);
 }
 
 export async function upsertWhaleAlert(alert: WhaleAlert): Promise<void> {
@@ -699,6 +754,62 @@ export async function listPositioningMarketSnapshots(asset: string, limit = 200)
     [normalizedAsset, limit],
   );
   return result.rows.map((row) => row.payload as PositioningMarketSnapshot);
+}
+
+function normalizeTrackedLiquidationBucket(row: Record<string, unknown>): TrackedLiquidationBucket {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const trackedWalletCount = typeof payload.trackedWalletCount === "number" ? payload.trackedWalletCount : null;
+  return {
+    id: String(row.id),
+    asset: String(row.asset),
+    side: row.side === "short_liq" ? "short_liq" : "long_liq",
+    timestamp: Number(row.created_at),
+    bucketSize: Number(row.bucket_size),
+    price: Number(row.bucket_price),
+    currentPrice: Number(row.current_price),
+    distancePct: Number(row.distance_pct),
+    longNotionalUsd: Number(row.long_notional_usd),
+    shortNotionalUsd: Number(row.short_notional_usd),
+    totalNotionalUsd: Number(row.total_notional_usd),
+    marginUsd: row.margin_usd == null ? null : Number(row.margin_usd),
+    weightedAvgLeverage: row.weighted_avg_leverage == null ? null : Number(row.weighted_avg_leverage),
+    avgEntryPrice: row.avg_entry_price == null ? null : Number(row.avg_entry_price),
+    positionCount: Number(row.position_count),
+    walletCount: Number(row.wallet_count),
+    source: "tracked_wallet_sample",
+    trackedWalletCount,
+    payload,
+  };
+}
+
+export async function listTrackedLiquidationBuckets(asset: string, limit = 160, maxAgeMs = 30 * 60 * 1000): Promise<TrackedLiquidationBucket[]> {
+  const normalizedAsset = asset.toUpperCase();
+  const client = getPool();
+  if (!client) {
+    return Array.from(memoryTrackedLiquidationBuckets.values())
+      .filter((bucket) => bucket.asset === normalizedAsset)
+      .sort((a, b) => b.timestamp - a.timestamp || b.totalNotionalUsd - a.totalNotionalUsd)
+      .slice(0, limit);
+  }
+  await ensureTables();
+  const latest = await client.query(
+    `select max(created_at) as created_at from liq_heatmap_buckets where asset = $1`,
+    [normalizedAsset],
+  );
+  const latestTimestamp = latest.rows[0]?.created_at == null ? null : Number(latest.rows[0].created_at);
+  if (!latestTimestamp) return [];
+  if (maxAgeMs > 0 && latestTimestamp < Date.now() - maxAgeMs) return [];
+  const result = await client.query(
+    `
+    select *
+    from liq_heatmap_buckets
+    where asset = $1 and created_at = $2
+    order by bucket_price desc
+    limit $3
+  `,
+    [normalizedAsset, latestTimestamp, limit],
+  );
+  return result.rows.map((row) => normalizeTrackedLiquidationBucket(row));
 }
 
 export async function getWalletTimingScores(address: string): Promise<WalletTimingScore[]> {

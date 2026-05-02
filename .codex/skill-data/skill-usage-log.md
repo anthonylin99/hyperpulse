@@ -101,3 +101,51 @@
 - What helped: Browser Use reproduced the scroll jump and then verified the chart remained in view after the lock was added.
 - Friction or missing capability: CUA scroll has to start from an actually visible chart area; an early test from the page top produced a false negative.
 - Recommendation: keep.
+
+## 2026-05-01
+
+- Request summary: tighten near-flow quality so random near-price projections do not show as useful levels.
+- Skills used: `prompt-master`, `brainstorming`, `verification-gate`, `webapp-testing`, `browser-use:browser`.
+- What helped: tracing `buildLocalProjectedLfxLevels` showed near flow was estimated from recent candle entries and was being ranked too heavily by closeness to mark.
+- Friction or missing capability: no unit test harness exists for `pressureLevels`, so verification relied on Docker build plus live browser inspection.
+- Recommendation: add focused tests for LFX level filtering once a test runner is introduced.
+
+## 2026-05-02
+
+- Request summary: stop market-inferred leverage tiers from showing as permanent ranked buy/sell flow ranges.
+- Skills used: `prompt-master`, `brainstorming`, `verification-gate`, `ui-ux-pro-max`, `webapp-testing`.
+- What helped: separating moving stress context from actionable flow labels matched the user's mental model and avoided inventing confidence.
+- Friction or missing capability: still no automated visual or unit test harness for LFX chart semantics.
+- Recommendation: add pressure-level unit tests before further signal logic expansion.
+
+## 2026-05-02
+
+- Request summary: run a debated agent-team review of the best level model from open interest, open trades, and volume.
+- Skills used: `spin-up-agent-team`, `prompt-master`, `brainstorming`, `online-research`.
+- What helped: specialists independently converged that aggregate OI confirms pressure but does not locate levels; challenger pushed for strict provenance before more scoring.
+- Friction or missing capability: true market-wide open-position entry/liquidation distribution is not exposed by public Hyperliquid data.
+- Recommendation: build observed volume/acceptance levels first, add OI-delta confirmation only after storing OI snapshots.
+
+## 2026-05-02
+
+- Request summary: explain current HyperPulse storage/tracking for trader positions and evaluate whether Allium is needed/costed for production liquidation heatmaps.
+- Skills used: `prompt-master`, `verification-gate`, `online-research`.
+- What helped: repo data-infra docs and whale-indexer code already show the split between market snapshots, tracked-wallet JSON profiles, and alert-level liquidation clusters.
+- Friction or missing capability: HyperPulse does not yet have normalized per-position snapshot tables, so heatmap aggregation would need a new storage layer or external provider.
+- Recommendation: add normalized tracked-position snapshots before paying for full provider coverage.
+
+## 2026-05-02
+
+- Request summary: implement zero-spend tracked-wallet v1 with normalized position snapshots, liquidation heatmap buckets, and honest tracked trader labeling.
+- Skills used: `prompt-master`, `brainstorming`, `verification-gate`, `repo-execution`, `coding-discipline`, `backend-dev-guidelines`, `webapp-testing`.
+- What helped: existing whale profiles already carried current positions, so the fastest useful path was normalizing those profiles and rebuilding bucket aggregates on the existing positioning cycle.
+- Friction or missing capability: local Browser Use surfaced an existing production hydration warning, and local whale data is empty until the whale indexer collects profiles/snapshots.
+- Recommendation: next add a small seeded integration test for bucket aggregation and then run the whale indexer long enough to inspect real tracked trader pockets.
+
+## 2026-05-02
+
+- Request summary: make LFX chart wheel zoom anchor the y-axis to the cursor point.
+- Skills used: `prompt-master`, `verification-gate`, `repo-execution`, `webapp-testing`.
+- What helped: lightweight-charts exposes `coordinateToPrice` and price-scale `setVisibleRange`, which made the fix small and local to `PriceChart`.
+- Friction or missing capability: Browser Use runtime bootstrapped, but the in-app browser pane was unavailable for final visual verification.
+- Recommendation: rerun a manual scroll-zoom check in the app pane once Browser Use has an active pane again.

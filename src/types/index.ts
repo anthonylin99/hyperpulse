@@ -551,11 +551,15 @@ export interface WhaleEpisodeEvidence {
 export interface WhalePositionSnapshot {
   coin: string;
   side: "long" | "short";
+  szi?: number;
   size: number;
   entryPx: number;
   markPx: number;
   notionalUsd: number;
+  positionValueUsd?: number;
+  marginUsedUsd?: number | null;
   leverage: number;
+  leverageType?: string | null;
   liquidationPx: number | null;
   liquidationDistancePct: number | null;
   unrealizedPnl: number;
@@ -768,6 +772,28 @@ export interface PositioningMarketSnapshot {
   spotProxySource: string | null;
   priceChange1h?: number | null;
   priceChange4h?: number | null;
+}
+
+export interface TrackedLiquidationBucket {
+  id: string;
+  asset: string;
+  side: "long_liq" | "short_liq";
+  timestamp: number;
+  bucketSize: number;
+  price: number;
+  currentPrice: number;
+  distancePct: number;
+  longNotionalUsd: number;
+  shortNotionalUsd: number;
+  totalNotionalUsd: number;
+  marginUsd: number | null;
+  weightedAvgLeverage: number | null;
+  avgEntryPrice: number | null;
+  positionCount: number;
+  walletCount: number;
+  source: "tracked_wallet_sample";
+  trackedWalletCount: number | null;
+  payload: Record<string, unknown>;
 }
 
 export interface PositioningAlert {

@@ -22,6 +22,8 @@ No Kafka, ClickHouse, Kubernetes, or full web Docker migration is required in th
 - `market_context_snapshots`
 - `market_funding_rates`
 - `positioning_market_snapshots`
+- `tracked_position_snapshots`
+- `liq_heatmap_buckets`
 - `whale_alerts`
 - `whale_trade_episodes`
 - `portfolio_trade_sizing_snapshots`
@@ -90,10 +92,20 @@ MARKET_COLLECTOR_INTERVAL_MS=300000
 MARKET_COLLECTOR_ONCE=true
 ```
 
+## Tracked Trader Liquidation Map
+
+HyperPulse stores a zero-spend v1 liquidation map from tracked wallet profiles, not a full exchange-wide position book.
+
+- `tracked_position_snapshots` normalizes current per-wallet perp positions with entry, mark, signed size, notional, margin, leverage, and liquidation price.
+- `liq_heatmap_buckets` aggregates those positions by liquidation price bucket so the app can show tracked long/short liquidation pockets without recomputing from JSON profiles on every request.
+- Buckets are rebuilt by the whale indexer during its positioning cycle and are used by `/api/whales/liquidation-heatmap` and `/api/market/pressure` when fresh rows exist.
+- Labels should say `tracked trader` or `tracked wallet sample`; do not call this a full-market liquidation heatmap.
+
 ## Guardrails
 
 - No full raw trade tape in v1.
 - No full order-book history in v1.
+- No full-market liquidation heatmap claim until coverage comes from a market-wide provider or equivalent exchange-wide reconstruction.
 - Wallet IDs should be hashed before they are used in model-training tables.
 - MCP is read-only and returns `noOrderPlacement: true` guardrails.
 - Use `ingestion_checkpoints` for restart-safe capture.

@@ -326,7 +326,7 @@ export default function DocsPage() {
             <Section id="whales" eyebrow="Whales" title="How the positioning monitor works">
               <p>
                 The Whales tab now works as a read-only positioning monitor. It combines three signal families:
-                crowding setups on major perps, nearby tracked-book liquidation pockets, and rare tracked-wallet repeat
+                crowding setups on major perps, nearby tracked trader liquidation pockets, and rare tracked-wallet repeat
                 behavior that can be reviewed on a dedicated wallet page.
               </p>
               <div className="grid gap-3 md:grid-cols-2">
@@ -361,7 +361,7 @@ export default function DocsPage() {
                 <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-300">What this monitor is not</div>
                 <div className="mt-3 space-y-2 text-sm text-zinc-300">
                   <div>Crowding is a structural heuristic on major perps, not a guaranteed predictive model.</div>
-                  <div>Liquidation pressure is a tracked-book subset from profitable wallets, not a full exchange-wide liquidation map.</div>
+                  <div>Liquidation pressure is a tracked trader subset from profitable wallets, not a full exchange-wide liquidation map.</div>
                   <div>Rare whale signals are tracked-wallet behavior screens, not copy-trade recommendations.</div>
                 </div>
               </div>

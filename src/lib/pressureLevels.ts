@@ -17,6 +17,11 @@ const DEFAULT_MAX_LEVELS = 8;
 const MARKET_ONLY_COVERAGE: PressureCoverage = "market_only";
 const LFX_TIER_WEIGHTS = [0.38, 0.27, 0.2, 0.15];
 const LOCAL_PROJECTION_TIER_WEIGHTS = [0.6, 0.4];
+const LOCAL_PROJECTION_MIN_FLOW_SHARE = 0.18;
+const LOCAL_PROJECTION_MIN_CANDIDATES = 5;
+const LOCAL_PROJECTION_MIN_SCORE = 38;
+const LOCAL_PROJECTION_STRONG_SHARE = 0.3;
+const LOCAL_PROJECTION_STRONG_SCORE = 32;
 
 type MarketPressureArgs = Pick<
   PressurePayload["market"],
@@ -66,6 +71,14 @@ type LocalProjectionBucket = {
   weightedLeverageTotal: number;
   entryLow: number;
   entryHigh: number;
+  candidateCount: number;
+  candleKeys: Set<string>;
+};
+
+type LocalProjectedPressureLevel = PressureLevel & {
+  localFlowShare: number;
+  localCandidateCount: number;
+  localCandleCount: number;
 };
 
 function isPositiveFinite(value: number | null | undefined): value is number {
@@ -256,6 +269,10 @@ function flowRankPhrase(flowRank: number | undefined, flowRelative: number | und
   return "Average flow";
 }
 
+function stressTierPhrase(side: PressureLevelSide): string {
+  return side === "long_liq" ? "Estimated downside stress" : "Estimated upside stress";
+}
+
 function bookDepthPhrase(side: PressureLevelSide, depthAdjustedImpact: number | null): string {
   const bookSide = side === "long_liq" ? "bids" : "asks";
   if (depthAdjustedImpact == null) return `${bookSide} unknown`;
@@ -331,6 +348,30 @@ function buildLevelEvidence({
   ];
 }
 
+function buildStressEvidence({
+  side,
+  notionalUsd,
+  weightedLeverage,
+  depthAdjustedImpact,
+  volatilityReach,
+  flowSide,
+}: {
+  side: PressureLevelSide;
+  notionalUsd: number;
+  weightedLeverage: number;
+  depthAdjustedImpact: number | null;
+  volatilityReach: number;
+  flowSide: PressureFlowSide;
+}): string[] {
+  return [
+    stressTierPhrase(side),
+    `${compactUsd(notionalUsd)} est. ${flowSide === "forced_sell" ? "sell-stress" : "buy-stress"}`,
+    bookDepthPhrase(side, depthAdjustedImpact),
+    leverageBucket(weightedLeverage),
+    reachPhrase(volatilityReach),
+  ];
+}
+
 function annotateLfxLevels(levels: PressureLevel[]): PressureLevel[] {
   const averages: Record<PressureLevelSide, number> = {
     long_liq: 0,
@@ -355,16 +396,28 @@ function annotateLfxLevels(levels: PressureLevel[]): PressureLevel[] {
       averages[level.side] > 0 ? Number((level.notionalUsd / averages[level.side]).toFixed(2)) : undefined;
     const nextLeverageBucket = leverageBucket(level.weightedLeverage);
     const explanation = buildLevelExplanation(level.zoneType);
-    const evidence = buildLevelEvidence({
-      side: level.side,
-      notionalUsd: level.notionalUsd,
-      weightedLeverage: level.weightedLeverage,
-      depthAdjustedImpact: level.depthAdjustedImpact,
-      volatilityReach: level.volatilityReach,
-      flowSide: level.flowSide,
-      flowRank,
-      flowRelative,
-    });
+    const evidence =
+      level.source === "estimated_leverage" && level.evidence?.length
+        ? level.evidence
+        : level.source === "market_inferred"
+          ? buildStressEvidence({
+              side: level.side,
+              notionalUsd: level.notionalUsd,
+              weightedLeverage: level.weightedLeverage,
+              depthAdjustedImpact: level.depthAdjustedImpact,
+              volatilityReach: level.volatilityReach,
+              flowSide: level.flowSide,
+            })
+          : buildLevelEvidence({
+              side: level.side,
+              notionalUsd: level.notionalUsd,
+              weightedLeverage: level.weightedLeverage,
+              depthAdjustedImpact: level.depthAdjustedImpact,
+              volatilityReach: level.volatilityReach,
+              flowSide: level.flowSide,
+              flowRank,
+              flowRelative,
+            });
 
     return {
       ...level,
@@ -524,6 +577,22 @@ export function buildMarketInferredLfxLevels({
   return annotateLfxLevels([...longLevels, ...shortLevels].sort(comparePressureLevels).slice(0, maxLevels));
 }
 
+function isStrongLocalProjection(level: LocalProjectedPressureLevel): boolean {
+  if (level.zoneType === "dead_zone") return false;
+  if (level.localCandidateCount < LOCAL_PROJECTION_MIN_CANDIDATES) return false;
+  if (level.localFlowShare < LOCAL_PROJECTION_MIN_FLOW_SHARE) return false;
+  if (level.lfxScore >= LOCAL_PROJECTION_MIN_SCORE) return true;
+  return level.localFlowShare >= LOCAL_PROJECTION_STRONG_SHARE && level.lfxScore >= LOCAL_PROJECTION_STRONG_SCORE;
+}
+
+function compareLocalProjectedLevels(a: LocalProjectedPressureLevel, b: LocalProjectedPressureLevel): number {
+  const aQuality = a.lfxScore * 0.72 + a.localFlowShare * 100 * 0.24 + Math.min(a.localCandleCount, 12) * 0.35;
+  const bQuality = b.lfxScore * 0.72 + b.localFlowShare * 100 * 0.24 + Math.min(b.localCandleCount, 12) * 0.35;
+  const qualityDelta = bQuality - aQuality;
+  if (Math.abs(qualityDelta) >= 0.01) return qualityDelta;
+  return Math.abs(a.distancePct) - Math.abs(b.distancePct);
+}
+
 export function buildLocalProjectedLfxLevels({
   coin,
   currentPrice,
@@ -564,12 +633,14 @@ export function buildLocalProjectedLfxLevels({
     leverage,
     tierWeight,
     candleWeight,
+    candleKey,
   }: {
     side: PressureLevelSide;
     entry: number;
     leverage: number;
     tierWeight: number;
     candleWeight: number;
+    candleKey: string;
   }) => {
     const distance = liquidationDistancePct(leverage);
     const projectedPrice = side === "short_liq" ? entry * (1 + distance / 100) : entry * (1 - distance / 100);
@@ -589,16 +660,21 @@ export function buildLocalProjectedLfxLevels({
         weightedLeverageTotal: 0,
         entryLow: entry,
         entryHigh: entry,
+        candidateCount: 0,
+        candleKeys: new Set<string>(),
       } satisfies LocalProjectionBucket);
     const weight = candleWeight * tierWeight;
     existing.weight += weight;
     existing.weightedLeverageTotal += leverage * weight;
     existing.entryLow = Math.min(existing.entryLow, entry);
     existing.entryHigh = Math.max(existing.entryHigh, entry);
+    existing.candidateCount += 1;
+    existing.candleKeys.add(candleKey);
     buckets.set(key, existing);
   };
 
   scopedCandles.forEach((candle, index) => {
+    const candleKey = String(candle.time ?? index);
     const typical = (candle.high + candle.low + candle.close) / 3;
     const bodyMid = (candle.open + candle.close) / 2;
     const volumeUsd = Math.max(1, (candle.volume ?? 0) * typical);
@@ -611,9 +687,9 @@ export function buildLocalProjectedLfxLevels({
       tiers.forEach((leverage, tierIndex) => {
         const tierWeight = LOCAL_PROJECTION_TIER_WEIGHTS[tierIndex] ?? 0.25;
         if (entry < currentPrice) {
-          addCandidate({ side: "short_liq", entry, leverage, tierWeight, candleWeight });
+          addCandidate({ side: "short_liq", entry, leverage, tierWeight, candleWeight, candleKey });
         } else if (entry > currentPrice) {
-          addCandidate({ side: "long_liq", entry, leverage, tierWeight, candleWeight });
+          addCandidate({ side: "long_liq", entry, leverage, tierWeight, candleWeight, candleKey });
         }
       });
     });
@@ -627,14 +703,15 @@ export function buildLocalProjectedLfxLevels({
     sideWeightTotals[bucket.side] += bucket.weight;
   }
 
-  const levels = [...buckets.values()]
+  const levels: LocalProjectedPressureLevel[] = [...buckets.values()]
     .filter((bucket) => bucket.weight > 0)
-    .map((bucket): PressureLevel => {
+    .map((bucket): LocalProjectedPressureLevel => {
       const signedDistancePct = Number((((bucket.price - currentPrice) / currentPrice) * 100).toFixed(2));
       const absDistancePct = Math.abs(signedDistancePct);
       const sidePool = referenceOpenInterestUsd * sideShares[bucket.side] * 0.035;
       const sideTotal = Math.max(sideWeightTotals[bucket.side], 1);
-      const notionalUsd = Math.round(clamp((bucket.weight / sideTotal) * sidePool, 750_000, sidePool * 0.72));
+      const localFlowShare = bucket.weight / sideTotal;
+      const notionalUsd = Math.round(clamp(localFlowShare * sidePool, 0, sidePool * 0.72));
       const weightedLeverage = Math.max(3, Math.round(bucket.weightedLeverageTotal / bucket.weight));
       const leverageMultiplier = calculateLeverageMultiplier(weightedLeverage);
       const flowSide: PressureFlowSide = bucket.side === "long_liq" ? "forced_sell" : "forced_buy";
@@ -659,11 +736,12 @@ export function buildLocalProjectedLfxLevels({
       });
       const explanation = buildLocalProjectionExplanation(bucket.side, zoneType);
       const evidence = [
-        "near current",
-        "projected from recent entries",
+        `${bucket.candleKeys.size} recent candles`,
+        `${bucket.candidateCount} projected entries`,
         `${compactUsd(notionalUsd)} ${flowSide === "forced_sell" ? "sell-risk" : "buy-risk"}`,
+        `${Math.round(localFlowShare * 100)}% of nearby ${flowSide === "forced_sell" ? "sell-risk" : "buy-risk"}`,
         leverageBucket(weightedLeverage),
-        "not wallet-confirmed",
+        `entries ${formatLevelPrice(bucket.entryLow)}-${formatLevelPrice(bucket.entryHigh)}`,
       ];
 
       return {
@@ -688,21 +766,25 @@ export function buildLocalProjectedLfxLevels({
         leverageBucket: leverageBucket(weightedLeverage),
         confidence: confidenceFor({ lfxScore, depthAdjustedImpact, openInterestUsd }),
         walletCount: 0,
+        localFlowShare,
+        localCandidateCount: bucket.candidateCount,
+        localCandleCount: bucket.candleKeys.size,
       };
-    });
+    })
+    .filter(isStrongLocalProjection);
 
   const maxPerSide = Math.max(1, Math.ceil(maxLevels / 2));
   const localLongs = levels
     .filter((level) => level.side === "long_liq")
-    .sort((a, b) => b.lfxScore / Math.max(Math.abs(b.distancePct), 0.25) - a.lfxScore / Math.max(Math.abs(a.distancePct), 0.25))
+    .sort(compareLocalProjectedLevels)
     .slice(0, maxPerSide);
   const localShorts = levels
     .filter((level) => level.side === "short_liq")
-    .sort((a, b) => b.lfxScore / Math.max(Math.abs(b.distancePct), 0.25) - a.lfxScore / Math.max(Math.abs(a.distancePct), 0.25))
+    .sort(compareLocalProjectedLevels)
     .slice(0, maxPerSide);
 
-  return annotateLfxLevels([...localLongs, ...localShorts]).sort(
-    (a, b) => Math.abs(a.distancePct) - Math.abs(b.distancePct),
+  return (annotateLfxLevels([...localLongs, ...localShorts]) as LocalProjectedPressureLevel[]).sort(
+    compareLocalProjectedLevels,
   );
 }
 
@@ -725,7 +807,15 @@ export function pressureLevelsToSupportResistanceLevels({
         ? level.side === "short_liq"
           ? "Near buy flow"
           : "Near sell flow"
-        : zoneLabel(level.zoneType);
+        : level.source === "market_inferred"
+          ? level.side === "short_liq"
+            ? "Buy stress"
+            : "Sell stress"
+          : level.source === "tracked_liquidation"
+            ? level.side === "short_liq"
+              ? "Tracked buy flow"
+              : "Tracked sell flow"
+            : zoneLabel(level.zoneType);
 
     return {
       id: `lfx-${level.id}`,

@@ -27,7 +27,7 @@ const CAPABILITIES = [
   },
   {
     title: "Smart Money Tracking",
-    description: "Monitor whale flow, conviction adds, and tracked-book pressure in real time.",
+    description: "Monitor whale flow, conviction adds, and tracked trader pressure in real time.",
     href: "/whales",
     icon: Waves,
   },

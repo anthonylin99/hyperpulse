@@ -64,6 +64,11 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
   { label: "1d", value: "D" },
 ];
 
+const PRICE_WHEEL_ZOOM_IN = 0.82;
+const PRICE_WHEEL_ZOOM_OUT = 1.18;
+const PRICE_WHEEL_MIN_SPAN_PCT = 0.0018;
+const PRICE_WHEEL_MAX_SPAN_MULTIPLIER = 12;
+
 type CandleDatum = {
   time: number;
   open: number;
@@ -177,14 +182,33 @@ function confidenceClass(confidence: "low" | "medium" | "high" | undefined): str
 }
 
 type LevelRead = {
-  label: "Rejection" | "Break" | "Pivot";
+  label: "Rejection" | "Break" | "Pivot" | "Stress";
   summary: string;
   reason: string;
   className: string;
 };
 
+function isStressZone(level: SupportResistanceLevel): boolean {
+  return level.pressureSource === "market_inferred";
+}
+
+function isActionableFlowLevel(level: SupportResistanceLevel): boolean {
+  return level.pressureSource !== "market_inferred";
+}
+
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
   const isUpside = side === "upside";
+  if (isStressZone(level)) {
+    return {
+      label: "Stress",
+      summary: isUpside
+        ? "Estimated buy-stress above price. It moves with mark and should not be treated like a discovered resistance level."
+        : "Estimated sell-stress below price. It moves with mark and should not be treated like a discovered support level.",
+      reason: "This is a leverage-tier risk envelope from OI, funding, depth, and distance, not a fixed flow cluster.",
+      className: "border-zinc-600 bg-zinc-800/70 text-zinc-300",
+    };
+  }
+
   const impact = level.depthAdjustedImpact;
   const score = level.lfxScore ?? level.pressureScore ?? level.strength;
   const thinBook = impact != null && impact >= 6;
@@ -192,12 +216,16 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
   const closeToMark = Math.abs(level.distancePct ?? Infinity) <= 1.2;
 
   if (level.zoneType === "magnet" || closeToMark) {
+    const reason =
+      level.pressureSource === "estimated_leverage"
+        ? "This near-flow tag only appears when repeated recent entry projections cluster enough to clear the quality filter."
+        : "Price is close enough that confirmation matters more than the raw level.";
     return {
       label: "Pivot",
       summary: isUpside
         ? "Decision zone. It can reject here or flip into breakout fuel if price accepts above."
         : "Decision zone. It can bounce here or flip into breakdown fuel if price accepts below.",
-      reason: "Price is close enough that confirmation matters more than the raw level.",
+      reason,
       className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
     };
   }
@@ -246,7 +274,12 @@ function riskCopy(level: SupportResistanceLevel): string {
 
 function flowSummary(level: SupportResistanceLevel): string {
   if (level.pressureSource === "estimated_leverage") {
-    return `Near mark / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / LFX ${
+    return `Estimated near flow / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / LFX ${
+      level.lfxScore ?? level.pressureScore ?? "n/a"
+    }`;
+  }
+  if (isStressZone(level)) {
+    return `Stress zone / ${formatCompactUsd(level.notionalUsd)} est. ${level.flowSide === "forced_sell" ? "sell-stress" : "buy-stress"} / LFX ${
       level.lfxScore ?? level.pressureScore ?? "n/a"
     }`;
   }
@@ -290,6 +323,9 @@ function describeFlowPath(
 
 function evidenceToneClass(text: string): string {
   const normalized = text.toLowerCase();
+  if (normalized.includes("stress")) {
+    return "border-zinc-700 bg-zinc-900 text-zinc-300";
+  }
   if (normalized.includes("thin") || normalized.includes("sell-risk") || normalized.includes("buy-risk")) {
     return "border-amber-500/25 bg-amber-500/10 text-amber-200";
   }
@@ -312,6 +348,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function dataPriceSpan(candles: CandleDatum[]): number {
+  const lows = candles.map((candle) => candle.low).filter((price) => Number.isFinite(price) && price > 0);
+  const highs = candles.map((candle) => candle.high).filter((price) => Number.isFinite(price) && price > 0);
+  if (lows.length === 0 || highs.length === 0) return 1;
+  return Math.max(...highs) - Math.min(...lows);
+}
+
 function levelVisualStrength(level: SupportResistanceLevel, index: number): number {
   const score = level.lfxScore ?? level.pressureScore ?? level.strength;
   const scoreTerm = clamp(score / 85, 0.08, 1);
@@ -321,7 +364,7 @@ function levelVisualStrength(level: SupportResistanceLevel, index: number): numb
       : clamp(1 - index * 0.12, 0.5, 1);
   const impactTerm =
     level.depthAdjustedImpact == null ? 0.72 : clamp(Math.log10(level.depthAdjustedImpact + 1) / 1.1, 0.45, 1);
-  const sourceTerm = level.pressureSource === "estimated_leverage" ? 0.82 : 1;
+  const sourceTerm = level.pressureSource === "estimated_leverage" ? 0.82 : isStressZone(level) ? 0.52 : 1;
 
   return clamp(scoreTerm * 0.48 + rankTerm * 0.3 + impactTerm * 0.22, 0.22, 1) * sourceTerm;
 }
@@ -341,6 +384,7 @@ function levelAlpha(level: SupportResistanceLevel, index: number): number {
 
 function chartTagForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): string {
   if (level.pressureSource === "estimated_leverage") return `near ${side === "downside" ? "sell" : "buy"} flow`;
+  if (isStressZone(level)) return `${side === "downside" ? "sell" : "buy"} stress`;
   if (level.flowRank != null) return `#${level.flowRank} ${side === "downside" ? "sell" : "buy"} flow`;
   return level.label;
 }
@@ -417,7 +461,7 @@ export default function PriceChart({
       buildTradePlan({
         candles,
         interval: API_INTERVAL[interval],
-        levels,
+        levels: levels.filter(isActionableFlowLevel),
         fundingAPR,
         fundingPercentile,
       }),
@@ -688,6 +732,36 @@ export default function PriceChart({
         renderZoneBands();
       });
     };
+    const zoomPriceScaleAtCursor = (event: WheelEvent) => {
+      const range = candleSeries.priceScale().getVisibleRange();
+      if (!range || range.to <= range.from) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const cursorY = event.clientY - containerRect.top;
+      if (cursorY < 0 || cursorY > containerRect.height) return;
+
+      const cursorPrice = candleSeries.coordinateToPrice(cursorY);
+      if (cursorPrice == null || !Number.isFinite(cursorPrice)) return;
+
+      const span = range.to - range.from;
+      const lastPrice = candles.at(-1)?.close ?? currentPrice ?? cursorPrice;
+      const minSpan = Math.max(Math.abs(lastPrice) * PRICE_WHEEL_MIN_SPAN_PCT, minMoveForPrecision(precision) * 24);
+      const maxSpan = Math.max(dataPriceSpan(candles) * PRICE_WHEEL_MAX_SPAN_MULTIPLIER, minSpan * 8);
+      const zoomFactor = event.deltaY < 0 ? PRICE_WHEEL_ZOOM_IN : PRICE_WHEEL_ZOOM_OUT;
+      const nextSpan = clamp(span * zoomFactor, minSpan, maxSpan);
+      if (!Number.isFinite(nextSpan) || Math.abs(nextSpan - span) < minSpan * 0.001) return;
+
+      const lowerShare = clamp((cursorPrice - range.from) / span, 0.02, 0.98);
+      candleSeries.priceScale().setVisibleRange({
+        from: cursorPrice - nextSpan * lowerShare,
+        to: cursorPrice + nextSpan * (1 - lowerShare),
+      });
+      scheduleZoneBandRender();
+    };
+    const handleChartWheel = (event: WheelEvent) => {
+      zoomPriceScaleAtCursor(event);
+      scheduleZoneBandRender();
+    };
 
     visibleDownsideFlows.forEach((level, index) => renderLevel(level, index, "downside"));
     visibleUpsideFlows.forEach((level, index) => renderLevel(level, index, "upside"));
@@ -707,7 +781,7 @@ export default function PriceChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
     chart.timeScale().subscribeVisibleTimeRangeChange(scheduleZoneBandRender);
     chart.subscribeCrosshairMove(scheduleZoneBandRender);
-    container.addEventListener("wheel", scheduleZoneBandRender, { passive: true });
+    container.addEventListener("wheel", handleChartWheel, { passive: true });
     container.addEventListener("pointermove", scheduleZoneBandRender);
     container.addEventListener("pointerup", scheduleZoneBandRender);
 
@@ -716,7 +790,7 @@ export default function PriceChart({
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(scheduleZoneBandRender);
       chart.unsubscribeCrosshairMove(scheduleZoneBandRender);
-      container.removeEventListener("wheel", scheduleZoneBandRender);
+      container.removeEventListener("wheel", handleChartWheel);
       container.removeEventListener("pointermove", scheduleZoneBandRender);
       container.removeEventListener("pointerup", scheduleZoneBandRender);
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
@@ -753,7 +827,7 @@ export default function PriceChart({
               )}
             </div>
             <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Market-inferred forced-flow zones. Use as a risk map, not wallet-confirmed triggers.
+              Stress zones move with mark. Flow tags only show when a cluster clears the filter.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -776,16 +850,16 @@ export default function PriceChart({
             {marketType === "perp" ? (
               <>
                 <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
-                  Downside flow
+                  Downside context
                 </span>
                 <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-rose-300">
-                  Upside flow
+                  Upside context
                 </span>
                 <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-                  Intensity = LFX
+                  Stress = moving
                 </span>
                 <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-                  Market-inferred
+                  Flow = clustered
                 </span>
               </>
             ) : null}
@@ -828,7 +902,7 @@ export default function PriceChart({
       {!loading && !error && candles.length > 0 ? (
         <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
           <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
-            Hover chart bands for Rejection, Break, or Pivot. Near tags are projected from recent entry flow.
+            Stress zones are moving context. Rejection, Break, and Pivot are reserved for filtered flow clusters.
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1017,6 +1091,7 @@ function LevelHoverCard({
   const path = describeFlowPath(band.level, sameSideLevels, oppositeLevels);
   const isDownside = band.side === "downside";
   const read = levelReadFor(band.level, band.side);
+  const showPath = !isStressZone(band.level);
   const cardTop = Math.max(10, band.centerY - 88);
 
   return (
@@ -1043,10 +1118,10 @@ function LevelHoverCard({
       </div>
       <div className="mt-1 text-[11px] leading-5 text-zinc-400">{read.reason}</div>
       <div className="mt-2 text-[10px] leading-4 text-zinc-500">{flowSummary(band.level)}</div>
-      <div className="mt-1 text-[10px] leading-4 text-zinc-500">Next: {path}</div>
+      {showPath ? <div className="mt-1 text-[10px] leading-4 text-zinc-500">Next: {path}</div> : null}
       {band.level.evidence && band.level.evidence.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {band.level.evidence.slice(0, 3).map((item) => (
+          {band.level.evidence.slice(0, 6).map((item) => (
             <span
               key={item}
               className={`rounded-full border px-2 py-0.5 text-[10px] leading-4 ${evidenceToneClass(item)}`}

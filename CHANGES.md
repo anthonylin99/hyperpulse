@@ -81,3 +81,38 @@
 - Attempted: added chart-frame scroll containment, temporarily locks page scroll while the pointer is inside the chart, and drove line width, opacity, band fill, arrows, and tag glow from a shared visual-strength score.
 - Decision: kept the interaction local to `PriceChart`; no global page scroll behavior changed outside chart hover.
 - Result: Docker web build passes, Browser Use verifies fast scrolling inside the chart keeps the viewport on the chart, and the rebuilt preview remains available at `http://localhost:3002/markets`.
+
+## 2026-05-01
+
+- Request: explain whether near-flow tags are meaningful or just random nearby projections, and hide weak near-flow signals.
+- Attempted: traced near-flow generation to local projected LFX buckets, removed the artificial minimum notional floor, required repeated projected entries plus a meaningful share of nearby same-side flow, ranked near buckets by quality instead of pure closeness, and preserved projection-specific hover evidence.
+- Decision: near-flow remains market-inferred and estimated, but now it must clear a stricter quality gate; weak projections return no tag.
+- Result: Docker web build passes, rebuilt `3002` preview is healthy, and Browser Use verifies the hover card shows recent candles, projected entries, nearby-flow share, estimated notional, leverage bucket, and entry range.
+
+## 2026-05-02
+
+- Request: split shifting estimated stress zones from real ranked flow levels so the chart no longer always implies a buy/sell range.
+- Attempted: relabeled market-inferred leverage tiers as moving stress context, preserved ranked flow language for non-stress clusters only, softened stress-zone visual weight, and excluded stress zones from trade-plan level generation.
+- Decision: stress zones can move with mark and remain visible as risk context; `#1/#2 flow` is reserved for filtered clustered flow levels.
+- Result: Docker web build passes.
+
+## 2026-05-02
+
+- Request: clarify whether HyperPulse already stores trader/position data for a production liquidation/OI heatmap and whether Allium would be needed or paid.
+- Attempted: inspected the local data-infra docs, migration schema, market collector, and whale indexer; checked current Allium Hyperliquid docs and pricing pages.
+- Decision: the current warehouse supports market snapshots and tracked-wallet samples, but not a normalized market-wide position book. Production-grade liquidation heatmaps need either normalized tracked-position snapshots at scale or a provider/warehouse feed such as Allium.
+- Result: no runtime changes; this is a data-architecture research note.
+
+## 2026-05-02
+
+- Request: build the zero-spend tracked-wallet v1 for trader liquidation levels and label it honestly as a tracked trader sample.
+- Attempted: added normalized tracked position snapshots, liquidation heatmap bucket storage, worker persistence from enriched whale profiles, bucket rebuilds during the positioning cycle, stored-bucket reads in the heatmap API, tracked-bucket support in market pressure, and tracked trader copy across UI/docs.
+- Decision: HyperPulse now treats this as a proprietary tracked-trader data source, not a full-market liquidation heatmap. Stored buckets are used only when fresh; empty local stores return clean empty payloads instead of errors.
+- Result: Docker web/worker builds pass, migration `0002_tracked_liquidation_heatmap.sql` applies, local Postgres has the new tables, health/pressure/heatmap API smokes pass, and Browser Use verifies the whales page shows `Trader liquidation map` with no `tracked-book` label.
+
+## 2026-05-02
+
+- Request: make LFX map mouse-wheel zoom move the y-axis toward the cursor point instead of only zooming time.
+- Attempted: added cursor-anchored price-scale wheel zoom to `PriceChart`, using the candle series coordinate-to-price conversion and setting the visible price range around the cursor price.
+- Decision: keep native lightweight-charts horizontal wheel behavior and layer a small vertical price-range zoom on top so the chart zooms into the point under the cursor.
+- Result: Docker web build passes and health/pressure smokes pass. Browser Use was attempted but blocked because no active Codex browser pane was available.
