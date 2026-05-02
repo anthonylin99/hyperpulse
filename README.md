@@ -22,8 +22,8 @@ Those surfaces can still exist in non-public environments, but they are not part
 
 ## Product Surfaces
 
-- **Markets**: table-first Hyperliquid directory with price, funding, LFX setup status, and top-level tape context
-- **LFX map**: market-inferred forced-flow zones for BTC, ETH, SOL, and HYPE using free Hyperliquid market context and visible depth only; wallet-confirmed liquidation mapping is reserved for a later version
+- **Markets**: table-first Hyperliquid directory with price, funding, Reaction Map setup status, and top-level tape context
+- **Reaction Map**: market-positioning level map for BTC, ETH, SOL, and HYPE using public Hyperliquid trades, OI changes, book depth, funding, and optional tracked-wallet liquidation samples. It shows likely reaction pressure, not exact exchange-wide positions.
 - **Portfolio**: read-only wallet review with performance chart, positions, and trade journal
 - **Docs**: methodology and implementation notes for the current demo
 
@@ -75,10 +75,12 @@ Open:
 
 ## Data Infra
 
-HyperPulse now includes a lean warehouse foundation for market capture and future market-structure/LFX research:
+HyperPulse now includes a lean warehouse foundation for market capture and market-positioning research:
 
 - Canonical SQL migrations via `npm run db:migrate`
 - Market collector worker via `npm run market:collect`
+- Reaction Map stream worker via `npm run reaction:start`
+- Reaction-level API at `/api/market/reaction-levels?coin=BTC&window=15m`
 - Docker Compose local stack via `npm run docker:up`
 - Private read-only MCP server via `npm run mcp:start`
 

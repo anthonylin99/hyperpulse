@@ -326,9 +326,9 @@ export function buildTradePlan({
       bias: "wait",
       title: "No clean setup yet",
       summary: lfxMode
-        ? "HyperPulse needs more candles or cleaner LFX zones before generating a useful plan."
+        ? "HyperPulse needs more candles or cleaner Reaction Map levels before generating a useful plan."
         : "HyperPulse needs more candles or cleaner structure levels before generating a useful plan.",
-      trigger: lfxMode ? "Wait for LFX map to populate." : "Wait for support/resistance to populate.",
+      trigger: lfxMode ? "Wait for Reaction Map to populate." : "Wait for support/resistance to populate.",
       invalidation: "n/a",
       targets: [],
       confidence: "low",
@@ -464,11 +464,11 @@ export function buildTradePlan({
   const noTradeReason =
     rangePct != null && rangePct < minimumRewardPct
       ? lfxMode
-        ? `Nearest LFX zones are only ${rangePct.toFixed(2)}% apart, so the setup is too tight for a useful risk/reward plan.`
+        ? `Nearest Reaction Map levels are only ${rangePct.toFixed(2)}% apart, so the setup is too tight for a useful risk/reward plan.`
         : `Nearest support/resistance are only ${rangePct.toFixed(2)}% apart, so the setup is too tight for a useful risk/reward plan.`
       : supportDistance != null && resistanceDistance != null
         ? lfxMode
-          ? `Price is between LFX zones; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
+          ? `Price is between Reaction Map levels; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
           : `Price is between support and resistance; R/R is cleaner near ${formatPrice(support?.price)} or after ${formatPrice(resistance?.price)} breaks.`
         : "Price is not interacting with a clean level yet.";
 
@@ -481,7 +481,7 @@ export function buildTradePlan({
       : support
         ? `Watch sweep and reclaim near ${formatPrice(support.price)}.`
         : lfxMode
-          ? "Wait for a new LFX zone."
+          ? "Wait for a new Reaction Map level."
           : "Wait for a new confirmed support/resistance level.",
     invalidation: support
       ? lfxMode

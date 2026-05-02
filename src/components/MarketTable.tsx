@@ -18,9 +18,12 @@ import {
 import { formatCompact, formatPct, formatUSD } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { reportClientError } from "@/lib/clientErrorReporter";
-import { buildLfxSetupSignal, isLfxMajorCoin } from "@/lib/pressureLevels";
+import {
+  buildReactionSetupSignal,
+  isDefaultReactionAsset,
+  type ReactionLevelsPayload,
+} from "@/lib/reactionLevels";
 import type { MarketSetupSignal } from "@/lib/tradePlan";
-import type { PressureBatchPayload } from "@/types";
 
 type Mode = "perps" | "spot";
 
@@ -71,11 +74,11 @@ const RWA_SPOT_CATEGORIES = [
 
 const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
 const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
-const PRESSURE_BATCH_SIZE = 4;
-const PRESSURE_SCAN_INTERVAL_MS = 2 * 60_000;
-const LFX_MAJOR_ONLY_SIGNAL: MarketSetupSignal = {
+const REACTION_BATCH_SIZE = 4;
+const REACTION_SCAN_INTERVAL_MS = 2 * 60_000;
+const REACTION_DEFAULT_SIGNAL: MarketSetupSignal = {
   type: "none",
-  label: "LFX majors only",
+  label: "Reaction defaults",
   detail: "BTC ETH SOL HYPE",
   tone: "neutral",
   level: null,
@@ -194,43 +197,45 @@ export default function MarketTable({
     return arr;
   }, [assets, search, categoryFilter, hideSmallCaps, perpSortKey, perpSortAsc]);
 
-  const pressureAssetCoins = useMemo(
-    () => perpsFiltered.filter((asset) => isLfxMajorCoin(asset.coin)).map((asset) => asset.coin),
+  const reactionAssetCoins = useMemo(
+    () => perpsFiltered.filter((asset) => isDefaultReactionAsset(asset.coin)).map((asset) => asset.coin),
     [perpsFiltered],
   );
-  const pressureAssetKey = pressureAssetCoins.join(",");
+  const reactionAssetKey = reactionAssetCoins.join(",");
 
   useEffect(() => {
-    if (mode !== "perps" || pressureAssetKey.length === 0) return;
+    if (mode !== "perps" || reactionAssetKey.length === 0) return;
     let cancelled = false;
 
-    async function scanPressureLevels() {
-      const bucket = Math.floor(Date.now() / PRESSURE_SCAN_INTERVAL_MS);
-      const coins = pressureAssetKey.split(",").filter(Boolean);
+    async function scanReactionLevels() {
+      const bucket = Math.floor(Date.now() / REACTION_SCAN_INTERVAL_MS);
+      const coins = reactionAssetKey.split(",").filter(Boolean);
       const nextSignals: Record<string, MarketSetupSignal> = {};
-      const scanKey = `${pressureAssetKey}:${bucket}`;
+      const scanKey = `${reactionAssetKey}:${bucket}`;
       if (setupScanRef.current.key === scanKey) return;
       setupScanRef.current.key = scanKey;
       setupScanRef.current.timestamp = Date.now();
 
       const batches = Array.from(
-        { length: Math.ceil(coins.length / PRESSURE_BATCH_SIZE) },
-        (_, index) => coins.slice(index * PRESSURE_BATCH_SIZE, (index + 1) * PRESSURE_BATCH_SIZE),
+        { length: Math.ceil(coins.length / REACTION_BATCH_SIZE) },
+        (_, index) => coins.slice(index * REACTION_BATCH_SIZE, (index + 1) * REACTION_BATCH_SIZE),
       );
 
       await Promise.all(
         batches.map(async (batch) => {
           if (cancelled || batch.length === 0) return;
-          const response = await fetch(
-            withNetworkParam(
-              `/api/market/pressure?coins=${encodeURIComponent(batch.join(","))}`,
-            ),
+          await Promise.all(
+            batch.map(async (coin) => {
+              const response = await fetch(
+                withNetworkParam(
+                  `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=15m`,
+                ),
+              );
+              if (!response.ok) return;
+              const payload = (await response.json()) as ReactionLevelsPayload;
+              nextSignals[coin] = buildReactionSetupSignal(payload);
+            }),
           );
-          if (!response.ok) return;
-          const payload = (await response.json()) as PressureBatchPayload;
-          for (const [coin, pressurePayload] of Object.entries(payload.assets ?? {})) {
-            nextSignals[coin] = buildLfxSetupSignal(pressurePayload);
-          }
         }),
       );
 
@@ -239,17 +244,17 @@ export default function MarketTable({
       }
     }
 
-    scanPressureLevels().catch((error) => reportClientError("market.pressure-scan", error));
+    scanReactionLevels().catch((error) => reportClientError("market.reaction-scan", error));
     const interval = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
-      scanPressureLevels().catch((error) => reportClientError("market.pressure-scan", error));
-    }, PRESSURE_SCAN_INTERVAL_MS);
+      scanReactionLevels().catch((error) => reportClientError("market.reaction-scan", error));
+    }, REACTION_SCAN_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [mode, pressureAssetKey]);
+  }, [mode, reactionAssetKey]);
 
   const spotFiltered = useMemo(() => {
     let arr = [...rwaSpotAssets];
@@ -441,9 +446,9 @@ export default function MarketTable({
               </thead>
               <tbody>
                 {perpsFiltered.map((asset, index) => {
-                  const setupSignal = isLfxMajorCoin(asset.coin)
+                  const setupSignal = isDefaultReactionAsset(asset.coin)
                     ? setupSignals[asset.coin]
-                    : LFX_MAJOR_ONLY_SIGNAL;
+                    : REACTION_DEFAULT_SIGNAL;
 
                   return (
                     <AssetRow

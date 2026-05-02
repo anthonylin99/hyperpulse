@@ -31,7 +31,7 @@ services:
       context: .
       dockerfile: Dockerfile.web
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
       NEXT_PUBLIC_APP_URL: http://localhost:3000
@@ -55,6 +55,23 @@ services:
       MARKET_COLLECTOR_INTERVAL_MS: "300000"
       MARKET_COLLECTOR_INTERVALS: 5m,15m,1h,1d
       MARKET_COLLECTOR_LEVEL_INTERVALS: 15m,1h
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  reaction-map:
+    build:
+      context: .
+      dockerfile: workers/reaction-map/Dockerfile
+    environment:
+      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
+      REACTION_MAP_ASSETS: BTC,ETH,SOL,HYPE
+      REACTION_MAP_BUCKET_MS: "60000"
+      REACTION_MAP_FLUSH_MS: "15000"
+      REACTION_MAP_BOOK_LEVEL_LIMIT: "40"
+      REACTION_MAP_WIDE_BOOK_N_SIG_FIGS: 3,2
+      REACTION_MAP_RETENTION_MS: "86400000"
     depends_on:
       migrate:
         condition: service_completed_successfully

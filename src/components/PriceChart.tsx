@@ -13,13 +13,13 @@ import {
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import {
-  buildLocalProjectedLfxLevels,
-  isLfxMajorCoin,
-  pressureLevelsToSupportResistanceLevels,
-} from "@/lib/pressureLevels";
+  reactionLevelsToSupportResistanceLevels,
+  type ReactionLevelsPayload,
+  type ReactionOverlayMode,
+} from "@/lib/reactionLevels";
 import { buildTradePlan } from "@/lib/tradePlan";
 import { SectionEyebrow } from "@/components/trading-ui";
-import type { PressurePayload, SupportResistanceLevel } from "@/types";
+import type { SupportResistanceLevel } from "@/types";
 
 interface PriceChartProps {
   coin: string;
@@ -38,6 +38,14 @@ const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> =
   "60": "1h",
   "240": "4h",
   D: "1d",
+};
+
+const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h"> = {
+  "5": "5m",
+  "15": "15m",
+  "60": "1h",
+  "240": "1h",
+  D: "1h",
 };
 
 const LOOKBACK_MS: Record<TradingInterval, number> = {
@@ -64,10 +72,12 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
   { label: "1d", value: "D" },
 ];
 
-const PRICE_WHEEL_ZOOM_IN = 0.82;
-const PRICE_WHEEL_ZOOM_OUT = 1.18;
-const PRICE_WHEEL_MIN_SPAN_PCT = 0.0018;
-const PRICE_WHEEL_MAX_SPAN_MULTIPLIER = 12;
+const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
+  { label: "All", value: "all" },
+  { label: "Book", value: "book" },
+  { label: "Positioning", value: "positioning" },
+  { label: "Stress", value: "stress" },
+];
 
 type CandleDatum = {
   time: number;
@@ -109,25 +119,6 @@ function toCandlestickData(candles: CandleDatum[]): CandlestickData[] {
         candle.close > 0
       );
     });
-}
-
-function averageTrueRangePct(candles: CandleDatum[], length = 14): number | null {
-  const scoped = candles.slice(-length);
-  const lastClose = scoped.at(-1)?.close;
-  if (scoped.length === 0 || lastClose == null || lastClose <= 0) return null;
-
-  const atr =
-    scoped.reduce((sum, candle, index) => {
-      const previousClose = index === 0 ? candle.close : scoped[index - 1].close;
-      const trueRange = Math.max(
-        candle.high - candle.low,
-        Math.abs(candle.high - previousClose),
-        Math.abs(candle.low - previousClose),
-      );
-      return sum + Math.max(trueRange, 0);
-    }, 0) / scoped.length;
-
-  return atr > 0 ? Number(((atr / lastClose) * 100).toFixed(4)) : null;
 }
 
 function formatLevelPrice(value: number | null | undefined): string {
@@ -189,11 +180,11 @@ type LevelRead = {
 };
 
 function isStressZone(level: SupportResistanceLevel): boolean {
-  return level.pressureSource === "market_inferred";
+  return level.leverageBucket === "stress";
 }
 
 function isActionableFlowLevel(level: SupportResistanceLevel): boolean {
-  return level.pressureSource !== "market_inferred";
+  return level.status === "active";
 }
 
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
@@ -202,9 +193,9 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
     return {
       label: "Stress",
       summary: isUpside
-        ? "Estimated buy-stress above price. It moves with mark and should not be treated like a discovered resistance level."
-        : "Estimated sell-stress below price. It moves with mark and should not be treated like a discovered support level.",
-      reason: "This is a leverage-tier risk envelope from OI, funding, depth, and distance, not a fixed flow cluster.",
+        ? "Likely buy-stress above price from tracked shorts or squeeze pressure."
+        : "Likely sell-stress below price from tracked longs or crowding pressure.",
+      reason: "This is an inferred stress pocket from public streams and tracked samples, not a complete exchange-wide position map.",
       className: "border-zinc-600 bg-zinc-800/70 text-zinc-300",
     };
   }
@@ -216,15 +207,12 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
   const closeToMark = Math.abs(level.distancePct ?? Infinity) <= 1.2;
 
   if (level.zoneType === "magnet" || closeToMark) {
-    const reason =
-      level.pressureSource === "estimated_leverage"
-        ? "This near-flow tag only appears when repeated recent entry projections cluster enough to clear the quality filter."
-        : "Price is close enough that confirmation matters more than the raw level.";
+    const reason = "Price is close enough that confirmation matters more than the raw score.";
     return {
       label: "Pivot",
       summary: isUpside
-        ? "Decision zone. It can reject here or flip into breakout fuel if price accepts above."
-        : "Decision zone. It can bounce here or flip into breakdown fuel if price accepts below.",
+        ? "Likely decision zone. It can reject here or turn into continuation if price accepts above."
+        : "Likely decision zone. It can bounce here or turn into continuation if price accepts below.",
       reason,
       className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
     };
@@ -234,9 +222,9 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
     return {
       label: "Break",
       summary: isUpside
-        ? "Sell level is weakening. A clean push and hold above can carry price toward the next level."
-        : "Buy level is weakening. A clean push and hold below can carry price toward the next level.",
-      reason: isUpside ? "Asks look thin against nearby buy-risk." : "Bids look thin against nearby sell-risk.",
+        ? "Likely upside continuation if buyers hold above this concentration."
+        : "Likely downside continuation if sellers hold below this concentration.",
+      reason: isUpside ? "Asks look thin against nearby inferred buy pressure." : "Bids look thin against nearby inferred sell pressure.",
       className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
     };
   }
@@ -245,8 +233,8 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
     return {
       label: "Rejection",
       summary: isUpside
-        ? "Sell level looks strong. Buyers need a clean hold above it before trusting the break."
-        : "Buy level looks strong. Sellers need a clean hold below it before trusting the break.",
+        ? "Likely upside rejection. Buyers need a clean hold above before trusting the break."
+        : "Likely downside rejection. Sellers need a clean hold below before trusting the break.",
       reason: isUpside ? "Asks look deep enough to absorb the first push." : "Bids look deep enough to absorb the first push.",
       className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
     };
@@ -254,7 +242,7 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
 
   return {
     label: "Pivot",
-    summary: "Decision zone. Wait for either a clean rejection or a clean hold through the level.",
+    summary: "Likely two-way zone. Wait for either a clean rejection or a clean hold through the level.",
     reason: "The level is active, but the strength read is not one-sided yet.",
     className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
   };
@@ -273,13 +261,8 @@ function riskCopy(level: SupportResistanceLevel): string {
 }
 
 function flowSummary(level: SupportResistanceLevel): string {
-  if (level.pressureSource === "estimated_leverage") {
-    return `Estimated near flow / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / LFX ${
-      level.lfxScore ?? level.pressureScore ?? "n/a"
-    }`;
-  }
   if (isStressZone(level)) {
-    return `Stress zone / ${formatCompactUsd(level.notionalUsd)} est. ${level.flowSide === "forced_sell" ? "sell-stress" : "buy-stress"} / LFX ${
+    return `Tracked/inferred stress / ${formatCompactUsd(level.notionalUsd)} ${level.flowSide === "forced_sell" ? "sell-stress" : "buy-stress"} / Score ${
       level.lfxScore ?? level.pressureScore ?? "n/a"
     }`;
   }
@@ -290,7 +273,7 @@ function flowSummary(level: SupportResistanceLevel): string {
       : (level.flowRelative ?? 0) >= 1.15
         ? "Above avg"
         : "Market flow";
-  return `${rank} / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / LFX ${level.lfxScore ?? level.pressureScore ?? "n/a"}`;
+  return `${rank} / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / Score ${level.lfxScore ?? level.pressureScore ?? "n/a"}`;
 }
 
 function nearestLower(levels: SupportResistanceLevel[], price: number): SupportResistanceLevel | null {
@@ -323,7 +306,7 @@ function describeFlowPath(
 
 function evidenceToneClass(text: string): string {
   const normalized = text.toLowerCase();
-  if (normalized.includes("stress")) {
+  if (normalized.includes("stress") || normalized.includes("tracked")) {
     return "border-zinc-700 bg-zinc-900 text-zinc-300";
   }
   if (normalized.includes("thin") || normalized.includes("sell-risk") || normalized.includes("buy-risk")) {
@@ -334,7 +317,8 @@ function evidenceToneClass(text: string): string {
     normalized.includes("above-average") ||
     normalized.includes("high leverage") ||
     normalized.includes("near current") ||
-    normalized.includes("projected")
+    normalized.includes("projected") ||
+    normalized.includes("inferred")
   ) {
     return "border-sky-500/25 bg-sky-500/10 text-sky-200";
   }
@@ -348,13 +332,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function dataPriceSpan(candles: CandleDatum[]): number {
-  const lows = candles.map((candle) => candle.low).filter((price) => Number.isFinite(price) && price > 0);
-  const highs = candles.map((candle) => candle.high).filter((price) => Number.isFinite(price) && price > 0);
-  if (lows.length === 0 || highs.length === 0) return 1;
-  return Math.max(...highs) - Math.min(...lows);
-}
-
 function levelVisualStrength(level: SupportResistanceLevel, index: number): number {
   const score = level.lfxScore ?? level.pressureScore ?? level.strength;
   const scoreTerm = clamp(score / 85, 0.08, 1);
@@ -364,7 +341,7 @@ function levelVisualStrength(level: SupportResistanceLevel, index: number): numb
       : clamp(1 - index * 0.12, 0.5, 1);
   const impactTerm =
     level.depthAdjustedImpact == null ? 0.72 : clamp(Math.log10(level.depthAdjustedImpact + 1) / 1.1, 0.45, 1);
-  const sourceTerm = level.pressureSource === "estimated_leverage" ? 0.82 : isStressZone(level) ? 0.52 : 1;
+  const sourceTerm = isStressZone(level) ? 0.78 : level.leverageBucket === "book" ? 0.9 : 1;
 
   return clamp(scoreTerm * 0.48 + rankTerm * 0.3 + impactTerm * 0.22, 0.22, 1) * sourceTerm;
 }
@@ -383,10 +360,34 @@ function levelAlpha(level: SupportResistanceLevel, index: number): number {
 }
 
 function chartTagForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): string {
-  if (level.pressureSource === "estimated_leverage") return `near ${side === "downside" ? "sell" : "buy"} flow`;
   if (isStressZone(level)) return `${side === "downside" ? "sell" : "buy"} stress`;
+  if (level.leverageBucket === "book") return `${side === "downside" ? "bid" : "ask"} book`;
+  if (level.leverageBucket === "positioning") return `${side === "downside" ? "long" : "short"} crowd`;
+  if (level.leverageBucket === "mixed") return "mixed level";
   if (level.flowRank != null) return `#${level.flowRank} ${side === "downside" ? "sell" : "buy"} flow`;
   return level.label;
+}
+
+function reactionDisplayPriority(level: SupportResistanceLevel): number {
+  const score = level.lfxScore ?? level.pressureScore ?? level.strength;
+  const distance = Math.abs(level.distancePct ?? 0);
+  const distanceBonus = clamp(distance / 4, 0, 1) * 18;
+  const sourceBonus =
+    level.leverageBucket === "stress"
+      ? 10
+      : level.leverageBucket === "mixed"
+        ? 8
+        : level.leverageBucket === "positioning"
+          ? 6
+          : 0;
+  return score + distanceBonus + sourceBonus;
+}
+
+function selectVisibleReactionLevels(levels: SupportResistanceLevel[]): SupportResistanceLevel[] {
+  return [...levels]
+    .sort((a, b) => reactionDisplayPriority(b) - reactionDisplayPriority(a))
+    .slice(0, 4)
+    .sort((a, b) => a.price - b.price);
 }
 
 type ChartZoneBand = {
@@ -417,45 +418,22 @@ export default function PriceChart({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
-  const [pressurePayload, setPressurePayload] = useState<PressurePayload | null>(null);
-  const [pressureUnavailable, setPressureUnavailable] = useState(false);
+  const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
+  const [reactionUnavailable, setReactionUnavailable] = useState(false);
+  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("all");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
 
-  const atrPct = useMemo(() => averageTrueRangePct(candles), [candles]);
-  const lfxSupported = marketType === "perp" && isLfxMajorCoin(coin);
-  const currentPrice = pressurePayload?.currentPrice ?? candles.at(-1)?.close ?? null;
-  const chartPressureLevels = useMemo(() => {
-    if (!lfxSupported || currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return [];
-    const baseLevels = pressurePayload?.levels ?? [];
-    const localLevels = buildLocalProjectedLfxLevels({
-      coin,
-      currentPrice,
-      candles,
-      fundingAPR: pressurePayload?.market.fundingAPR ?? null,
-      openInterestUsd: pressurePayload?.market.openInterestUsd ?? null,
-      maxLeverage: pressurePayload?.market.maxLeverage ?? null,
-      topBookImbalancePct: pressurePayload?.market.topBookImbalancePct ?? null,
-      atrPct,
-      maxLevels: 4,
-    });
-    return [...baseLevels, ...localLevels];
-  }, [atrPct, candles, coin, currentPrice, lfxSupported, pressurePayload]);
+  const reactionSupported = marketType === "perp";
+  const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
   const levels = useMemo(
-    () =>
-      lfxSupported
-        ? pressureLevelsToSupportResistanceLevels({
-            levels: chartPressureLevels,
-            currentPrice,
-            maxPerSide: 4,
-          })
-        : [],
-    [chartPressureLevels, currentPrice, lfxSupported],
+    () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, overlayMode) : []),
+    [overlayMode, reactionPayload, reactionSupported],
   );
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
-  const latestLevelTimeMs = pressurePayload?.updatedAt ?? null;
+  const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
   const tradePlan = useMemo(
     () =>
       buildTradePlan({
@@ -469,22 +447,16 @@ export default function PriceChart({
   );
   const visibleDownsideFlows = useMemo(
     () =>
-      levels
-        .filter((level) => level.kind === "support" && (currentPrice == null || level.price < currentPrice))
-        .sort((a, b) =>
-          currentPrice == null ? b.price - a.price : Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice),
-        )
-        .slice(0, 4),
+      selectVisibleReactionLevels(
+        levels.filter((level) => level.kind === "support" && (currentPrice == null || level.price < currentPrice)),
+      ),
     [currentPrice, levels],
   );
   const visibleUpsideFlows = useMemo(
     () =>
-      levels
-        .filter((level) => level.kind === "resistance" && (currentPrice == null || level.price > currentPrice))
-        .sort((a, b) =>
-          currentPrice == null ? a.price - b.price : Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice),
-        )
-        .slice(0, 4),
+      selectVisibleReactionLevels(
+        levels.filter((level) => level.kind === "resistance" && (currentPrice == null || level.price > currentPrice)),
+      ),
     [currentPrice, levels],
   );
 
@@ -552,35 +524,40 @@ export default function PriceChart({
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchPressureLevels() {
-      setPressureUnavailable(false);
-      setPressurePayload(null);
+    async function fetchReactionLevels() {
+      setReactionUnavailable(false);
+      setReactionPayload(null);
 
-      if (!lfxSupported) {
-        setPressureUnavailable(marketType === "perp");
+      if (!reactionSupported) {
+        setReactionUnavailable(false);
         return;
       }
 
       try {
-        const params = new URLSearchParams({ coin });
-        if (atrPct != null) params.set("atrPct", String(atrPct));
-        const response = await fetch(withNetworkParam(`/api/market/pressure?${params.toString()}`));
-        if (!response.ok) throw new Error("Unable to fetch LFX map.");
-        const payload = (await response.json()) as PressurePayload;
-        if (!cancelled) setPressurePayload(payload);
+        const params = new URLSearchParams({
+          coin,
+          window: REACTION_WINDOW[interval],
+        });
+        const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`));
+        if (!response.ok) throw new Error("Unable to fetch Reaction Map.");
+        const payload = (await response.json()) as ReactionLevelsPayload;
+        if (!cancelled) {
+          setReactionPayload(payload);
+          setReactionUnavailable(payload.levels.length === 0);
+        }
       } catch {
         if (!cancelled) {
-          setPressurePayload(null);
-          setPressureUnavailable(true);
+          setReactionPayload(null);
+          setReactionUnavailable(true);
         }
       }
     }
 
-    fetchPressureLevels();
+    fetchReactionLevels();
     return () => {
       cancelled = true;
     };
-  }, [atrPct, coin, lfxSupported, marketType]);
+  }, [coin, interval, reactionSupported]);
 
   useEffect(() => {
     const frame = chartFrameRef.current;
@@ -732,37 +709,6 @@ export default function PriceChart({
         renderZoneBands();
       });
     };
-    const zoomPriceScaleAtCursor = (event: WheelEvent) => {
-      const range = candleSeries.priceScale().getVisibleRange();
-      if (!range || range.to <= range.from) return;
-
-      const containerRect = container.getBoundingClientRect();
-      const cursorY = event.clientY - containerRect.top;
-      if (cursorY < 0 || cursorY > containerRect.height) return;
-
-      const cursorPrice = candleSeries.coordinateToPrice(cursorY);
-      if (cursorPrice == null || !Number.isFinite(cursorPrice)) return;
-
-      const span = range.to - range.from;
-      const lastPrice = candles.at(-1)?.close ?? currentPrice ?? cursorPrice;
-      const minSpan = Math.max(Math.abs(lastPrice) * PRICE_WHEEL_MIN_SPAN_PCT, minMoveForPrecision(precision) * 24);
-      const maxSpan = Math.max(dataPriceSpan(candles) * PRICE_WHEEL_MAX_SPAN_MULTIPLIER, minSpan * 8);
-      const zoomFactor = event.deltaY < 0 ? PRICE_WHEEL_ZOOM_IN : PRICE_WHEEL_ZOOM_OUT;
-      const nextSpan = clamp(span * zoomFactor, minSpan, maxSpan);
-      if (!Number.isFinite(nextSpan) || Math.abs(nextSpan - span) < minSpan * 0.001) return;
-
-      const lowerShare = clamp((cursorPrice - range.from) / span, 0.02, 0.98);
-      candleSeries.priceScale().setVisibleRange({
-        from: cursorPrice - nextSpan * lowerShare,
-        to: cursorPrice + nextSpan * (1 - lowerShare),
-      });
-      scheduleZoneBandRender();
-    };
-    const handleChartWheel = (event: WheelEvent) => {
-      zoomPriceScaleAtCursor(event);
-      scheduleZoneBandRender();
-    };
-
     visibleDownsideFlows.forEach((level, index) => renderLevel(level, index, "downside"));
     visibleUpsideFlows.forEach((level, index) => renderLevel(level, index, "upside"));
 
@@ -781,7 +727,7 @@ export default function PriceChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
     chart.timeScale().subscribeVisibleTimeRangeChange(scheduleZoneBandRender);
     chart.subscribeCrosshairMove(scheduleZoneBandRender);
-    container.addEventListener("wheel", handleChartWheel, { passive: true });
+    container.addEventListener("wheel", scheduleZoneBandRender, { passive: true });
     container.addEventListener("pointermove", scheduleZoneBandRender);
     container.addEventListener("pointerup", scheduleZoneBandRender);
 
@@ -790,7 +736,7 @@ export default function PriceChart({
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(scheduleZoneBandRender);
       chart.unsubscribeCrosshairMove(scheduleZoneBandRender);
-      container.removeEventListener("wheel", handleChartWheel);
+      container.removeEventListener("wheel", scheduleZoneBandRender);
       container.removeEventListener("pointermove", scheduleZoneBandRender);
       container.removeEventListener("pointerup", scheduleZoneBandRender);
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
@@ -803,10 +749,10 @@ export default function PriceChart({
 
   const levelSourceNote =
     latestLevelTimeMs != null
-      ? `Market-inferred LFX - refreshed ${formatTimeMs(latestLevelTimeMs)}`
+      ? `Reaction Map - refreshed ${formatTimeMs(latestLevelTimeMs)}`
       : dataThroughTimeMs != null
-        ? `Market-inferred LFX - candles through ${formatTimeMs(dataThroughTimeMs)}`
-        : "Market-inferred LFX";
+        ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
+        : "Reaction Map";
   const hasActionablePlan = tradePlan.bias !== "wait";
 
   return (
@@ -814,12 +760,17 @@ export default function PriceChart({
       <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <SectionEyebrow>{marketType === "spot" ? "RWA chart proxy" : "LFX map"}</SectionEyebrow>
+            <SectionEyebrow>{marketType === "spot" ? "RWA chart proxy" : "Reaction Map"}</SectionEyebrow>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <div className={compact ? "font-mono text-base font-semibold text-zinc-100" : "font-mono text-lg font-semibold text-zinc-100"}>{coin}</div>
               <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
                 {API_INTERVAL[interval]} candles
               </div>
+              {marketType === "perp" ? (
+                <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
+                  {REACTION_WINDOW[interval]} reaction window
+                </div>
+              ) : null}
               {currentPrice != null && (
                 <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-300">
                   {formatLevelPrice(currentPrice)}
@@ -827,10 +778,28 @@ export default function PriceChart({
               )}
             </div>
             <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Stress zones move with mark. Flow tags only show when a cluster clears the filter.
+              Inferred from public trades, OI changes, book depth, funding, and tracked samples when available.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
+            {marketType === "perp" ? (
+              <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
+                {OVERLAY_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setOverlayMode(option.value)}
+                    className={`rounded-full px-2 py-0.5 transition ${
+                      overlayMode === option.value
+                        ? "bg-sky-500/15 text-sky-200"
+                        : "text-zinc-500 hover:text-zinc-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
               {INTERVAL_OPTIONS.map((option) => (
                 <button
@@ -850,16 +819,16 @@ export default function PriceChart({
             {marketType === "perp" ? (
               <>
                 <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
-                  Downside context
+                  Downside reaction
                 </span>
                 <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-rose-300">
-                  Upside context
+                  Upside reaction
                 </span>
                 <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-                  Stress = moving
+                  Inferred
                 </span>
                 <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-                  Flow = clustered
+                  Not exact positions
                 </span>
               </>
             ) : null}
@@ -877,7 +846,7 @@ export default function PriceChart({
         >
           {loading ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
-              Loading LFX map...
+              Loading Reaction Map...
             </div>
           ) : error || candles.length === 0 ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
@@ -902,7 +871,7 @@ export default function PriceChart({
       {!loading && !error && candles.length > 0 ? (
         <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
           <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
-            Stress zones are moving context. Rejection, Break, and Pivot are reserved for filtered flow clusters.
+            Reaction levels are inferred market pressure, not complete trader-position truth or a promise that price must hold.
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -948,14 +917,14 @@ export default function PriceChart({
             ))}
             {dataThroughTimeMs != null ? (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                Candles through {formatTimeMs(dataThroughTimeMs)}. LFX refreshes from current perp market data.
+                Candles through {formatTimeMs(dataThroughTimeMs)}. Reaction Map refreshes from public Hyperliquid streams.
               </div>
             ) : null}
-            {pressureUnavailable || (lfxSupported && levels.length === 0) ? (
+            {reactionUnavailable || (reactionSupported && levels.length === 0) ? (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                {lfxSupported
-                  ? "LFX data is temporarily unavailable."
-                  : "LFX v1 covers BTC, ETH, SOL, HYPE."}
+                {reactionSupported
+                  ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
+                  : "Reaction Map is available for Hyperliquid perps."}
               </div>
             ) : null}
           </div>

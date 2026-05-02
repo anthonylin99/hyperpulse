@@ -149,3 +149,27 @@
 - What helped: lightweight-charts exposes `coordinateToPrice` and price-scale `setVisibleRange`, which made the fix small and local to `PriceChart`.
 - Friction or missing capability: Browser Use runtime bootstrapped, but the in-app browser pane was unavailable for final visual verification.
 - Recommendation: rerun a manual scroll-zoom check in the app pane once Browser Use has an active pane again.
+
+## 2026-05-02
+
+- Request summary: revert the LFX chart y-axis wheel zoom behavior.
+- Skills used: `coding-discipline`, `verification-gate`, `repo-execution`, `webapp-testing`.
+- What helped: the previous zoom addition was isolated to `PriceChart`, so the revert stayed surgical.
+- Friction or missing capability: Browser Use worked after bootstrapping from the known plugin path, but the production preview still reports unrelated console errors.
+- Recommendation: keep the chart wheel behavior native unless we later add a dedicated zoom mode or modifier key.
+
+## 2026-05-02
+
+- Request summary: implement the no-vendor Hyperliquid Reaction Level Map from public market streams, OI changes, book depth, trade flow, and tracked-wallet samples.
+- Skills used: `executing-plans`, `docker-compose-runtime-discovery`, `ui-ux-pro-max`, `holistic-linting`, `webapp-testing`, `browser-use:browser`.
+- What helped: Docker Compose verification caught a strict-null issue and Browser Use confirmed the BTC detail panel uses cautious Reaction Map copy and the Book/Positioning/Stress controls.
+- Friction or missing capability: Browser Use bootstrap needed a `nodeRepl.cwd` path fallback because `process` and `homeDir` were unavailable; the existing production runner image also needed source files copied in before `docker compose exec web npm run build` could pass.
+- Recommendation: add a small scorer fixture test and a worker reconnect/retry hardening pass before expanding beyond the default BTC/ETH/SOL/HYPE assets.
+
+## 2026-05-02
+
+- Request summary: fix Reaction Map clustering so levels show farther shelves above and below spot instead of only nearby buckets.
+- Skills used: `coding-discipline`, `verification-gate`, `webapp-testing`, `browser-use:browser`.
+- What helped: comparing API output against stored book buckets showed the bug was both ingestion granularity and nearest-level display selection.
+- Friction or missing capability: Browser Use still needs the Node REPL path fallback in this desktop session, but it verified the 1h chart after rebuild.
+- Recommendation: add scorer fixtures that assert per-side spacing and deeper shelf selection for BTC-like books.

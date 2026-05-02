@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "market:collect": "node workers/market-collector/index.mjs",
     "market:collect:once": "node workers/market-collector/index.mjs --once",
+    "reaction:start": "node workers/reaction-map/index.mjs",
     "docker:up": "docker compose up --build",
     "mcp:start": "node workers/mcp-server/index.mjs"
   },

@@ -220,7 +220,7 @@ export default function AssetDetail({
       <div className="flex items-center gap-1 px-4 pb-2">
         <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
         <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
-        <FilterChip label="LFX / Crowd" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
+        <FilterChip label="Positioning" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
       </div>
 
       {/* Chart area */}

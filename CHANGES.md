@@ -116,3 +116,24 @@
 - Attempted: added cursor-anchored price-scale wheel zoom to `PriceChart`, using the candle series coordinate-to-price conversion and setting the visible price range around the cursor price.
 - Decision: keep native lightweight-charts horizontal wheel behavior and layer a small vertical price-range zoom on top so the chart zooms into the point under the cursor.
 - Result: Docker web build passes and health/pressure smokes pass. Browser Use was attempted but blocked because no active Codex browser pane was available.
+
+## 2026-05-02
+
+- Request: revert the LFX map y-axis wheel zooming.
+- Attempted: removed the cursor-anchored price-scale wheel zoom constants, helper, and wheel handler from `PriceChart`.
+- Decision: restore the previous behavior where wheel events only keep LFX overlays aligned while lightweight-charts handles its native time-axis interaction.
+- Result: Docker web build passes, the preview container on port 3002 was restarted, health/pressure smokes pass, and Browser Use confirmed the BTC markets chart is present after a wheel scroll.
+
+## 2026-05-02
+
+- Request: replace the disposable LFX/support logic with a no-vendor Hyperliquid Reaction Level Map for likely price reactions from public market activity.
+- Attempted: added reaction-map SQL tables, a Docker Compose WebSocket worker for `l2Book`, `trades`, and `activeAssetCtx`, DB read/scoring modules, `/api/market/reaction-levels`, Reaction Map chart overlays, market-table setup signals, Docker runner source support for `docker compose exec web npm run build`, and README notes.
+- Decision: V1 ranks market-wide positioning pressure from public streams plus optional tracked-wallet samples. UI copy says inferred/likely/tracked sample and does not claim full exchange-wide position truth.
+- Result: `docker compose ps --services`, `docker compose up -d --build web reaction-map`, and `docker compose exec web npm run build` pass. The worker writes BTC buckets, the BTC reaction-level API returns non-empty levels, and Browser Use verifies the BTC market detail shows Reaction Map tabs/copy without overclaiming.
+
+## 2026-05-02
+
+- Request: stop Reaction Map levels from clustering around current spot and make the map show useful farther reaction shelves.
+- Attempted: subscribed the reaction worker to wider Hyperliquid L2 book aggregations, changed level selection from nearest-price picking to distinct per-side reaction zones, and lowered the final display cutoff so deeper persistent shelves can surface after spacing filters.
+- Decision: keep weak close-in noise filtered, but allow lower-score distant book shelves when they are persistent and separated enough to answer “where could price react if it travels.”
+- Result: `docker compose up -d --build web reaction-map` and `docker compose exec web npm run build` pass. BTC API now returns spaced levels including 73k/74k/76k/78k downside and 81k/82k/83k/85k upside; Browser Use verifies the 1h Reaction Map chart no longer stacks levels around spot.
