@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { enforceRateLimit, jsonError, jsonSuccess, validateCoin } from "@/lib/security";
 import { isWhalesEnabled } from "@/lib/appConfig";
-import { listPositioningMarketSnapshots, listTrackedWhaleProfiles } from "@/lib/whaleStore";
+import { listPositioningMarketSnapshots, listTrackedLiquidationBuckets, listTrackedWhaleProfiles } from "@/lib/whaleStore";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +14,12 @@ type HeatmapBand = {
   price: number;
   notionalUsd: number;
   walletCount: number;
+  positionCount: number;
+  weightedAvgLeverage: number | null;
+  marginUsd: number | null;
   distancePct: number;
   side: "short_liq" | "long_liq";
+  source: "tracked_wallet_sample" | "profile_fallback";
 };
 
 function roundBucket(distancePct: number) {
@@ -36,9 +40,10 @@ export async function GET(req: NextRequest) {
   const requestedCoin = validateCoin(req.nextUrl.searchParams.get("coin")) ?? "BTC";
   const coin = MAJOR_ASSETS.includes(requestedCoin as (typeof MAJOR_ASSETS)[number]) ? requestedCoin : "BTC";
 
-  const [snapshots, profiles] = await Promise.all([
+  const [snapshots, profiles, storedBuckets] = await Promise.all([
     listPositioningMarketSnapshots(coin, SNAPSHOT_LIMIT),
     listTrackedWhaleProfiles(750),
+    listTrackedLiquidationBuckets(coin, 180),
   ]);
 
   const priceSeries = [...snapshots]
@@ -51,52 +56,95 @@ export async function GET(req: NextRequest) {
 
   const currentPrice = priceSeries[priceSeries.length - 1]?.price ?? null;
   if (!currentPrice) {
-    return jsonError("No tracked price history is available for this asset yet.", { status: 404 });
+    return jsonSuccess({
+      assets: [...MAJOR_ASSETS],
+      selectedAsset: coin,
+      currentPrice: null,
+      updatedAt: null,
+      windowHours: 24,
+      maxDistancePct: MAX_DISTANCE_PCT,
+      bucketStepPct: BUCKET_STEP_PCT,
+      source: storedBuckets.length > 0 ? "stored_tracked_position_buckets" : "profile_fallback",
+      priceSeries: [],
+      bands: [],
+      summary: {
+        shortTotalNotionalUsd: 0,
+        longTotalNotionalUsd: 0,
+        nearestShortDistancePct: null,
+        nearestLongDistancePct: null,
+        trackedWallets: profiles.length,
+      },
+    });
   }
 
-  const shortBands = new Map<number, HeatmapBand>();
-  const longBands = new Map<number, HeatmapBand>();
+  let bands: HeatmapBand[] = storedBuckets
+    .filter((bucket) => Math.abs(bucket.distancePct) <= MAX_DISTANCE_PCT)
+    .map((bucket) => ({
+      price: bucket.price,
+      notionalUsd: bucket.totalNotionalUsd,
+      walletCount: bucket.walletCount,
+      positionCount: bucket.positionCount,
+      weightedAvgLeverage: bucket.weightedAvgLeverage,
+      marginUsd: bucket.marginUsd,
+      distancePct: bucket.distancePct,
+      side: bucket.side,
+      source: bucket.source,
+    }))
+    .sort((a, b) => b.price - a.price);
 
-  for (const profile of profiles) {
-    const matchingPositions = (profile.positions ?? []).filter(
-      (position) =>
-        position.marketType === "crypto_perp" &&
-        position.coin === coin &&
-        position.notionalUsd > 0 &&
-        position.liquidationPx != null,
-    );
+  if (bands.length === 0) {
+    const shortBands = new Map<number, HeatmapBand>();
+    const longBands = new Map<number, HeatmapBand>();
 
-    for (const position of matchingPositions) {
-      const liqPrice = Number(position.liquidationPx);
-      if (!Number.isFinite(liqPrice) || liqPrice <= 0) continue;
-      const distancePct = ((liqPrice - currentPrice) / currentPrice) * 100;
-      if (!Number.isFinite(distancePct) || Math.abs(distancePct) > MAX_DISTANCE_PCT) continue;
+    for (const profile of profiles) {
+      const matchingPositions = (profile.positions ?? []).filter(
+        (position) =>
+          position.marketType === "crypto_perp" &&
+          position.coin === coin &&
+          position.notionalUsd > 0 &&
+          position.liquidationPx != null,
+      );
 
-      const isShort = position.side === "short";
-      if (isShort && distancePct <= 0) continue;
-      if (!isShort && distancePct >= 0) continue;
+      for (const position of matchingPositions) {
+        const liqPrice = Number(position.liquidationPx);
+        if (!Number.isFinite(liqPrice) || liqPrice <= 0) continue;
+        const distancePct = ((liqPrice - currentPrice) / currentPrice) * 100;
+        if (!Number.isFinite(distancePct) || Math.abs(distancePct) > MAX_DISTANCE_PCT) continue;
 
-      const bucketDistancePct = roundBucket(distancePct);
-      const bucketPrice = currentPrice * (1 + bucketDistancePct / 100);
-      const target = isShort ? shortBands : longBands;
-      const existing = target.get(bucketDistancePct) ?? {
-        price: bucketPrice,
-        notionalUsd: 0,
-        walletCount: 0,
-        distancePct: bucketDistancePct,
-        side: isShort ? "short_liq" : "long_liq",
-      };
-      existing.notionalUsd += position.notionalUsd;
-      existing.walletCount += 1;
-      target.set(bucketDistancePct, existing);
+        const isShort = position.side === "short";
+        if (isShort && distancePct <= 0) continue;
+        if (!isShort && distancePct >= 0) continue;
+
+        const bucketDistancePct = roundBucket(distancePct);
+        const bucketPrice = currentPrice * (1 + bucketDistancePct / 100);
+        const target = isShort ? shortBands : longBands;
+        const existing = target.get(bucketDistancePct) ?? {
+          price: bucketPrice,
+          notionalUsd: 0,
+          walletCount: 0,
+          positionCount: 0,
+          weightedAvgLeverage: null,
+          marginUsd: null,
+          distancePct: bucketDistancePct,
+          side: isShort ? "short_liq" : "long_liq",
+          source: "profile_fallback",
+        };
+        existing.notionalUsd += position.notionalUsd;
+        existing.walletCount += 1;
+        existing.positionCount += 1;
+        target.set(bucketDistancePct, existing);
+      }
     }
+
+    bands = [...shortBands.values(), ...longBands.values()].sort((a, b) => b.price - a.price);
   }
 
-  const bands = [...shortBands.values(), ...longBands.values()].sort((a, b) => b.price - a.price);
-  const shortTotalNotionalUsd = [...shortBands.values()].reduce((sum, band) => sum + band.notionalUsd, 0);
-  const longTotalNotionalUsd = [...longBands.values()].reduce((sum, band) => sum + band.notionalUsd, 0);
-  const nearestShortDistancePct = [...shortBands.values()].sort((a, b) => a.distancePct - b.distancePct)[0]?.distancePct ?? null;
-  const nearestLongDistancePct = [...longBands.values()].sort((a, b) => b.distancePct - a.distancePct)[0]?.distancePct ?? null;
+  const shortBuckets = bands.filter((band) => band.side === "short_liq");
+  const longBuckets = bands.filter((band) => band.side === "long_liq");
+  const shortTotalNotionalUsd = shortBuckets.reduce((sum, band) => sum + band.notionalUsd, 0);
+  const longTotalNotionalUsd = longBuckets.reduce((sum, band) => sum + band.notionalUsd, 0);
+  const nearestShortDistancePct = shortBuckets.sort((a, b) => a.distancePct - b.distancePct)[0]?.distancePct ?? null;
+  const nearestLongDistancePct = longBuckets.sort((a, b) => b.distancePct - a.distancePct)[0]?.distancePct ?? null;
 
   return jsonSuccess({
     assets: [...MAJOR_ASSETS],
@@ -106,6 +154,7 @@ export async function GET(req: NextRequest) {
     windowHours: 24,
     maxDistancePct: MAX_DISTANCE_PCT,
     bucketStepPct: BUCKET_STEP_PCT,
+    source: storedBuckets.length > 0 ? "stored_tracked_position_buckets" : "profile_fallback",
     priceSeries,
     bands,
     summary: {

@@ -9,6 +9,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { getSubscriptionClient, withNetworkParam, getStoredNetwork } from "@/lib/hyperliquid";
 import { fundingToSignal, computeFundingSignal } from "@/lib/signals";
 import { reportClientError } from "@/lib/clientErrorReporter";
@@ -48,6 +49,7 @@ function sleep(ms: number) {
 }
 
 export function MarketProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [assets, setAssets] = useState<MarketAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +65,11 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const btcCandleFetchRef = useRef(0);
   const prevOIRef = useRef<Record<string, number>>({});
   const wsInitRef = useRef(false);
+  const shouldFetchMarketEnrichment =
+    pathname === "/" ||
+    pathname === "/markets" ||
+    pathname.startsWith("/markets/") ||
+    pathname.startsWith("/whales");
 
   const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
     const signature = `${entry.type}|${entry.coin}|${entry.message}`;
@@ -317,12 +324,14 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       const top10 = [...parsed]
         .sort((a, b) => b.openInterest - a.openInterest)
         .slice(0, 10);
-      if (now - fundingFetchRef.current >= MARKET_ENRICHMENT_INTERVAL_MS) {
+      if (shouldFetchMarketEnrichment && now - fundingFetchRef.current >= MARKET_ENRICHMENT_INTERVAL_MS) {
         fundingFetchRef.current = now;
         fetchFundingHistories(top10.map((a) => a.coin));
       }
-      fetchSignalData(parsed);
-      if (now - btcCandleFetchRef.current >= MARKET_ENRICHMENT_INTERVAL_MS) {
+      if (shouldFetchMarketEnrichment) {
+        fetchSignalData(parsed);
+      }
+      if (shouldFetchMarketEnrichment && now - btcCandleFetchRef.current >= MARKET_ENRICHMENT_INTERVAL_MS) {
         btcCandleFetchRef.current = now;
         fetchBtcCandles();
       }
@@ -332,7 +341,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [addActivity, fetchFundingHistories, fetchSignalData, fetchBtcCandles]);
+  }, [addActivity, fetchFundingHistories, fetchSignalData, fetchBtcCandles, shouldFetchMarketEnrichment]);
 
   useEffect(() => {
     fetchMarketData();

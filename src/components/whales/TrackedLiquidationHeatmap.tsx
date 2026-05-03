@@ -10,8 +10,12 @@ type HeatmapBand = {
   price: number;
   notionalUsd: number;
   walletCount: number;
+  positionCount: number;
+  weightedAvgLeverage: number | null;
+  marginUsd: number | null;
   distancePct: number;
   side: "short_liq" | "long_liq";
+  source: "tracked_wallet_sample" | "profile_fallback";
 };
 
 type HeatmapResponse = {
@@ -22,6 +26,7 @@ type HeatmapResponse = {
   windowHours: number;
   maxDistancePct: number;
   bucketStepPct: number;
+  source?: "stored_tracked_position_buckets" | "profile_fallback";
   priceSeries: Array<{ time: number; price: number }>;
   bands: HeatmapBand[];
   summary: {
@@ -71,7 +76,7 @@ export default function TrackedLiquidationHeatmap() {
         setError(null);
       } catch (loadError) {
         console.error(loadError);
-        if (mounted) setError("Unable to load the tracked-book liquidation heatmap.");
+        if (mounted) setError("Unable to load the tracked trader liquidation map.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -105,10 +110,10 @@ export default function TrackedLiquidationHeatmap() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <SectionEyebrow>Tracked-book heatmap</SectionEyebrow>
-              <div className="mt-1 text-base font-semibold text-zinc-100">Nearby liquidation pockets for major crypto perps</div>
+              <SectionEyebrow>Trader liquidation map</SectionEyebrow>
+              <div className="mt-1 text-base font-semibold text-zinc-100">Tracked trader liquidation pockets for major crypto perps</div>
               <div className="mt-1 max-w-3xl text-xs leading-5 text-zinc-400">
-                Built from the current liquidation prices of tracked profitable wallets. This is a monitored-book pressure map, not a full exchange heatmap.
+                Built from tracked profitable-wallet positions we collect ourselves. This is a tracked-trader sample, not a full exchange heatmap.
               </div>
             </div>
             <Link
@@ -148,7 +153,7 @@ export default function TrackedLiquidationHeatmap() {
               helper={`Nearest ${formatPct(data.summary.nearestLongDistancePct)}`}
               tone="green"
             />
-            <CompactStat label="Tracked wallets" value={data.summary.trackedWallets.toString()} helper="wallets with usable liq levels" />
+            <CompactStat label="Tracked wallets" value={data.summary.trackedWallets.toString()} helper={data.source === "profile_fallback" ? "live profile fallback" : "stored bucket sample"} />
           </div>
         ) : null}
 
@@ -157,7 +162,7 @@ export default function TrackedLiquidationHeatmap() {
             <div className="h-[248px] rounded-[16px] border border-zinc-800 skeleton" />
           ) : !data || !chart ? (
             <div className="flex h-[248px] items-center justify-center rounded-[16px] border border-dashed border-zinc-800 text-sm text-zinc-500">
-              No tracked-book heatmap data yet for this asset.
+              No tracked trader liquidation data yet for this asset.
             </div>
           ) : (
             <div className="space-y-3">
@@ -260,7 +265,7 @@ export default function TrackedLiquidationHeatmap() {
 
               <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_220px]">
                 <div className="rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 text-[11px] leading-5 text-zinc-400">
-                  Hover a pocket to inspect distance, notional, and wallet count. These ladders are projected from current tracked positions across the recent price path and do not represent exchange-wide liquidation interest.
+                  Hover a pocket to inspect distance, notional, leverage, and wallet count. These levels come from tracked trader positions and do not represent exchange-wide liquidation interest.
                 </div>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 text-[11px] leading-5 text-zinc-300">
                   {featuredBand ? (
@@ -269,6 +274,7 @@ export default function TrackedLiquidationHeatmap() {
                         {featuredBand.side === "short_liq" ? "Short pocket" : "Long pocket"} at {formatChartPrice(featuredBand.price)}
                       </div>
                       <div>{formatCompactUsd(featuredBand.notionalUsd)} across {featuredBand.walletCount} wallets</div>
+                      {featuredBand.weightedAvgLeverage != null ? <div>Avg lev {featuredBand.weightedAvgLeverage.toFixed(1)}x across {featuredBand.positionCount} positions</div> : null}
                       <div>{formatPct(featuredBand.distancePct)} from current price</div>
                     </div>
                   ) : (

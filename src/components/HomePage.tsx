@@ -8,13 +8,11 @@ import {
   BookOpenText,
   BriefcaseBusiness,
   CheckCircle2,
-  Layers3,
   LockKeyhole,
   ScanLine,
   ShieldCheck,
   Waves,
 } from "lucide-react";
-import { useFactors } from "@/context/FactorContext";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -29,15 +27,9 @@ const CAPABILITIES = [
   },
   {
     title: "Smart Money Tracking",
-    description: "Monitor whale flow, conviction adds, and tracked-book pressure in real time.",
+    description: "Monitor whale flow, conviction adds, and tracked trader pressure in real time.",
     href: "/whales",
     icon: Waves,
-  },
-  {
-    title: "Factor Intelligence",
-    description: "Follow Artemis-style factor baskets and see what regimes are actually leading.",
-    href: "/factors",
-    icon: Layers3,
   },
   {
     title: "Portfolio Review",
@@ -55,18 +47,16 @@ const CAPABILITIES = [
 
 export default function HomePage() {
   const { isConnected } = useWallet();
-  const { whalesEnabled, factorsEnabled } = useAppConfig();
+  const { whalesEnabled } = useAppConfig();
   const { assets } = useMarket();
-  const { factors } = useFactors();
-  const workspaceCount = 3 + (factorsEnabled ? 1 : 0) + (whalesEnabled ? 1 : 0);
+  const workspaceCount = 3 + (whalesEnabled ? 1 : 0);
   const capabilities = useMemo(
     () =>
       CAPABILITIES.filter((item) => {
         if (!whalesEnabled && item.title === "Smart Money Tracking") return false;
-        if (!factorsEnabled && item.title === "Factor Intelligence") return false;
         return true;
       }),
-    [factorsEnabled, whalesEnabled],
+    [whalesEnabled],
   );
 
   const primaryHref = isConnected ? "/portfolio" : "/markets";
@@ -237,9 +227,7 @@ export default function HomePage() {
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 p-4 sm:col-span-2">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Launch Mode</div>
                 <div className="mt-2 text-sm leading-7 text-zinc-400">
-                  {factorsEnabled
-                    ? `${factors.length || "--"} factor baskets available in this environment.`
-                    : "Public demo focuses on markets, read-only portfolio review, and clear methodology."}
+                  Public demo focuses on markets, read-only portfolio review, and clear methodology.
                 </div>
               </div>
             </div>

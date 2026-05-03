@@ -36,6 +36,7 @@ const LIQUIDATION_ALERT_COOLDOWN_MS = envNumber('POSITIONING_LIQUIDATION_ALERT_C
 const HIGH_CONVICTION_ALERT_COOLDOWN_MS = envNumber('POSITIONING_HIGH_CONVICTION_ALERT_COOLDOWN_MS', 12 * 60 * 60 * 1000);
 const TRACKED_CLUSTER_MIN_USD = envNumber('POSITIONING_TRACKED_CLUSTER_MIN_USD', 5_000_000);
 const TRACKED_CLUSTER_MAX_DISTANCE_PCT = envNumber('POSITIONING_TRACKED_CLUSTER_MAX_DISTANCE_PCT', 25);
+const TRACKED_POSITION_MAX_DISTANCE_PCT = envNumber('POSITIONING_TRACKED_POSITION_MAX_DISTANCE_PCT', 35);
 const HIGH_CONVICTION_PNL_FLOOR = envNumber('POSITIONING_HIGH_CONVICTION_PNL_FLOOR', 1_000_000);
 const TRACKED_BOOK_PNL_FLOOR = envNumber('POSITIONING_TRACKED_BOOK_PNL_FLOOR', 200_000);
 const CROWDING_POS_FUNDING_APR = envNumber('POSITIONING_CROWDING_POS_FUNDING_APR', 25);
@@ -109,6 +110,34 @@ let spotSubscriptions = [];
 function parseNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function nullableNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function walletHash(address) {
+  return createHash('sha256').update(String(address || '').toLowerCase()).digest('hex').slice(0, 16);
+}
+
+function bucketSizeForAsset(asset, currentPrice) {
+  const normalized = normalizeSymbol(asset);
+  if (normalized === 'BTC') return 500;
+  if (normalized === 'ETH') return 25;
+  if (normalized === 'SOL') return 2;
+  if (normalized === 'HYPE') return 0.5;
+  if (currentPrice >= 1000) return 50;
+  if (currentPrice >= 100) return 5;
+  if (currentPrice >= 10) return 0.5;
+  if (currentPrice >= 1) return 0.05;
+  return 0.005;
+}
+
+function bucketPrice(price, bucketSize) {
+  if (!Number.isFinite(price) || !Number.isFinite(bucketSize) || bucketSize <= 0) return null;
+  const value = Math.round(price / bucketSize) * bucketSize;
+  return Number(value.toFixed(bucketSize < 1 ? 4 : bucketSize < 10 ? 2 : 0));
 }
 
 function median(values) {
@@ -216,15 +245,24 @@ function positionSnapshot(assetPositions = []) {
       const unrealizedPnl = parseNumber(position.unrealizedPnl);
       const markPx = Math.abs(szi) > 0 ? entryPx + unrealizedPnl / szi : entryPx;
       const liquidationPx = position.liquidationPx ? parseNumber(position.liquidationPx) : null;
+      const positionValue = parseNumber(position.positionValue) || Math.abs(szi) * markPx;
+      const leverageValue = nullableNumber(position.leverage?.value);
+      const marginUsedUsd =
+        nullableNumber(position.marginUsed) ??
+        (leverageValue && leverageValue > 0 ? positionValue / leverageValue : null);
       const descriptor = classifyWhaleAsset(position.coin, 'crypto_perp');
       return {
         coin: descriptor.symbol,
         side: szi > 0 ? 'long' : 'short',
+        szi,
         size: Math.abs(szi),
         entryPx,
         markPx,
-        notionalUsd: parseNumber(position.positionValue) || Math.abs(szi) * markPx,
-        leverage: position.leverage?.value || 0,
+        notionalUsd: positionValue,
+        positionValueUsd: positionValue,
+        marginUsedUsd,
+        leverage: leverageValue || 0,
+        leverageType: position.leverage?.type || null,
         liquidationPx,
         liquidationDistancePct: computeLiquidationDistancePct({ szi, markPx, liquidationPx }),
         unrealizedPnl,
@@ -805,6 +843,235 @@ async function persistWorkerStatus(payload = {}) {
   );
 }
 
+async function persistTrackedPositionSnapshots(profile, capturedAt = Date.now()) {
+  const positions = (profile.positions || []).filter(
+    (position) => position.marketType === 'crypto_perp' && position.notionalUsd > 0 && position.entryPx > 0 && position.markPx > 0,
+  );
+  if (positions.length === 0) return;
+
+  const address = String(profile.address || '').toLowerCase();
+  const hashedWallet = walletHash(address);
+  for (const position of positions) {
+    const bucketSize = bucketSizeForAsset(position.coin, position.markPx);
+    const liquidationBucket = position.liquidationPx ? bucketPrice(position.liquidationPx, bucketSize) : null;
+    const entryBucket = bucketPrice(position.entryPx, bucketSize);
+    const side = position.side === 'short' ? 'short' : 'long';
+    const id = [
+      'tracked-position',
+      Math.floor(capturedAt / POSITIONING_SNAPSHOT_INTERVAL_MS) * POSITIONING_SNAPSHOT_INTERVAL_MS,
+      address,
+      position.coin,
+      side,
+      position.marketType,
+    ].join(':');
+    const payload = {
+      walletHash: hashedWallet,
+      source: 'tracked_wallet_profile',
+      liquidationDistancePct: position.liquidationDistancePct ?? null,
+      riskBucket: position.riskBucket ?? null,
+      assetClass: position.assetClass ?? null,
+    };
+
+    await pool.query(
+      `
+      insert into tracked_position_snapshots (
+        id, wallet_address, wallet_hash, asset, side, market_type, captured_at,
+        entry_px, entry_bucket_price, mark_px, size, signed_size, notional_usd,
+        margin_used_usd, liquidation_px, liquidation_bucket_price, leverage_value,
+        leverage_type, account_equity_usd, realized_pnl_30d, source, payload
+      )
+      values (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12, $13,
+        $14, $15, $16, $17,
+        $18, $19, $20, $21, $22::jsonb
+      )
+      on conflict (id) do update set
+        captured_at = excluded.captured_at,
+        entry_px = excluded.entry_px,
+        entry_bucket_price = excluded.entry_bucket_price,
+        mark_px = excluded.mark_px,
+        size = excluded.size,
+        signed_size = excluded.signed_size,
+        notional_usd = excluded.notional_usd,
+        margin_used_usd = excluded.margin_used_usd,
+        liquidation_px = excluded.liquidation_px,
+        liquidation_bucket_price = excluded.liquidation_bucket_price,
+        leverage_value = excluded.leverage_value,
+        leverage_type = excluded.leverage_type,
+        account_equity_usd = excluded.account_equity_usd,
+        realized_pnl_30d = excluded.realized_pnl_30d,
+        payload = excluded.payload
+    `,
+      [
+        id,
+        address,
+        hashedWallet,
+        position.coin,
+        side,
+        position.marketType,
+        capturedAt,
+        position.entryPx,
+        entryBucket,
+        position.markPx,
+        position.size,
+        position.szi ?? (side === 'short' ? -position.size : position.size),
+        position.notionalUsd,
+        position.marginUsedUsd ?? null,
+        position.liquidationPx ?? null,
+        liquidationBucket,
+        position.leverage ?? null,
+        position.leverageType ?? null,
+        profile.accountEquity ?? null,
+        profile.realizedPnl30d ?? null,
+        'tracked_wallet_profile',
+        JSON.stringify(payload),
+      ],
+    );
+  }
+}
+
+function buildLiquidationBucketRows(asset, currentPrice, profiles, capturedAt = Date.now()) {
+  const bucketSize = bucketSizeForAsset(asset, currentPrice);
+  const source = 'tracked_wallet_sample';
+  const groups = new Map();
+  const qualifyingProfiles = profiles.filter((profile) => Number(profile?.realizedPnl30d || 0) >= TRACKED_BOOK_PNL_FLOOR);
+
+  for (const profile of qualifyingProfiles) {
+    const address = String(profile.address || '').toLowerCase();
+    const hashedWallet = walletHash(address);
+    for (const position of profile.positions || []) {
+      if (position.marketType !== 'crypto_perp' || position.coin !== asset) continue;
+      if (!position.liquidationPx || !position.notionalUsd || position.notionalUsd <= 0) continue;
+      const distancePct = ((position.liquidationPx - currentPrice) / currentPrice) * 100;
+      if (!Number.isFinite(distancePct) || Math.abs(distancePct) > TRACKED_POSITION_MAX_DISTANCE_PCT) continue;
+      const side = position.side === 'short' ? 'short_liq' : 'long_liq';
+      if (side === 'short_liq' && distancePct <= 0) continue;
+      if (side === 'long_liq' && distancePct >= 0) continue;
+
+      const bucket = bucketPrice(position.liquidationPx, bucketSize);
+      if (bucket == null) continue;
+      const key = `${side}:${bucket}`;
+      const group = groups.get(key) || {
+        asset,
+        side,
+        bucketSize,
+        bucketPrice: bucket,
+        currentPrice,
+        distancePct: ((bucket - currentPrice) / currentPrice) * 100,
+        longNotionalUsd: 0,
+        shortNotionalUsd: 0,
+        totalNotionalUsd: 0,
+        marginUsd: 0,
+        leverageWeightedTotal: 0,
+        entryWeightedTotal: 0,
+        positionCount: 0,
+        wallets: new Set(),
+        topPositions: [],
+      };
+      const notional = Number(position.notionalUsd) || 0;
+      if (side === 'long_liq') group.longNotionalUsd += notional;
+      if (side === 'short_liq') group.shortNotionalUsd += notional;
+      group.totalNotionalUsd += notional;
+      group.marginUsd += Number(position.marginUsedUsd || 0);
+      group.leverageWeightedTotal += Number(position.leverage || 0) * notional;
+      group.entryWeightedTotal += Number(position.entryPx || 0) * notional;
+      group.positionCount += 1;
+      group.wallets.add(address);
+      group.topPositions.push({
+        walletHash: hashedWallet,
+        side: position.side,
+        notionalUsd: notional,
+        entryPx: position.entryPx,
+        liquidationPx: position.liquidationPx,
+        leverage: position.leverage ?? null,
+        liquidationDistancePct: distancePct,
+      });
+      groups.set(key, group);
+    }
+  }
+
+  return [...groups.values()].map((group) => {
+    const weightedAvgLeverage = group.totalNotionalUsd > 0 ? group.leverageWeightedTotal / group.totalNotionalUsd : null;
+    const avgEntryPrice = group.totalNotionalUsd > 0 ? group.entryWeightedTotal / group.totalNotionalUsd : null;
+    const topPositions = group.topPositions
+      .sort((a, b) => b.notionalUsd - a.notionalUsd)
+      .slice(0, 12);
+    return {
+      id: [
+        'liq-bucket',
+        Math.floor(capturedAt / POSITIONING_SNAPSHOT_INTERVAL_MS) * POSITIONING_SNAPSHOT_INTERVAL_MS,
+        group.asset,
+        group.side,
+        group.bucketPrice,
+      ].join(':'),
+      ...group,
+      weightedAvgLeverage,
+      avgEntryPrice,
+      walletCount: group.wallets.size,
+      payload: {
+        source,
+        trackedWalletCount: qualifyingProfiles.length,
+        topPositions,
+      },
+    };
+  });
+}
+
+async function persistLiquidationHeatmapBuckets(asset, currentPrice, profiles, capturedAt = Date.now()) {
+  const rows = buildLiquidationBucketRows(asset, currentPrice, profiles, capturedAt);
+  if (rows.length === 0) return;
+
+  for (const row of rows) {
+    await pool.query(
+      `
+      insert into liq_heatmap_buckets (
+        id, asset, side, created_at, bucket_size, bucket_price, current_price, distance_pct,
+        long_notional_usd, short_notional_usd, total_notional_usd, margin_usd,
+        weighted_avg_leverage, avg_entry_price, position_count, wallet_count, source, payload
+      )
+      values (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12,
+        $13, $14, $15, $16, $17, $18::jsonb
+      )
+      on conflict (id) do update set
+        current_price = excluded.current_price,
+        distance_pct = excluded.distance_pct,
+        long_notional_usd = excluded.long_notional_usd,
+        short_notional_usd = excluded.short_notional_usd,
+        total_notional_usd = excluded.total_notional_usd,
+        margin_usd = excluded.margin_usd,
+        weighted_avg_leverage = excluded.weighted_avg_leverage,
+        avg_entry_price = excluded.avg_entry_price,
+        position_count = excluded.position_count,
+        wallet_count = excluded.wallet_count,
+        payload = excluded.payload
+    `,
+      [
+        row.id,
+        row.asset,
+        row.side,
+        capturedAt,
+        row.bucketSize,
+        row.bucketPrice,
+        row.currentPrice,
+        row.distancePct,
+        row.longNotionalUsd,
+        row.shortNotionalUsd,
+        row.totalNotionalUsd,
+        row.marginUsd || null,
+        row.weightedAvgLeverage,
+        row.avgEntryPrice,
+        row.positionCount,
+        row.walletCount,
+        'tracked_wallet_sample',
+        JSON.stringify(row.payload),
+      ],
+    );
+  }
+}
+
 async function ensureTables() {
   await pool.query(`
     create table if not exists whale_alerts (
@@ -895,6 +1162,54 @@ async function ensureTables() {
       primary key (address, asset, lookahead_hours)
     );
   `);
+  await pool.query(`
+    create table if not exists tracked_position_snapshots (
+      id text primary key,
+      wallet_address text not null,
+      wallet_hash text not null,
+      asset text not null,
+      side text not null,
+      market_type text not null,
+      captured_at bigint not null,
+      entry_px double precision not null,
+      entry_bucket_price double precision,
+      mark_px double precision not null,
+      size double precision not null,
+      signed_size double precision not null,
+      notional_usd double precision not null,
+      margin_used_usd double precision,
+      liquidation_px double precision,
+      liquidation_bucket_price double precision,
+      leverage_value double precision,
+      leverage_type text,
+      account_equity_usd double precision,
+      realized_pnl_30d double precision,
+      source text not null,
+      payload jsonb not null
+    );
+  `);
+  await pool.query(`
+    create table if not exists liq_heatmap_buckets (
+      id text primary key,
+      asset text not null,
+      side text not null,
+      created_at bigint not null,
+      bucket_size double precision not null,
+      bucket_price double precision not null,
+      current_price double precision not null,
+      distance_pct double precision not null,
+      long_notional_usd double precision not null default 0,
+      short_notional_usd double precision not null default 0,
+      total_notional_usd double precision not null,
+      margin_usd double precision,
+      weighted_avg_leverage double precision,
+      avg_entry_price double precision,
+      position_count integer not null,
+      wallet_count integer not null,
+      source text not null,
+      payload jsonb not null
+    );
+  `);
   await pool.query(`alter table whale_alerts add column if not exists directionality text;`);
   await pool.query(`alter table whale_alerts add column if not exists market_type text;`);
   await pool.query(`alter table whale_alerts add column if not exists risk_bucket text;`);
@@ -907,6 +1222,11 @@ async function ensureTables() {
   await pool.query(`create index if not exists positioning_alerts_created_at_idx on positioning_alerts (created_at desc);`);
   await pool.query(`create index if not exists positioning_alerts_asset_idx on positioning_alerts (asset, created_at desc);`);
   await pool.query(`create index if not exists positioning_market_snapshots_asset_idx on positioning_market_snapshots (asset, created_at desc);`);
+  await pool.query(`create index if not exists tracked_position_snapshots_asset_idx on tracked_position_snapshots (asset, captured_at desc);`);
+  await pool.query(`create index if not exists tracked_position_snapshots_wallet_idx on tracked_position_snapshots (wallet_address, captured_at desc);`);
+  await pool.query(`create index if not exists tracked_position_snapshots_liq_idx on tracked_position_snapshots (asset, side, liquidation_bucket_price, captured_at desc);`);
+  await pool.query(`create index if not exists liq_heatmap_buckets_asset_latest_idx on liq_heatmap_buckets (asset, created_at desc);`);
+  await pool.query(`create index if not exists liq_heatmap_buckets_asset_side_idx on liq_heatmap_buckets (asset, side, bucket_price, created_at desc);`);
 }
 
 async function persistAlert(alert, profile, episode) {
@@ -933,6 +1253,7 @@ async function persistAlert(alert, profile, episode) {
      on conflict (address) do update set updated_at = excluded.updated_at, payload = excluded.payload`,
     [profile.address.toLowerCase(), profile.lastSeenAt || Date.now(), JSON.stringify(profile)],
   );
+  await persistTrackedPositionSnapshots(profile, profile.lastSeenAt || Date.now());
   await pool.query(
     `insert into whale_trade_episodes (id, address, created_at, directionality, market_type, risk_bucket, payload)
      values ($1, $2, $3, $4, $5, $6, $7::jsonb)
@@ -1265,7 +1586,7 @@ function buildLiquidationAlert(asset, currentPrice, cluster, side, timestamp) {
     regime,
     severity: cluster.notionalUsd >= TRACKED_CLUSTER_MIN_USD * 2 ? 'high' : 'medium',
     timestamp,
-    whyItMatters: `Tracked-book ${liquidationSide} liquidations sit ${distanceLabel} from price near ${cluster.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} with ${formatCompact(cluster.notionalUsd)} at risk. If price trades into that zone, ${consequence}.`,
+    whyItMatters: `Tracked trader ${liquidationSide} liquidations sit ${distanceLabel} from price near ${cluster.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} with ${formatCompact(cluster.notionalUsd)} at risk. If price trades into that zone, ${consequence}.`,
     trackedLiquidationClusterUsd: cluster.notionalUsd,
     clusterPrice: cluster.price,
     clusterDistancePct,
@@ -1711,6 +2032,7 @@ async function runMarketStructureCycle() {
   for (const assetName of POSITIONING_MAJOR_PERPS) {
     const currentPrice = currentPrices.get(assetName);
     if (!currentPrice) continue;
+    await persistLiquidationHeatmapBuckets(assetName, currentPrice, trackedProfiles, now);
     const clusters = clusterTrackedLiquidations(assetName, currentPrice, trackedProfiles);
     const downsideAlert = buildLiquidationAlert(assetName, currentPrice, clusters.bestBelow, 'below', now);
     const upsideAlert = buildLiquidationAlert(assetName, currentPrice, clusters.bestAbove, 'above', now);
@@ -1767,7 +2089,7 @@ async function maybeRunDigest() {
   if (liquidation.length > 0) {
     summaryLines.push(...liquidation.map((alert) => `LIQUIDATION: ${alert.asset} · ${alert.whyItMatters}`));
   } else {
-    summaryLines.push('No tracked-book liquidation magnets passed the alert threshold in this window.');
+    summaryLines.push('No tracked trader liquidation pockets passed the alert threshold in this window.');
   }
   if (whale) {
     summaryLines.push(`RARE WHALE: ${whale.asset} · ${whale.whyItMatters}`);

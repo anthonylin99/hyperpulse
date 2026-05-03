@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "market:collect": "node workers/market-collector/index.mjs",
     "market:collect:once": "node workers/market-collector/index.mjs --once",
+    "reaction:start": "node workers/reaction-map/index.mjs",
     "docker:up": "docker compose up --build",
     "mcp:start": "node workers/mcp-server/index.mjs"
   },
@@ -30,7 +31,6 @@
     "lightweight-charts": "^5.1.0",
     "lucide-react": "^1.0.1",
     "next": "^15.5.14",
-    "openai": "^6.33.0",
     "pg": "^8.20.0",
     "react": "^18",
     "react-dom": "^18",

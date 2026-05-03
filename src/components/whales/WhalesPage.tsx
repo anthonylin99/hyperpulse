@@ -270,10 +270,10 @@ export default function WhalesPage() {
           <div>
             <SectionEyebrow className="text-emerald-400/80">HyperPulse positioning monitor</SectionEyebrow>
             <h1 className="mt-2 max-w-4xl text-[28px] font-semibold tracking-tight text-zinc-100">
-              Read crowding, tracked-book liquidation pressure, and rare repeat-whale conviction.
+              Read crowding, tracked trader liquidation pressure, and rare repeat-whale conviction.
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-300">
-              Use this like a crypto-native research tape. It highlights crowded positioning and monitored-book pressure, not a global liquidation map and not a copy-trading feed.
+              Use this like a crypto-native research tape. It highlights crowded positioning and tracked trader pressure, not a global liquidation map and not a copy-trading feed.
             </p>
           </div>
 
@@ -311,7 +311,7 @@ export default function WhalesPage() {
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <CompactStat label="Active alerts" value={feed.summary.alertCount.toString()} helper={`${timeframe} live window`} />
           <CompactStat label="Crowding" value={feed.summary.crowdingCount.toString()} helper="major perps only" tone="amber" />
-          <CompactStat label="Liquidation" value={feed.summary.liquidationCount.toString()} helper="nearby tracked-book pockets" />
+          <CompactStat label="Liquidation" value={feed.summary.liquidationCount.toString()} helper="nearby tracked trader pockets" />
           <CompactStat label="Rare whale" value={feed.summary.whaleCount.toString()} helper="repeat/timing screen" tone="green" />
         </section>
       ) : null}
@@ -361,7 +361,7 @@ export default function WhalesPage() {
               <div>
                 <SectionEyebrow>Live signals</SectionEyebrow>
                 <div className="mt-1 text-sm text-zinc-400">
-                  Setups first: crowding and nearby tracked-book liquidation pockets, then rare repeat-whale behavior.
+                  Setups first: crowding and nearby tracked trader liquidation pockets, then rare repeat-whale behavior.
                 </div>
               </div>
               <div className="flex items-center gap-2">

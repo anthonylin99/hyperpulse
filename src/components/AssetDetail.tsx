@@ -222,7 +222,7 @@ export default function AssetDetail({
         <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
         <FilterChip label="Liquidity map" active={tab === "liquidity"} onClick={() => setTab("liquidity")} className="py-1.5 text-xs" />
         <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
-        <FilterChip label="Leverage / Crowd" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
+        <FilterChip label="Positioning" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
       </div>
 
       {/* Chart area */}

@@ -7,7 +7,7 @@ const quickLinks = [
   { href: "#data-sources", label: "Data Sources" },
   { href: "#portfolio", label: "Portfolio Analytics" },
   { href: "#signals", label: "Market Signals" },
-  { href: "#factors", label: "Factors" },
+  { href: "#pressure-levels", label: "Pressure Levels" },
   { href: "#whales", label: "Whales" },
   { href: "#sentiment", label: "Next 24h Bias" },
   { href: "#wallets", label: "Wallet Modes" },
@@ -134,9 +134,8 @@ function Section({
 }
 
 export default function DocsPage() {
-  const { factorsEnabled, whalesEnabled } = useAppConfig();
+  const { whalesEnabled } = useAppConfig();
   const visibleQuickLinks = quickLinks.filter((item) => {
-    if (!factorsEnabled && item.href === "#factors") return false;
     if (!whalesEnabled && item.href === "#whales") return false;
     return true;
   });
@@ -289,42 +288,45 @@ export default function DocsPage() {
             </p>
           </Section>
 
-          {factorsEnabled ? (
-            <Section id="factors" eyebrow="Factors" title="How the Factors tab is calculated">
-              <p>
-                HyperPulse uses Artemis as the canonical research layer for factor definitions and monthly basket
-                commentary. The app then combines those factor snapshots with live Hyperliquid market state so traders can
-                see which regimes are actually tradable right now.
-              </p>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <div className="text-xs font-medium text-zinc-100">Historical factor performance</div>
-                  <div className="mt-2 text-sm text-zinc-400">
-                    Computed from Artemis daily <code>price</code> data across the tracked long and short baskets. Long
-                    legs and short legs are equal-weighted unless the public report publishes explicit weights.
-                  </div>
-                </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <div className="text-xs font-medium text-zinc-100">Hyperliquid trade view</div>
-                  <div className="mt-2 text-sm text-zinc-400">
-                    Built from live Hyperliquid prices, funding, open interest, and existing signal confidence. This is
-                    the layer that turns factor research into actual trade candidates such as TAO or NEAR.
-                  </div>
+          <Section id="pressure-levels" eyebrow="Levels" title="How chart pressure levels are produced">
+            <p>
+              Pressure levels live inside the price chart. Support and resistance still come from confirmed candle
+              structure. Liquidation pressure only appears when tracked wallet profiles include real Hyperliquid
+              position data with liquidation prices.
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Market context</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  Mark price, funding APR, open interest, max leverage, and visible book depth come from Hyperliquid.
                 </div>
               </div>
-              <p>
-                Factor cards are intentionally labeled as HyperPulse-tracked Artemis baskets. HyperPulse does not claim
-                to reproduce private rebalance files; it shows the public factor logic, public report holdings, and the
-                live Hyperliquid overlay built on top.
-              </p>
-            </Section>
-          ) : null}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Tracked pockets</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  Known-wallet liquidations are bucketed every 0.5% within 25% of price, then scored by notional,
+                  leverage, and distance.
+                </div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Market-only mode</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  When no tracked wallet store is configured, the chart shows funding/OI pressure and no liquidation
+                  bands.
+                </div>
+              </div>
+            </div>
+            <p>
+              Public trades are not used to create liquidation lines because Hyperliquid trade prints do not expose
+              leverage or liquidation price. They can only confirm tape pressure near existing levels in later versions.
+            </p>
+          </Section>
 
           {whalesEnabled ? (
             <Section id="whales" eyebrow="Whales" title="How the positioning monitor works">
               <p>
                 The Whales tab now works as a read-only positioning monitor. It combines three signal families:
-                crowding setups on major perps, nearby tracked-book liquidation pockets, and rare tracked-wallet repeat
+                crowding setups on major perps, nearby tracked trader liquidation pockets, and rare tracked-wallet repeat
                 behavior that can be reviewed on a dedicated wallet page.
               </p>
               <div className="grid gap-3 md:grid-cols-2">
@@ -359,7 +361,7 @@ export default function DocsPage() {
                 <div className="text-xs font-medium uppercase tracking-[0.16em] text-amber-300">What this monitor is not</div>
                 <div className="mt-3 space-y-2 text-sm text-zinc-300">
                   <div>Crowding is a structural heuristic on major perps, not a guaranteed predictive model.</div>
-                  <div>Liquidation pressure is a tracked-book subset from profitable wallets, not a full exchange-wide liquidation map.</div>
+                  <div>Liquidation pressure is a tracked trader subset from profitable wallets, not a full exchange-wide liquidation map.</div>
                   <div>Rare whale signals are tracked-wallet behavior screens, not copy-trade recommendations.</div>
                 </div>
               </div>

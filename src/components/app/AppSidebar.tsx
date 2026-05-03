@@ -28,7 +28,7 @@ const TAB_ICONS: Record<AppTabKey, typeof BarChart3> = {
 const TAB_HELPERS: Record<AppTabKey, string> = {
   home: "Landing + proof",
   markets: "Directory + context",
-  factors: "Research regimes",
+  factors: "Regime baskets",
   whales: "Tracked flow",
   portfolio: "Review workspace",
   docs: "Methodology",

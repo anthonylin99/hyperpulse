@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { MIN_OI_USD } from "@/lib/constants";
-import { isFactorsEnabled, isWhalesEnabled } from "@/lib/appConfig";
+import { isWhalesEnabled } from "@/lib/appConfig";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { enforceRateLimit, jsonError, jsonSuccess, logServerError } from "@/lib/security";
 import { listPositioningAlerts } from "@/lib/whaleStore";
@@ -146,7 +146,7 @@ export async function GET(req: NextRequest) {
       signals,
       generatedAt: timestamp,
       source: isWhalesEnabled() ? "market-plus-tracked-flow" : "market-only",
-      factorsIncluded: isFactorsEnabled(),
+      factorsIncluded: false,
     });
   } catch (error) {
     logServerError("api/market/radar", error);

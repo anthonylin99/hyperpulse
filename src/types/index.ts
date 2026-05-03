@@ -290,7 +290,12 @@ export interface SupportResistanceLevel {
   id: string;
   label: string;
   kind: "support" | "resistance" | "pivot";
-  source: "traditional_pivot" | "swing_pivot" | "structure_pivot" | "structure_trendline";
+  source:
+    | "traditional_pivot"
+    | "swing_pivot"
+    | "structure_pivot"
+    | "structure_trendline"
+    | "leverage_liquidation";
   price: number;
   zoneLow?: number;
   zoneHigh?: number;
@@ -305,6 +310,96 @@ export interface SupportResistanceLevel {
   status?: "forecast" | "active" | "tested" | "broken" | "expired";
   confirmationBars?: number;
   reason?: string;
+  explanation?: string;
+  evidence?: string[];
+  notionalUsd?: number;
+  weightedLeverage?: number;
+  leverageMultiplier?: number;
+  pressureScore?: number;
+  lfxScore?: number;
+  depthAdjustedImpact?: number | null;
+  volatilityReach?: number;
+  distanceDecay?: number;
+  flowSide?: PressureFlowSide;
+  zoneType?: PressureZoneType;
+  coverage?: PressureCoverage;
+  flowRank?: number;
+  flowRelative?: number;
+  leverageBucket?: string;
+  walletCount?: number;
+  pressureSide?: PressureLevelSide;
+  pressureSource?: PressureLevelSource;
+}
+
+export type PressureLevelSide = "long_liq" | "short_liq";
+export type PressureFlowSide = "forced_sell" | "forced_buy";
+export type PressureZoneType =
+  | "downside_cascade"
+  | "upside_squeeze"
+  | "absorption_support"
+  | "absorption_resistance"
+  | "magnet"
+  | "dead_zone";
+export type PressureCoverage = "market_only" | "wallet_sample";
+export type PressureLevelSource = "market_inferred" | "tracked_liquidation" | "estimated_leverage";
+export type PressureConfidence = "low" | "medium" | "high";
+
+export interface PressureLevel {
+  id: string;
+  price: number;
+  side: PressureLevelSide;
+  source: PressureLevelSource;
+  distancePct: number;
+  notionalUsd: number;
+  weightedLeverage: number;
+  leverageMultiplier: number;
+  pressureScore: number;
+  lfxScore: number;
+  depthAdjustedImpact: number | null;
+  volatilityReach: number;
+  distanceDecay: number;
+  flowSide: PressureFlowSide;
+  zoneType: PressureZoneType;
+  coverage: PressureCoverage;
+  explanation?: string;
+  evidence?: string[];
+  flowRank?: number;
+  flowRelative?: number;
+  leverageBucket?: string;
+  confidence: PressureConfidence;
+  walletCount: number;
+}
+
+export interface PressurePayload {
+  coin: string;
+  coverage: PressureCoverage;
+  currentPrice: number;
+  updatedAt: number;
+  market: {
+    fundingAPR: number | null;
+    openInterestUsd: number | null;
+    oiChangePct: number | null;
+    maxLeverage: number | null;
+    bidDepthUsd: number | null;
+    askDepthUsd: number | null;
+    topBookImbalancePct: number | null;
+    pressureScore: number;
+  };
+  levels: PressureLevel[];
+  summary: {
+    nearestPressureLevel: PressureLevel | null;
+    dominantPressureLevel: PressureLevel | null;
+    strongestLongLiquidationLevel: PressureLevel | null;
+    strongestShortLiquidationLevel: PressureLevel | null;
+    longLiquidationNotionalUsd: number;
+    shortLiquidationNotionalUsd: number;
+    trackedWallets: number;
+  };
+}
+
+export interface PressureBatchPayload {
+  updatedAt: number;
+  assets: Record<string, PressurePayload>;
 }
 
 // ─── Activity Types ─────────────────────────────────────────────
@@ -644,11 +739,15 @@ export interface WhaleEpisodeEvidence {
 export interface WhalePositionSnapshot {
   coin: string;
   side: "long" | "short";
+  szi?: number;
   size: number;
   entryPx: number;
   markPx: number;
   notionalUsd: number;
+  positionValueUsd?: number;
+  marginUsedUsd?: number | null;
   leverage: number;
+  leverageType?: string | null;
   liquidationPx: number | null;
   liquidationDistancePct: number | null;
   unrealizedPnl: number;
@@ -861,6 +960,28 @@ export interface PositioningMarketSnapshot {
   spotProxySource: string | null;
   priceChange1h?: number | null;
   priceChange4h?: number | null;
+}
+
+export interface TrackedLiquidationBucket {
+  id: string;
+  asset: string;
+  side: "long_liq" | "short_liq";
+  timestamp: number;
+  bucketSize: number;
+  price: number;
+  currentPrice: number;
+  distancePct: number;
+  longNotionalUsd: number;
+  shortNotionalUsd: number;
+  totalNotionalUsd: number;
+  marginUsd: number | null;
+  weightedAvgLeverage: number | null;
+  avgEntryPrice: number | null;
+  positionCount: number;
+  walletCount: number;
+  source: "tracked_wallet_sample";
+  trackedWalletCount: number | null;
+  payload: Record<string, unknown>;
 }
 
 export interface PositioningAlert {

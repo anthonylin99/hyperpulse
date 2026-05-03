@@ -18,8 +18,12 @@ import {
 import { formatCompact, formatPct, formatUSD } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { reportClientError } from "@/lib/clientErrorReporter";
-import { calculateSupportResistanceLevels, type LevelCandle } from "@/lib/supportResistance";
-import { buildMarketSetupSignal, type MarketSetupSignal } from "@/lib/tradePlan";
+import {
+  buildReactionSetupSignal,
+  isDefaultReactionAsset,
+  type ReactionLevelsPayload,
+} from "@/lib/reactionLevels";
+import type { MarketSetupSignal } from "@/lib/tradePlan";
 
 type Mode = "perps" | "spot";
 
@@ -70,13 +74,17 @@ const RWA_SPOT_CATEGORIES = [
 
 const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
 const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
-const SETUP_SCAN_LIMIT = 6;
-const SETUP_SCAN_INTERVAL_MS = 10 * 60_000;
-const CANDLE_SCAN_BUCKET_MS = 5 * 60_000;
-
-function sleep(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
+const REACTION_BATCH_SIZE = 4;
+const REACTION_SCAN_INTERVAL_MS = 2 * 60_000;
+const REACTION_DEFAULT_SIGNAL: MarketSetupSignal = {
+  type: "none",
+  label: "Reaction defaults",
+  detail: "BTC ETH SOL HYPE",
+  tone: "neutral",
+  level: null,
+  distancePct: null,
+  isActive: false,
+};
 
 function getPerpSortValue(asset: MarketAsset, key: PerpSortKey): number | string {
   switch (key) {
@@ -189,75 +197,64 @@ export default function MarketTable({
     return arr;
   }, [assets, search, categoryFilter, hideSmallCaps, perpSortKey, perpSortAsc]);
 
-  const scanAssetCoins = useMemo(
-    () => perpsFiltered.slice(0, SETUP_SCAN_LIMIT).map((asset) => asset.coin),
+  const reactionAssetCoins = useMemo(
+    () => perpsFiltered.filter((asset) => isDefaultReactionAsset(asset.coin)).map((asset) => asset.coin),
     [perpsFiltered],
   );
-  const scanAssetKey = scanAssetCoins.join(",");
+  const reactionAssetKey = reactionAssetCoins.join(",");
 
   useEffect(() => {
-    if (mode !== "perps" || scanAssetKey.length === 0) return;
+    if (mode !== "perps" || reactionAssetKey.length === 0) return;
     let cancelled = false;
 
-    async function scanSetups() {
-      const now = Math.floor(Date.now() / CANDLE_SCAN_BUCKET_MS) * CANDLE_SCAN_BUCKET_MS;
-      const startTime = now - 14 * 24 * 60 * 60 * 1000;
-      const coins = scanAssetKey.split(",");
+    async function scanReactionLevels() {
+      const bucket = Math.floor(Date.now() / REACTION_SCAN_INTERVAL_MS);
+      const coins = reactionAssetKey.split(",").filter(Boolean);
       const nextSignals: Record<string, MarketSetupSignal> = {};
-      const scanKey = `${scanAssetKey}:${now}`;
-      if (
-        setupScanRef.current.key === scanKey ||
-        Date.now() - setupScanRef.current.timestamp < SETUP_SCAN_INTERVAL_MS
-      ) {
-        return;
-      }
+      const scanKey = `${reactionAssetKey}:${bucket}`;
+      if (setupScanRef.current.key === scanKey) return;
       setupScanRef.current.key = scanKey;
       setupScanRef.current.timestamp = Date.now();
 
-      for (const coin of coins) {
-        if (cancelled) return;
-        try {
-          const response = await fetch(
-            withNetworkParam(
-              `/api/market/candles?coin=${encodeURIComponent(coin)}&interval=15m&startTime=${startTime}&endTime=${now}`,
-            ),
+      const batches = Array.from(
+        { length: Math.ceil(coins.length / REACTION_BATCH_SIZE) },
+        (_, index) => coins.slice(index * REACTION_BATCH_SIZE, (index + 1) * REACTION_BATCH_SIZE),
+      );
+
+      await Promise.all(
+        batches.map(async (batch) => {
+          if (cancelled || batch.length === 0) return;
+          await Promise.all(
+            batch.map(async (coin) => {
+              const response = await fetch(
+                withNetworkParam(
+                  `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=15m`,
+                ),
+              );
+              if (!response.ok) return;
+              const payload = (await response.json()) as ReactionLevelsPayload;
+              nextSignals[coin] = buildReactionSetupSignal(payload);
+            }),
           );
-          if (!response.ok) continue;
-          const rawCandles = (await response.json()) as Array<Record<string, string | number>>;
-          const candles: LevelCandle[] = rawCandles
-            .map((candle) => ({
-              time: Number(candle.t ?? candle.T ?? candle.time),
-              open: Number(candle.o ?? candle.open),
-              high: Number(candle.h ?? candle.high),
-              low: Number(candle.l ?? candle.low),
-              close: Number(candle.c ?? candle.close),
-              volume: Number(candle.v ?? candle.vlm ?? 0),
-            }))
-            .filter((candle) => Number.isFinite(candle.close) && candle.close > 0);
-          const levels = calculateSupportResistanceLevels(candles, "15m");
-          nextSignals[coin] = buildMarketSetupSignal({ candles, levels });
-        } catch {
-          // Ignore per-asset setup failures; the base market table still renders.
-        }
-        await sleep(150);
-      }
+        }),
+      );
 
       if (!cancelled) {
         setSetupSignals((prev) => ({ ...prev, ...nextSignals }));
       }
     }
 
-    scanSetups().catch((error) => reportClientError("market.setup-scan", error));
+    scanReactionLevels().catch((error) => reportClientError("market.reaction-scan", error));
     const interval = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
-      scanSetups().catch((error) => reportClientError("market.setup-scan", error));
-    }, 5 * 60_000);
+      scanReactionLevels().catch((error) => reportClientError("market.reaction-scan", error));
+    }, REACTION_SCAN_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [mode, scanAssetKey]);
+  }, [mode, reactionAssetKey]);
 
   const spotFiltered = useMemo(() => {
     let arr = [...rwaSpotAssets];
@@ -448,32 +445,38 @@ export default function MarketTable({
                 </tr>
               </thead>
               <tbody>
-                {perpsFiltered.map((asset, index) => (
-                  <AssetRow
-                    key={asset.coin}
-                    asset={asset}
-                    index={index}
-                    isExpanded={selectedAsset === asset.coin}
-                    onSelect={() => onSelectAsset(selectedAsset === asset.coin ? null : asset.coin)}
-                    onTrade={(direction) => onTrade(asset.coin, direction)}
-                    tradingEnabled={tradingActive}
-                    fundingHistory={fundingHistories[asset.coin]}
-                    setupSignal={setupSignals[asset.coin]}
-                    detailNode={
-                      selectedAsset === asset.coin ? (
-                        <tr key={`${asset.coin}-detail`}>
-                          <td colSpan={perpsTotalColumns} className="p-0">
-                            <AssetDetail
-                              asset={asset}
-                              fundingHistory={fundingHistories[asset.coin]}
-                              onClose={() => onSelectAsset(null)}
-                            />
-                          </td>
-                        </tr>
-                      ) : null
-                    }
-                  />
-                ))}
+                {perpsFiltered.map((asset, index) => {
+                  const setupSignal = isDefaultReactionAsset(asset.coin)
+                    ? setupSignals[asset.coin]
+                    : REACTION_DEFAULT_SIGNAL;
+
+                  return (
+                    <AssetRow
+                      key={asset.coin}
+                      asset={asset}
+                      index={index}
+                      isExpanded={selectedAsset === asset.coin}
+                      onSelect={() => onSelectAsset(selectedAsset === asset.coin ? null : asset.coin)}
+                      onTrade={(direction) => onTrade(asset.coin, direction)}
+                      tradingEnabled={tradingActive}
+                      fundingHistory={fundingHistories[asset.coin]}
+                      setupSignal={setupSignal}
+                      detailNode={
+                        selectedAsset === asset.coin ? (
+                          <tr key={`${asset.coin}-detail`}>
+                            <td colSpan={perpsTotalColumns} className="p-0">
+                              <AssetDetail
+                                asset={asset}
+                                fundingHistory={fundingHistories[asset.coin]}
+                                onClose={() => onSelectAsset(null)}
+                              />
+                            </td>
+                          </tr>
+                        ) : null
+                      }
+                    />
+                  );
+                })}
               </tbody>
             </table>
           ) : (

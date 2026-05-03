@@ -16,14 +16,14 @@ The public production deployment exposes:
 Hidden in the public demo by default:
 
 - `Trading`
-- `Factors`
 - `Whales`
 
 Those surfaces can still exist in non-public environments, but they are not part of the shareable public demo posture.
 
 ## Product Surfaces
 
-- **Markets**: table-first Hyperliquid directory with price, funding, and top-level tape context
+- **Markets**: table-first Hyperliquid directory with price, funding, Reaction Map setup status, and top-level tape context
+- **Reaction Map**: market-positioning level map for BTC, ETH, SOL, and HYPE using public Hyperliquid trades, OI changes, book depth, funding, and optional tracked-wallet liquidation samples. It shows likely reaction pressure, not exact exchange-wide positions.
 - **Portfolio**: read-only wallet review with performance chart, positions, and trade journal
 - **Docs**: methodology and implementation notes for the current demo
 
@@ -40,16 +40,13 @@ Those surfaces can still exist in non-public environments, but they are not part
 Runtime flags are resolved from environment variables:
 
 - `ENABLE_TRADING`
-- `ENABLE_FACTORS`
 - `ENABLE_WHALES`
 - `NEXT_PUBLIC_ENABLE_TRADING`
-- `NEXT_PUBLIC_ENABLE_FACTORS`
 - `NEXT_PUBLIC_ENABLE_WHALES`
 
 Public production defaults:
 
 - `ENABLE_TRADING=false`
-- `ENABLE_FACTORS=false`
 - `ENABLE_WHALES=false`
 
 Optional site/runtime variables:
@@ -78,10 +75,12 @@ Open:
 
 ## Data Infra
 
-HyperPulse now includes a lean warehouse foundation for market capture and future support/resistance training:
+HyperPulse now includes a lean warehouse foundation for market capture and market-positioning research:
 
 - Canonical SQL migrations via `npm run db:migrate`
 - Market collector worker via `npm run market:collect`
+- Reaction Map stream worker via `npm run reaction:start`
+- Reaction-level API at `/api/market/reaction-levels?coin=BTC&window=15m`
 - Docker Compose local stack via `npm run docker:up`
 - Private read-only MCP server via `npm run mcp:start`
 
@@ -93,6 +92,12 @@ Build the app:
 
 ```bash
 npm run build
+```
+
+Build through the container path:
+
+```bash
+docker compose build web
 ```
 
 Run the public smoke test against a local or deployed environment:
@@ -117,5 +122,6 @@ HYPERPULSE_EXPECT_PUBLIC_FLAGS=1 npm run smoke:public
 
 ## Notes
 
+- Factors were retired. Setup no longer needs `ARTEMIS_API_KEY`, `ENABLE_FACTORS`, or factor-specific OpenAI credentials.
 - Landing screenshots are intended to come from real HyperPulse UI states rather than synthetic marketing mockups.
 - If you are deploying publicly, verify the production flags first before sharing the URL.

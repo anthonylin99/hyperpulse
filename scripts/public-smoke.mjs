@@ -33,7 +33,7 @@ for (const check of checks) {
         throw new Error(`/api/health expected ok payload, got ${body}`);
       }
     } else {
-      for (const key of ["tradingEnabled", "whalesEnabled", "factorsEnabled"]) {
+      for (const key of ["tradingEnabled", "whalesEnabled"]) {
         if (typeof config[key] !== "boolean") {
           throw new Error(`/api/public-config expected boolean ${key}, got ${config[key]}`);
         }
@@ -42,7 +42,6 @@ for (const check of checks) {
         const expectedOff = [
           ["tradingEnabled", false],
           ["whalesEnabled", false],
-          ["factorsEnabled", false],
         ];
         for (const [key, expected] of expectedOff) {
           if (config[key] !== expected) {
@@ -59,7 +58,7 @@ for (const check of checks) {
 }
 
 if (expectPublicFlags) {
-  for (const path of ["/factors", "/whales"]) {
+  for (const path of ["/whales"]) {
     const response = await fetch(`${baseUrl}${path}`, {
       headers: { "user-agent": "HyperPulse public smoke/1.0" },
       redirect: "manual",
@@ -74,7 +73,7 @@ if (expectPublicFlags) {
     console.log(`ok ${path} disabled redirect`);
   }
 
-  for (const path of ["/api/factors", "/api/whales/feed"]) {
+  for (const path of ["/api/whales/feed"]) {
     const response = await fetch(`${baseUrl}${path}`, {
       headers: { "user-agent": "HyperPulse public smoke/1.0" },
     });
