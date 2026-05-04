@@ -8,6 +8,7 @@ import { enrichTradesWithSizing } from "@/lib/portfolioSizing";
 import { getNotes, setNote } from "@/lib/tradeNotes";
 import type { RoundTripTrade } from "@/types";
 import TradeAnalyzerModal from "./TradeAnalyzerModal";
+import { formatEasternDateTime } from "@/lib/time";
 
 type SortKey = "time" | "pnl" | "pnlPct" | "duration" | "coin";
 type SortDir = "asc" | "desc";
@@ -501,12 +502,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                     className="border-b border-zinc-800/50 hover:bg-zinc-800/30"
                   >
                     <td className="px-4 py-2 text-zinc-400 whitespace-nowrap">
-                      {new Date(trade.exitTime).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatEasternDateTime(trade.exitTime)}
                     </td>
                     <td className="px-2 py-2 text-zinc-200 font-medium">
                       <button

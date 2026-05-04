@@ -20,6 +20,7 @@ import {
 import { executeOrdersSequentially, type SequentialLegResult } from "@/lib/order";
 import { saveDeployment } from "@/lib/factorDeployments";
 import { isNetworkTestnet } from "@/lib/hyperliquid";
+import { formatEasternDateTime } from "@/lib/time";
 import type {
   EditableFactorLeg,
   FactorDeploymentRecord,
@@ -551,7 +552,7 @@ export default function FactorTradeDrawer({
               {lastReceipt && (
                 <details className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-xs">
                   <summary className="cursor-pointer text-zinc-400">
-                    Deployment receipt · {new Date(lastReceipt.timestamp).toLocaleString()} · {lastReceipt.mainnet ? "mainnet" : "testnet"}
+                    Deployment receipt · {formatEasternDateTime(lastReceipt.timestamp)} · {lastReceipt.mainnet ? "mainnet" : "testnet"}
                   </summary>
                   <div className="mt-2 space-y-1">
                     {lastReceipt.legs.map((leg, index) => (

@@ -15,6 +15,7 @@ import {
 import { cn, formatPct, formatUSD } from "@/lib/format";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { enrichTradeWithSizing, findSizingForTrade } from "@/lib/portfolioSizing";
+import { formatEasternChartTick } from "@/lib/time";
 import type { RoundTripTrade } from "@/types";
 
 type CandleBar = {
@@ -386,12 +387,7 @@ export default function TradeAnalyzerModal({
 
     const chart = candles.map((c) => ({
       ...c,
-      label: new Date(c.time).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }),
+      label: formatEasternChartTick(c.time, "datetime"),
     }));
 
     const riskContext = buildRiskContext(
@@ -529,12 +525,7 @@ export default function TradeAnalyzerModal({
                       dataKey="time"
                       type="number"
                       domain={["dataMin", "dataMax"]}
-                      tickFormatter={(value) =>
-                        new Date(value).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })
-                      }
+                      tickFormatter={(value) => formatEasternChartTick(Number(value), "date")}
                       tick={{ fontSize: 11, fill: "#71717a" }}
                       axisLine={false}
                       tickLine={false}
@@ -555,14 +546,7 @@ export default function TradeAnalyzerModal({
                         borderRadius: 12,
                         fontSize: 12,
                       }}
-                      labelFormatter={(value) =>
-                        new Date(Number(value)).toLocaleString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })
-                      }
+                      labelFormatter={(value) => formatEasternChartTick(Number(value), "datetime")}
                       formatter={(value) => [`$${formatPrice(Number(value))}`, "Price"]}
                     />
                     <ReferenceArea

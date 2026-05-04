@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useMarket } from "@/context/MarketContext";
 import { cn, formatFundingRate, formatPct, formatUSD } from "@/lib/format";
+import { formatEasternTime } from "@/lib/time";
 import type { MarketAsset } from "@/types";
 
 const FALLBACK_TICKERS = ["BTC", "ETH", "SOL", "HYPE", "AAVE", "ZEC"] as const;
@@ -60,9 +61,7 @@ export default function LiveTickerStrip() {
   );
   const hasLiveAssets = tickerAssets.length > 0;
 
-  const timeLabel = lastUpdated
-    ? lastUpdated.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    : "--:--:--";
+  const timeLabel = lastUpdated ? formatEasternTime(lastUpdated, true) : "--:--:-- EST";
 
   return (
     <div className="border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur">

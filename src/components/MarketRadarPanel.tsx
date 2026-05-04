@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Radar, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/format";
+import { formatEasternTime } from "@/lib/time";
 import type { MarketRadarSignal } from "@/types";
 import { SectionEyebrow } from "@/components/trading-ui";
 
@@ -43,11 +44,7 @@ function kindLabel(kind: MarketRadarSignal["kind"]) {
 
 function formatRadarTime(time: number | undefined): string {
   if (!time || !Number.isFinite(time)) return "waiting";
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(new Date(time));
+  return formatEasternTime(time, true);
 }
 
 export default function MarketRadarPanel({ variant = "compact" }: { variant?: "compact" | "hero" }) {

@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { cn, formatUSD } from "@/lib/format";
+import { formatEasternDate } from "@/lib/time";
 
 type TimeRange = "7d" | "30d" | "90d" | "all";
 
@@ -38,11 +39,7 @@ function EquityTooltip({
   return (
     <div className="min-w-[160px] rounded-2xl border border-zinc-800/90 bg-[#070b09]/95 px-3 py-2.5 shadow-[0_10px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm">
       <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-        {new Date(label).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}
+        {formatEasternDate(label, true)}
       </div>
       <div className="mt-1.5 text-lg font-semibold text-zinc-50">{formatUSD(value)}</div>
       <div className="mt-1 inline-flex items-center gap-2 text-xs text-emerald-300/90">
@@ -207,12 +204,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
               <CartesianGrid vertical={false} stroke="rgba(39,39,42,0.45)" strokeDasharray="0" />
               <XAxis
                 dataKey="time"
-                tickFormatter={(value) =>
-                  new Date(value).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })
-                }
+                tickFormatter={(value) => formatEasternDate(Number(value))}
                 tick={{ fontSize: 11, fill: "#6b7280" }}
                 axisLine={false}
                 tickLine={false}

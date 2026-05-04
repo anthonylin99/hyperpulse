@@ -1,3 +1,5 @@
+import { formatEasternDateTime } from "@/lib/time";
+
 export function formatUSD(value: number, decimals = 2): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -47,12 +49,7 @@ export function formatChartPrice(value: number | null | undefined): string {
 
 export function formatTimestampShort(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "n/a";
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatEasternDateTime(value);
 }
 
 export function formatFundingRate(rate: number): string {

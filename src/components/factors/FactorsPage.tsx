@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useFactors } from "@/context/FactorContext";
 import { formatPct, formatUSD } from "@/lib/format";
 import { cn } from "@/lib/format";
+import { formatEasternTime } from "@/lib/time";
 import type {
   FactorConstituentPerformance,
   FactorContributor,
@@ -128,8 +129,8 @@ export default function FactorsPage() {
               </div>
               <div className="mt-2 text-sm font-medium text-zinc-100">
                 {lastUpdated
-                  ? lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-                  : "--:--"}
+                  ? formatEasternTime(lastUpdated)
+                  : "--:-- EST"}
               </div>
             </div>
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">

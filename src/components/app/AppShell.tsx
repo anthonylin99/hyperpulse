@@ -8,6 +8,7 @@ import LiveTickerStrip from "@/components/app/LiveTickerStrip";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
 import { getBuildStamp } from "@/lib/site";
+import { formatEasternTime } from "@/lib/time";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -25,13 +26,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname === "/whales" ||
     pathname.startsWith("/whales/");
   const buildStamp = getBuildStamp();
-  const syncLabel = lastUpdated
-    ? lastUpdated.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : "--:--:--";
+  const syncLabel = lastUpdated ? formatEasternTime(lastUpdated, true) : "--:--:-- EST";
 
   const footer = (
     <footer className="border-t border-zinc-900/80 bg-[#090b0f]/92">

@@ -24,6 +24,7 @@ import { buildWalletIntelligenceSummary } from "@/lib/traderIntelligence";
 import type { WhaleAlert, WhalePositionSnapshot, WhaleWalletProfile, WhaleWatchlistEntry } from "@/types";
 import { IconActionButton, SectionEyebrow, SurfaceButton } from "@/components/trading-ui";
 import toast from "react-hot-toast";
+import { formatEasternDate, formatEasternDateTime } from "@/lib/time";
 
 function humanizeBucket(bucket: string) {
   return bucket.replace(/_/g, " ");
@@ -431,10 +432,10 @@ export default function WhaleProfilePage({
               <div className="rounded-3xl border border-zinc-800 bg-zinc-950/45 p-4">
                 <SectionEyebrow>Clock</SectionEyebrow>
                 <div className="mt-3 text-base font-medium text-zinc-100">
-                  {profile.firstSeenAt ? new Date(profile.firstSeenAt).toLocaleDateString() : "n/a"} first seen
+                  {profile.firstSeenAt ? formatEasternDate(profile.firstSeenAt) : "n/a"} first seen
                 </div>
                 <div className="mt-2 text-sm leading-6 text-zinc-400">
-                  Last active {profile.lastSeenAt ? new Date(profile.lastSeenAt).toLocaleString() : "n/a"}
+                  Last active {profile.lastSeenAt ? formatEasternDateTime(profile.lastSeenAt) : "n/a"}
                 </div>
               </div>
             </div>
@@ -632,7 +633,7 @@ export default function WhaleProfilePage({
                         </span>
                       </div>
                       <div className="mt-1 text-xs text-zinc-500">
-                        {formatUSD(trade.notionalUsd)} · {new Date(trade.entryTime).toLocaleDateString()}
+                        {formatUSD(trade.notionalUsd)} · {formatEasternDate(trade.entryTime)}
                       </div>
                     </td>
                     <td className="px-4 py-4 font-mono text-sm text-zinc-300">
@@ -671,7 +672,7 @@ export default function WhaleProfilePage({
                   <tr key={event.id} className="border-b border-zinc-800/80">
                     <td className="px-0 py-4">
                       <div className="text-sm font-medium text-zinc-100">{event.label}</div>
-                      <div className="mt-1 text-xs text-zinc-500">{new Date(event.time).toLocaleString()}</div>
+                      <div className="mt-1 text-xs text-zinc-500">{formatEasternDateTime(event.time)}</div>
                     </td>
                     <td className={cn("px-0 py-4 text-right font-mono text-sm", event.direction === "in" ? "text-emerald-300" : event.direction === "out" ? "text-rose-300" : "text-zinc-300")}>
                       {event.direction === "out" ? "-" : event.direction === "in" ? "+" : ""}

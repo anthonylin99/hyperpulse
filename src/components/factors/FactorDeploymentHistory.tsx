@@ -5,6 +5,7 @@ import { clearDeployments, listDeployments } from "@/lib/factorDeployments";
 import { cn, formatUSD, truncateAddress } from "@/lib/format";
 import { getStoredNetwork } from "@/lib/hyperliquid";
 import type { FactorDeploymentRecord } from "@/types";
+import { formatEasternDateTime } from "@/lib/time";
 
 interface FactorDeploymentHistoryProps {
   address: string | null;
@@ -110,7 +111,7 @@ export default function FactorDeploymentHistory({
                         {record.factorName}
                       </div>
                       <div className="mt-1 text-xs text-zinc-500">
-                        {new Date(record.timestamp).toLocaleString()} ·{" "}
+                        {formatEasternDateTime(record.timestamp)} ·{" "}
                         {record.mainnet ? "mainnet" : "testnet"}
                       </div>
                     </div>

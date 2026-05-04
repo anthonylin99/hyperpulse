@@ -12,6 +12,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
+import { formatEasternChartTick, formatEasternDateTime } from "@/lib/time";
 import {
   reactionLevelsToSupportResistanceLevels,
   type ReactionLevelsPayload,
@@ -158,12 +159,7 @@ function chartPriceFormatter(value: number): string {
 
 function formatTimeMs(timeMs: number | null | undefined): string {
   if (!timeMs || !Number.isFinite(timeMs)) return "n/a";
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(timeMs));
+  return formatEasternDateTime(timeMs);
 }
 
 function confidenceClass(confidence: "low" | "medium" | "high" | undefined): string {
@@ -611,6 +607,8 @@ export default function PriceChart({
       autoSize: true,
       localization: {
         priceFormatter: chartPriceFormatter,
+        timeFormatter: (time: unknown) =>
+          formatEasternChartTick(time, interval === "D" ? "date" : "datetime"),
       },
       layout: {
         background: { type: ColorType.Solid, color: "#090b10" },
@@ -636,6 +634,8 @@ export default function PriceChart({
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 8,
+        tickMarkFormatter: (time: unknown) =>
+          formatEasternChartTick(time, interval === "D" ? "date" : "time"),
       },
       handleScroll: true,
       handleScale: true,
@@ -771,7 +771,7 @@ export default function PriceChart({
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, currentPrice, visibleDownsideFlows, visibleUpsideFlows]);
+  }, [candles, currentPrice, interval, visibleDownsideFlows, visibleUpsideFlows]);
 
   const levelSourceNote =
     oiHoldingHidden

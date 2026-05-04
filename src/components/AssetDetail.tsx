@@ -15,6 +15,7 @@ import type { MarketAsset } from "@/types";
 import { cn, formatCompactUsd, formatUSD, formatPct, formatFundingRate, formatFundingAPR } from "@/lib/format";
 import { getFundingRegime } from "@/lib/fundingRegime";
 import { withNetworkParam } from "@/lib/hyperliquid";
+import { formatEasternChartTick } from "@/lib/time";
 import {
   computePositioningContext,
   formatPositioningDepth,
@@ -306,12 +307,7 @@ export default function AssetDetail({
                     <XAxis
                       dataKey="time"
                       hide
-                      tickFormatter={(t) =>
-                        new Date(t).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })
-                      }
+                      tickFormatter={(t) => formatEasternChartTick(Number(t), "date")}
                       tick={{ fontSize: 10, fill: "#71717a" }}
                       axisLine={{ stroke: "#27272a" }}
                       tickLine={false}
@@ -341,13 +337,7 @@ export default function AssetDetail({
                         fontSize: "10px",
                         fontFamily: "monospace",
                       }}
-                      labelFormatter={(t) =>
-                        new Date(t).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                        })
-                      }
+                      labelFormatter={(t) => formatEasternChartTick(Number(t), "datetime")}
                       formatter={(value, name) => {
                         if (name === "Price Δ") return [`${Number(value).toFixed(2)}%`, "Price Δ"];
                         return [

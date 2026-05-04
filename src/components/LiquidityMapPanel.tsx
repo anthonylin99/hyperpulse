@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Layers3, Target } from "lucide-react";
 import { cn, formatChartPrice, formatCompactUsd, formatTimestampShort } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
+import { formatEasternChartTick } from "@/lib/time";
 import { FilterChip, SectionEyebrow } from "@/components/trading-ui";
 
 type LiquidityBandSide = "short_liq" | "long_liq" | "ask_liquidity" | "bid_liquidity" | "structure_resistance" | "structure_support";
@@ -362,7 +363,24 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
 
                 {[0, 0.2, 0.4, 0.6, 0.8, 1].map((step) => {
                   const x = PAD.left + step * chart.plotWidth;
-                  return <line key={step} x1={x} x2={x} y1={PAD.top} y2={HEIGHT - PAD.bottom} stroke="rgba(255,255,255,0.035)" />;
+                  const firstTime = data.candles[0].time;
+                  const lastTime = data.candles[data.candles.length - 1].time;
+                  const tickTime = firstTime + (lastTime - firstTime) * step;
+                  return (
+                    <g key={step}>
+                      <line x1={x} x2={x} y1={PAD.top} y2={HEIGHT - PAD.bottom} stroke="rgba(255,255,255,0.035)" />
+                      <text
+                        x={x}
+                        y={HEIGHT - 12}
+                        textAnchor={step === 0 ? "start" : step === 1 ? "end" : "middle"}
+                        fill="rgba(161,161,170,0.7)"
+                        fontSize="10"
+                        fontFamily="monospace"
+                      >
+                        {formatEasternChartTick(tickTime, range === "24h" ? "time" : "date")}
+                      </text>
+                    </g>
+                  );
                 })}
 
                 {plottedBands.map((band) => {

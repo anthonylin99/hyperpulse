@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { formatUSD, cn } from "@/lib/format";
+import { formatEasternDate } from "@/lib/time";
 import type { RoundTripTrade } from "@/types";
 import PriceChart from "@/components/PriceChart";
 
@@ -200,7 +201,7 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
                     point.pnl >= 0 ? "bg-emerald-500/60" : "bg-red-500/60",
                   )}
                   style={{ height: `${height}%` }}
-                  title={`${new Date(point.time).toLocaleDateString()}: ${formatUSD(point.pnl)}`}
+                  title={`${formatEasternDate(point.time)}: ${formatUSD(point.pnl)}`}
                 />
               );
             })}
@@ -264,12 +265,7 @@ function TradeRow({ trade }: { trade: RoundTripTrade }) {
   return (
     <tr className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
       <td className="px-2 py-1.5 text-zinc-400 whitespace-nowrap">
-        {new Date(trade.exitTime).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+        {formatEasternDate(trade.exitTime)}
       </td>
       <td className="px-2 py-1.5">
         <span
