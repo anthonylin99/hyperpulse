@@ -7,7 +7,7 @@ HyperPulse now has a lean data-warehouse foundation designed for low-cost captur
 Production stays simple:
 
 - Vercel serves the public Next.js app.
-- Railway runs always-on workers.
+- A DigitalOcean Docker droplet runs always-on ingestion workers.
 - Neon Postgres is the canonical warehouse.
 - Docker Compose is for local multi-service parity and worker packaging.
 
@@ -15,18 +15,37 @@ No Kafka, ClickHouse, Kubernetes, or full web Docker migration is required in th
 
 ## Data Layers
 
-### Bronze / raw-ish capture
+### Current product tables
+
+- `reaction_exposure_zones_current`
+- `reaction_exposure_zone_events`
+- `whale_wallets_current`
+- `whale_wallet_asset_stats`
+- `whale_positioning_current`
+- `whale_alert_events`
+
+`reaction_exposure_zones_current` is the serving table for the Reaction Map. It stores up to five bull zones and five bear zones per asset/window for BTC, ETH, and SOL. Zones are clustered from recent public Hyperliquid flow within a 0.8% band and remain explicitly inferred, not exact trader-position truth.
+
+### Short-lived worker inputs
+
+- `reaction_context_snapshots`
+- `reaction_orderbook_buckets`
+- `reaction_trade_buckets`
+
+These tables are worker inputs, not product truth. The reaction worker promotes useful signal into current zones, then prunes short-lived aggregates by dynamic range and hard time caps.
+
+### Legacy / compatibility capture
 
 - `market_assets`
 - `market_candles`
 - `market_context_snapshots`
 - `market_funding_rates`
-- `positioning_market_snapshots`
-- `tracked_position_snapshots`
-- `liq_heatmap_buckets`
-- `whale_alerts`
-- `whale_trade_episodes`
-- `portfolio_trade_sizing_snapshots`
+- `positioning_market_snapshots` (legacy)
+- `tracked_position_snapshots` (legacy)
+- `liq_heatmap_buckets` (legacy)
+- `whale_alerts` (legacy)
+- `whale_trade_episodes` (legacy)
+- `portfolio_trade_sizing_snapshots` (legacy)
 
 ### Silver / normalized features
 
@@ -56,6 +75,12 @@ Run continuously:
 
 ```bash
 npm run market:collect
+```
+
+Run the Reaction Map ingestor:
+
+```bash
+npm run reaction:start
 ```
 
 Run the private read-only MCP server:
@@ -92,6 +117,26 @@ MARKET_COLLECTOR_INTERVAL_MS=300000
 MARKET_COLLECTOR_ONCE=true
 ```
 
+## Reaction Map Ingestor
+
+The `reaction-map` worker subscribes to public Hyperliquid streams for BTC, ETH, and SOL:
+
+- `activeAssetCtx` for mark price, funding, and open-interest changes
+- `l2Book` and wide aggregated books for visible shelves
+- `trades` for recent buy/sell flow concentration
+
+Every flush cycle, the worker:
+
+1. writes compact minute aggregates,
+2. clusters candidate buckets into 0.8% exposure zones,
+3. upserts the top five bull and top five bear zones per asset/window,
+4. appends lifecycle events only for meaningful changes,
+5. prunes out-of-range short-lived aggregates.
+
+Cleanup uses `current spot +/- clamp(3 * recent average move, 2%, 35%)` with a hard time-cap fallback. Current zones and lifecycle events are preserved; stale current zones are marked instead of being deleted just because spot moved.
+
+Production should run this worker as an always-on Docker process on the DigitalOcean droplet. Vercel reads current zones through `/api/market/reaction-levels`; it should not persist exposure-zone rows.
+
 ## Tracked Trader Liquidation Map
 
 HyperPulse stores a zero-spend v1 liquidation map from tracked wallet profiles, not a full exchange-wide position book.
@@ -107,5 +152,6 @@ HyperPulse stores a zero-spend v1 liquidation map from tracked wallet profiles, 
 - No full order-book history in v1.
 - No full-market liquidation heatmap claim until coverage comes from a market-wide provider or equivalent exchange-wide reconstruction.
 - Wallet IDs should be hashed before they are used in model-training tables.
+- Keep legacy tables for one rollout while the new exposure-zone and whale-performance tables are verified. Drop old Neon tables only after temp-branch migration and production-read validation.
 - MCP is read-only and returns `noOrderPlacement: true` guardrails.
 - Use `ingestion_checkpoints` for restart-safe capture.

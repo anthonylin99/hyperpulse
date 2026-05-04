@@ -2,8 +2,11 @@ import { Pool } from "pg";
 import {
   buildReactionLevels,
   type ReactionBookBucket,
+  type ReactionConfidence,
+  type ReactionExposureSide,
   type ReactionLevelsPayload,
   type ReactionMarketContext,
+  type ReactionPrimarySource,
   type ReactionTrackedLiquidationBucket,
   type ReactionTradeBucket,
 } from "@/lib/reactionLevels";
@@ -52,6 +55,11 @@ function emptyPayload(coin: string, windowMs: number): ReactionLevelsPayload {
       note: "Reaction Map is waiting for public Hyperliquid stream buckets. It does not claim exact exchange-wide positions.",
     },
     levels: [],
+    overlayLevels: {
+      oiHolding: [],
+      oiHoldingBull: [],
+      oiHoldingBear: [],
+    },
     overlays: {
       bookLiquidity: [],
       tradeConcentration: [],
@@ -106,47 +114,153 @@ function normalizeTrackedLiquidation(bucket: {
   };
 }
 
-async function persistReactionLevels(client: Pool, payload: ReactionLevelsPayload) {
-  if (payload.currentPrice == null || payload.levels.length === 0) return;
-  const generatedBucket = Math.floor(payload.updatedAt / 60_000) * 60_000;
-  await Promise.all(
-    payload.levels.map((level) =>
-      client.query(
-        `
-        insert into reaction_level_snapshots (
-          id, asset, window_ms, generated_at, current_price, price_level, distance_pct,
-          reaction_label, direction_bias, confidence, score, primary_source, payload
-        )
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
-        on conflict (id) do update set
-          generated_at = excluded.generated_at,
-          current_price = excluded.current_price,
-          distance_pct = excluded.distance_pct,
-          reaction_label = excluded.reaction_label,
-          direction_bias = excluded.direction_bias,
-          confidence = excluded.confidence,
-          score = excluded.score,
-          primary_source = excluded.primary_source,
-          payload = excluded.payload
-        `,
-        [
-          `reaction-level:${payload.coin}:${payload.windowMs}:${generatedBucket}:${level.id}`,
-          payload.coin,
-          payload.windowMs,
-          payload.updatedAt,
-          payload.currentPrice,
-          level.price,
-          level.distancePct,
-          level.reactionLabel,
-          level.directionBias,
-          level.confidence,
-          level.score,
-          level.primarySource,
-          JSON.stringify(level),
-        ],
-      ),
-    ),
-  );
+function normalizeSide(value: unknown): ReactionExposureSide {
+  return value === "bear" ? "bear" : "bull";
+}
+
+function normalizeConfidence(value: unknown): ReactionConfidence {
+  if (value === "high" || value === "medium" || value === "low") return value;
+  return "low";
+}
+
+function normalizePrimarySource(value: unknown): ReactionPrimarySource {
+  if (value === "book" || value === "stress" || value === "mixed" || value === "positioning") return value;
+  return "positioning";
+}
+
+function compactUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  if (Math.abs(value) >= 1_000_000) return `$${(Math.abs(value) / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `$${(Math.abs(value) / 1_000).toFixed(1)}K`;
+  return `$${Math.abs(value).toFixed(0)}`;
+}
+
+async function readCurrentExposureZones(client: Pool, asset: string, windowMs: number): Promise<ReactionLevelsPayload | null> {
+  try {
+    const result = await client.query(
+      `
+      select *
+      from reaction_exposure_zones_current
+      where asset = $1
+        and window_ms = $2
+        and status <> 'retired'
+      order by side asc, rank asc
+      `,
+      [asset, windowMs],
+    );
+    if (result.rows.length === 0) return null;
+
+    const currentPrice = asNumber(result.rows[0]?.current_price);
+    if (currentPrice == null || currentPrice <= 0) return null;
+    const updatedAt = Math.max(
+      ...result.rows.map((row) => asNumber(row.refreshed_at) ?? asNumber(row.generated_at) ?? 0),
+    );
+    const levels = result.rows.map((row) => {
+      const side = normalizeSide(row.side);
+      const rank = Math.max(Math.round(asNumber(row.rank) ?? 0), 1);
+      const tradeNotionalUsd = Math.max(asNumber(row.trade_notional_usd) ?? 0, 0);
+      const inferredOiUsd = Math.max(asNumber(row.inferred_oi_notional_usd) ?? 0, 0);
+      const buyNotionalUsd = Math.max(asNumber(row.buy_notional_usd) ?? 0, 0);
+      const sellNotionalUsd = Math.max(asNumber(row.sell_notional_usd) ?? 0, 0);
+      const zoneLow = asNumber(row.zone_low) ?? asNumber(row.weighted_price) ?? currentPrice;
+      const zoneHigh = asNumber(row.zone_high) ?? asNumber(row.weighted_price) ?? currentPrice;
+      const price = asNumber(row.weighted_price) ?? asNumber(row.zone_mid) ?? (zoneLow + zoneHigh) / 2;
+      const distancePct = asNumber(row.distance_pct) ?? ((price - currentPrice) / currentPrice) * 100;
+      const reasonSelected =
+        typeof row.tooltip?.reasonSelected === "string"
+          ? row.tooltip.reasonSelected
+          : `Top ${side} OI holding zone`;
+      const evidence = [
+        `${distancePct >= 0 ? "+" : ""}${distancePct.toFixed(1)}%`,
+        `${compactUsd(tradeNotionalUsd)} recent flow`,
+        `${compactUsd(inferredOiUsd)} inferred OI`,
+        side === "bull" ? "Bull OI holding zone" : "Bear OI holding zone",
+        reasonSelected,
+        "Not exact open positions",
+      ];
+
+      return {
+        id: String(row.zone_id),
+        price,
+        zoneLow,
+        zoneHigh,
+        zoneSide: side,
+        zoneRank: rank,
+        distancePct,
+        reactionLabel: "two_way_chop" as const,
+        directionBias: "two_way" as const,
+        confidence: normalizeConfidence(row.confidence),
+        score: Math.round(asNumber(row.score) ?? 0),
+        primarySource: normalizePrimarySource(row.primary_source),
+        coverage: ["market_streams" as const],
+        evidence,
+        tooltip: {
+          rank,
+          side,
+          totalRecentFlowUsd: tradeNotionalUsd,
+          inferredOiUsd,
+          buyNotionalUsd,
+          sellNotionalUsd,
+          reasonSelected,
+          refreshedAtMs: asNumber(row.refreshed_at) ?? updatedAt,
+        },
+        components: {
+          bookDepthUsd: Math.max(asNumber(row.book_notional_usd) ?? 0, 0),
+          tradeNotionalUsd,
+          oiEntryNotionalUsd: inferredOiUsd,
+          trackedLiqNotionalUsd: Math.max(asNumber(row.tracked_liq_notional_usd) ?? 0, 0),
+          fundingBias: 0,
+          buyNotionalUsd,
+          sellNotionalUsd,
+          bidDepthUsd: Math.max(asNumber(row.bid_depth_usd) ?? 0, 0),
+          askDepthUsd: Math.max(asNumber(row.ask_depth_usd) ?? 0, 0),
+          longLiqNotionalUsd: 0,
+          shortLiqNotionalUsd: 0,
+          uniqueTraderCount: Math.max(Math.round(asNumber(row.wallet_count) ?? 0), 0),
+        },
+      };
+    });
+    const bull = levels.filter((level) => level.zoneSide === "bull").sort((a, b) => (a.zoneRank ?? 0) - (b.zoneRank ?? 0));
+    const bear = levels.filter((level) => level.zoneSide === "bear").sort((a, b) => (a.zoneRank ?? 0) - (b.zoneRank ?? 0));
+    const sorted = [...bull, ...bear].sort((a, b) => a.price - b.price);
+
+    return {
+      coin: asset,
+      currentPrice,
+      windowMs,
+      updatedAt,
+      coverage: {
+        marketStreams: true,
+        trackedWalletSample: false,
+        exactPositions: false,
+        note: "Reaction Map reads worker-built current exposure zones from public Hyperliquid streams. It does not claim exact exchange-wide positions.",
+      },
+      levels: sorted,
+      overlayLevels: {
+        oiHolding: sorted,
+        oiHoldingBull: bull,
+        oiHoldingBear: bear,
+      },
+      overlays: {
+        bookLiquidity: [],
+        tradeConcentration: [],
+        oiEntryProfile: sorted.map((level) => ({
+          price: level.price,
+          inferredNotionalUsd: level.components.oiEntryNotionalUsd,
+          side:
+            level.zoneSide === "bull"
+              ? ("likely_long" as const)
+              : level.zoneSide === "bear"
+                ? ("likely_short" as const)
+                : ("mixed" as const),
+        })),
+        trackedLiquidations: [],
+      },
+    };
+  } catch (error) {
+    if (typeof error === "object" && error != null && "code" in error && error.code === "42P01") return null;
+    throw error;
+  }
 }
 
 export async function getReactionLevelMap(args: {
@@ -160,6 +274,9 @@ export async function getReactionLevelMap(args: {
   const cutoff = Date.now() - args.windowMs;
 
   try {
+    const currentZones = await readCurrentExposureZones(client, asset, args.windowMs);
+    if (currentZones) return currentZones;
+
     const latestContextResult = await client.query(
       `
       select *
@@ -176,7 +293,7 @@ export async function getReactionLevelMap(args: {
     const currentPrice = asNumber(latestContext?.mark_px) ?? asNumber(latestContext?.mid_px) ?? asNumber(latestContext?.oracle_px);
     if (currentPrice == null || currentPrice <= 0) return emptyPayload(asset, args.windowMs);
 
-    const [earliestContextResult, bookResult, tradeResult, trackedBuckets] = await Promise.all([
+    const [earliestContextResult, oiDeltaResult, bookResult, tradeResult, trackedBuckets] = await Promise.all([
       client.query(
         `
         select open_interest_usd
@@ -186,6 +303,15 @@ export async function getReactionLevelMap(args: {
           and open_interest_usd is not null
         order by captured_at asc
         limit 1
+        `,
+        [asset, cutoff],
+      ),
+      client.query(
+        `
+        select sum(greatest(coalesce(open_interest_delta_usd, 0), 0)) as positive_open_interest_delta_usd
+        from reaction_context_snapshots
+        where asset = $1
+          and bucket_ms >= $2
         `,
         [asset, cutoff],
       ),
@@ -239,6 +365,7 @@ export async function getReactionLevelMap(args: {
 
     const earliestOpenInterestUsd = asNumber(earliestContextResult.rows[0]?.open_interest_usd);
     const latestOpenInterestUsd = asNumber(latestContext.open_interest_usd);
+    const positiveOpenInterestDeltaUsd = asNumber(oiDeltaResult.rows[0]?.positive_open_interest_delta_usd);
     const context: ReactionMarketContext = {
       fundingAPR: asNumber(latestContext.funding_apr),
       openInterestUsd: latestOpenInterestUsd,
@@ -246,6 +373,7 @@ export async function getReactionLevelMap(args: {
         earliestOpenInterestUsd != null && latestOpenInterestUsd != null
           ? latestOpenInterestUsd - earliestOpenInterestUsd
           : asNumber(latestContext.open_interest_delta_usd),
+      positiveOpenInterestDeltaUsd,
     };
     const bookBuckets = bookResult.rows
       .map((row) => normalizeBookBucket(row as Record<string, unknown>))
@@ -265,10 +393,6 @@ export async function getReactionLevelMap(args: {
       bookBuckets,
       tradeBuckets,
       trackedLiquidations,
-    });
-
-    persistReactionLevels(client, payload).catch((error: unknown) => {
-      console.warn("[reaction-level-store] reaction snapshot write failed", error);
     });
 
     return payload;

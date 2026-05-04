@@ -13,7 +13,8 @@ export type ReactionLabel =
 export type ReactionDirectionBias = "up" | "down" | "two_way";
 export type ReactionConfidence = "low" | "medium" | "high";
 export type ReactionPrimarySource = "book" | "positioning" | "stress" | "mixed";
-export type ReactionOverlayMode = "all" | "book" | "positioning" | "stress";
+export type ReactionOverlayMode = "all" | "book" | "oi_holding" | "stress";
+export type ReactionExposureSide = "bull" | "bear";
 
 const DEFAULT_REACTION_ASSETS = new Set(["BTC", "ETH", "SOL", "HYPE"]);
 
@@ -49,11 +50,16 @@ export interface ReactionMarketContext {
   fundingAPR: number | null;
   openInterestUsd: number | null;
   openInterestDeltaUsd: number | null;
+  positiveOpenInterestDeltaUsd?: number | null;
 }
 
 export interface ReactionLevel {
   id: string;
   price: number;
+  zoneLow?: number;
+  zoneHigh?: number;
+  zoneSide?: ReactionExposureSide;
+  zoneRank?: number;
   distancePct: number;
   reactionLabel: ReactionLabel;
   directionBias: ReactionDirectionBias;
@@ -62,6 +68,16 @@ export interface ReactionLevel {
   primarySource: ReactionPrimarySource;
   coverage: Array<"market_streams" | "tracked_wallet_sample">;
   evidence: string[];
+  tooltip?: {
+    rank?: number;
+    side?: ReactionExposureSide;
+    totalRecentFlowUsd?: number;
+    inferredOiUsd?: number;
+    buyNotionalUsd?: number;
+    sellNotionalUsd?: number;
+    reasonSelected?: string;
+    refreshedAtMs?: number;
+  };
   components: {
     bookDepthUsd: number;
     tradeNotionalUsd: number;
@@ -90,6 +106,11 @@ export interface ReactionLevelsPayload {
     note: string;
   };
   levels: ReactionLevel[];
+  overlayLevels: {
+    oiHolding: ReactionLevel[];
+    oiHoldingBull: ReactionLevel[];
+    oiHoldingBear: ReactionLevel[];
+  };
   overlays: {
     bookLiquidity: ReactionBookBucket[];
     tradeConcentration: ReactionTradeBucket[];
@@ -118,6 +139,9 @@ const MIN_REACTION_SPACING_PCT = 0.55;
 const MIN_REACTION_SCORE = 8;
 const MAX_REACTION_LEVELS_PER_SIDE = 4;
 const MAX_REACTION_LEVELS = MAX_REACTION_LEVELS_PER_SIDE * 2;
+const MAX_OI_HOLDING_ZONES_PER_SIDE = 5;
+const OI_HOLDING_CLUSTER_WIDTH_PCT = 0.8;
+const MIN_OI_HOLDING_TRADE_NOTIONAL_USD = 250_000;
 
 type LevelAccumulator = {
   price: number;
@@ -297,6 +321,24 @@ function reactionLevelPriority(level: ReactionLevel): number {
   return level.score + distanceBonus + sourceBonus + trackedBonus;
 }
 
+function oiHoldingPriority(level: ReactionLevel): number {
+  const tradeBonus = Math.log10(level.components.tradeNotionalUsd + 1) * 2;
+  const traderBonus = Math.log10(level.components.uniqueTraderCount + 1) * 4;
+  const directionalBonus =
+    level.components.tradeNotionalUsd > 0
+      ? (Math.abs(level.components.buyNotionalUsd - level.components.sellNotionalUsd) /
+          level.components.tradeNotionalUsd) *
+        10
+      : 0;
+  return level.components.oiEntryNotionalUsd + tradeBonus + traderBonus + directionalBonus;
+}
+
+function oiHoldingSide(level: ReactionLevel): ReactionExposureSide {
+  if (level.distancePct < 0) return "bull";
+  if (level.distancePct > 0) return "bear";
+  return level.components.buyNotionalUsd >= level.components.sellNotionalUsd ? "bull" : "bear";
+}
+
 function selectDistinctReactionLevels(levels: ReactionLevel[]): ReactionLevel[] {
   const eligible = levels.filter(
     (level) =>
@@ -333,6 +375,159 @@ function selectDistinctReactionLevels(levels: ReactionLevel[]): ReactionLevel[] 
     .sort((a, b) => reactionLevelPriority(b) - reactionLevelPriority(a))
     .slice(0, 2)
     .sort((a, b) => a.price - b.price);
+}
+
+function buildOiHoldingZones(levels: ReactionLevel[], currentPrice: number): {
+  bull: ReactionLevel[];
+  bear: ReactionLevel[];
+} {
+  const candidates = levels
+    .filter(
+      (level) =>
+        level.components.oiEntryNotionalUsd > 0 &&
+        level.components.tradeNotionalUsd >= MIN_OI_HOLDING_TRADE_NOTIONAL_USD,
+    )
+    .sort((a, b) => a.price - b.price);
+
+  const buildSide = (side: ReactionExposureSide): ReactionLevel[] => {
+    const sideCandidates = candidates.filter((level) => oiHoldingSide(level) === side);
+    const clusters: ReactionLevel[][] = [];
+
+    for (const candidate of sideCandidates) {
+      const lastCluster = clusters[clusters.length - 1];
+      const lastWeightedPrice =
+        lastCluster && lastCluster.length > 0
+          ? weightedPrice(lastCluster)
+          : null;
+      const distanceFromCluster =
+        lastWeightedPrice == null ? Infinity : Math.abs(((candidate.price - lastWeightedPrice) / currentPrice) * 100);
+      if (!lastCluster || distanceFromCluster > OI_HOLDING_CLUSTER_WIDTH_PCT) {
+        clusters.push([candidate]);
+      } else {
+        lastCluster.push(candidate);
+      }
+    }
+
+    return clusters
+      .map((cluster) => zoneFromCluster(cluster, side, currentPrice))
+      .sort((a, b) => oiHoldingPriority(b) - oiHoldingPriority(a))
+      .slice(0, MAX_OI_HOLDING_ZONES_PER_SIDE)
+      .map((zone, index) => withOiHoldingZoneRank(zone, side, index + 1))
+      .sort((a, b) => a.price - b.price);
+  };
+
+  return {
+    bull: buildSide("bull"),
+    bear: buildSide("bear"),
+  };
+}
+
+function weightedPrice(levels: ReactionLevel[]): number {
+  let numerator = 0;
+  let denominator = 0;
+  for (const level of levels) {
+    const weight = Math.max(
+      level.components.tradeNotionalUsd,
+      level.components.oiEntryNotionalUsd,
+      level.components.bookDepthUsd,
+      1,
+    );
+    numerator += level.price * weight;
+    denominator += weight;
+  }
+  return denominator > 0 ? numerator / denominator : levels[0]?.price ?? 0;
+}
+
+function zoneFromCluster(
+  cluster: ReactionLevel[],
+  side: ReactionExposureSide,
+  currentPrice: number,
+): ReactionLevel {
+  const sorted = [...cluster].sort((a, b) => oiHoldingPriority(b) - oiHoldingPriority(a));
+  const dominant = sorted[0];
+  const price = weightedPrice(cluster);
+  const zoneLow = Math.min(...cluster.map((level) => level.zoneLow ?? level.price));
+  const zoneHigh = Math.max(...cluster.map((level) => level.zoneHigh ?? level.price));
+  const distancePct = ((price - currentPrice) / currentPrice) * 100;
+  const components = cluster.reduce(
+    (sum, level) => ({
+      bookDepthUsd: sum.bookDepthUsd + level.components.bookDepthUsd,
+      tradeNotionalUsd: sum.tradeNotionalUsd + level.components.tradeNotionalUsd,
+      oiEntryNotionalUsd: sum.oiEntryNotionalUsd + level.components.oiEntryNotionalUsd,
+      trackedLiqNotionalUsd: sum.trackedLiqNotionalUsd + level.components.trackedLiqNotionalUsd,
+      fundingBias: Math.max(sum.fundingBias, level.components.fundingBias),
+      buyNotionalUsd: sum.buyNotionalUsd + level.components.buyNotionalUsd,
+      sellNotionalUsd: sum.sellNotionalUsd + level.components.sellNotionalUsd,
+      bidDepthUsd: sum.bidDepthUsd + level.components.bidDepthUsd,
+      askDepthUsd: sum.askDepthUsd + level.components.askDepthUsd,
+      longLiqNotionalUsd: sum.longLiqNotionalUsd + level.components.longLiqNotionalUsd,
+      shortLiqNotionalUsd: sum.shortLiqNotionalUsd + level.components.shortLiqNotionalUsd,
+      uniqueTraderCount: Math.max(sum.uniqueTraderCount, level.components.uniqueTraderCount),
+    }),
+    {
+      bookDepthUsd: 0,
+      tradeNotionalUsd: 0,
+      oiEntryNotionalUsd: 0,
+      trackedLiqNotionalUsd: 0,
+      fundingBias: 0,
+      buyNotionalUsd: 0,
+      sellNotionalUsd: 0,
+      bidDepthUsd: 0,
+      askDepthUsd: 0,
+      longLiqNotionalUsd: 0,
+      shortLiqNotionalUsd: 0,
+      uniqueTraderCount: 0,
+    },
+  );
+  const clusterWidthPct = ((zoneHigh - zoneLow) / currentPrice) * 100;
+  const evidence = [
+    formatDistance(distancePct),
+    `${compactUsd(components.tradeNotionalUsd)} recent flow`,
+    `${formatSignedUsd(components.oiEntryNotionalUsd)} inferred OI build`,
+    `${side === "bull" ? "Bull" : "Bear"} OI holding zone`,
+    `${cluster.length} clustered bucket${cluster.length === 1 ? "" : "s"} across ${clusterWidthPct.toFixed(2)}%`,
+    "Not exact open positions",
+  ];
+
+  return {
+    ...dominant,
+    id: `${dominant.id}-${side}-zone-${levelKey(price)}`,
+    price,
+    zoneLow,
+    zoneHigh,
+    zoneSide: side,
+    distancePct,
+    reactionLabel: "two_way_chop",
+    directionBias: "two_way",
+    confidence:
+      dominant.confidence === "high" || components.tradeNotionalUsd >= MIN_OI_HOLDING_TRADE_NOTIONAL_USD * 3
+        ? "high"
+        : dominant.confidence,
+    score: Math.max(dominant.score, Math.round(clamp(components.tradeNotionalUsd / 1_000_000, 0, 1) * 100)),
+    primarySource: "positioning",
+    evidence,
+    tooltip: {
+      side,
+      totalRecentFlowUsd: components.tradeNotionalUsd,
+      inferredOiUsd: components.oiEntryNotionalUsd,
+      buyNotionalUsd: components.buyNotionalUsd,
+      sellNotionalUsd: components.sellNotionalUsd,
+      reasonSelected: `Top ${side} inferred OI zone from ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`,
+    },
+    components,
+  };
+}
+
+function withOiHoldingZoneRank(level: ReactionLevel, side: ReactionExposureSide, rank: number): ReactionLevel {
+  return {
+    ...level,
+    zoneRank: rank,
+    tooltip: {
+      ...level.tooltip,
+      rank,
+      side,
+    },
+  };
 }
 
 function labelText(label: ReactionLabel): string {
@@ -446,7 +641,11 @@ export function buildReactionLevels({
     (sum, bucket) => sum + bucket.buyNotionalUsd + bucket.sellNotionalUsd,
     0,
   );
-  const oiDeltaUsd = Math.max(context.openInterestDeltaUsd ?? 0, 0);
+  const oiDeltaUsd = Math.max(
+    context.positiveOpenInterestDeltaUsd ?? 0,
+    context.openInterestDeltaUsd ?? 0,
+    0,
+  );
 
   const maxBook = maxOf(accumulators.map((level) => Math.max(level.bidDepthUsd, level.askDepthUsd)));
   const maxTrade = maxOf(accumulators.map((level) => level.buyNotionalUsd + level.sellNotionalUsd));
@@ -548,8 +747,10 @@ export function buildReactionLevels({
     .filter((level) => level.score >= MIN_REACTION_SCORE)
     .sort((a, b) => b.score - a.score || Math.abs(a.distancePct) - Math.abs(b.distancePct));
   const levels = selectDistinctReactionLevels(rawLevels).slice(0, MAX_REACTION_LEVELS);
+  const oiHoldingZones = buildOiHoldingZones(rawLevels, currentPrice);
+  const oiHoldingLevels = [...oiHoldingZones.bull, ...oiHoldingZones.bear].sort((a, b) => a.price - b.price);
 
-  const oiEntryProfile = levels
+  const oiEntryProfile = oiHoldingLevels
     .filter((level) => level.components.oiEntryNotionalUsd > 0)
     .map((level) => ({
       price: level.price,
@@ -574,6 +775,11 @@ export function buildReactionLevels({
       note: "Reaction Map uses public Hyperliquid market streams and optional tracked-wallet samples. It does not claim exact exchange-wide positions.",
     },
     levels,
+    overlayLevels: {
+      oiHolding: oiHoldingLevels,
+      oiHoldingBull: oiHoldingZones.bull,
+      oiHoldingBear: oiHoldingZones.bear,
+    },
     overlays: {
       bookLiquidity: bookBuckets,
       tradeConcentration: tradeBuckets,
@@ -695,12 +901,34 @@ export function reactionLevelsToSupportResistanceLevels(
   const currentPrice = payload.currentPrice;
   if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return [];
 
-  return payload.levels
-    .filter((level) => overlay === "all" || level.primarySource === overlay || (overlay === "positioning" && level.primarySource === "mixed"))
-    .map((level) => {
+  const sourceLevels =
+    overlay === "oi_holding"
+      ? payload.overlayLevels?.oiHolding ?? []
+      : payload.levels.filter((level) => overlay === "all" || level.primarySource === overlay);
+
+  return sourceLevels
+    .map((level, index) => {
       const kind = reactionKind(level, currentPrice);
       const halfRange = Math.max(level.price * 0.0009, currentPrice * 0.00055);
-      const directionalFlow = level.directionBias === "down" ? "forced_sell" : "forced_buy";
+      const zoneLow = level.zoneLow ?? Number((level.price - halfRange).toFixed(level.price >= 100 ? 0 : 4));
+      const zoneHigh = level.zoneHigh ?? Number((level.price + halfRange).toFixed(level.price >= 100 ? 0 : 4));
+      const displayNotionalUsd =
+        level.primarySource === "positioning"
+          ? level.components.tradeNotionalUsd
+          : Math.max(
+              level.components.tradeNotionalUsd,
+              level.components.oiEntryNotionalUsd,
+              level.components.trackedLiqNotionalUsd,
+              level.components.bookDepthUsd,
+            );
+      const directionalFlow =
+        level.primarySource === "positioning"
+          ? level.components.buyNotionalUsd >= level.components.sellNotionalUsd
+            ? "forced_sell"
+            : "forced_buy"
+          : level.directionBias === "down"
+            ? "forced_sell"
+            : "forced_buy";
       const depthAdjustedImpact =
         level.components.bookDepthUsd > 0
           ? Number(
@@ -715,12 +943,21 @@ export function reactionLevelsToSupportResistanceLevels(
 
       return {
         id: `reaction-${level.id}`,
-        label: reactionLabelForChart(level.reactionLabel),
+        label:
+          level.primarySource === "positioning"
+            ? level.zoneSide === "bull"
+              ? "Bull OI holding zone"
+              : level.zoneSide === "bear"
+                ? "Bear OI holding zone"
+                : level.components.buyNotionalUsd >= level.components.sellNotionalUsd
+                  ? "Likely long holding"
+                  : "Likely short holding"
+            : reactionLabelForChart(level.reactionLabel),
         kind,
         source: "leverage_liquidation",
         price: level.price,
-        zoneLow: Number((level.price - halfRange).toFixed(level.price >= 100 ? 0 : 4)),
-        zoneHigh: Number((level.price + halfRange).toFixed(level.price >= 100 ? 0 : 4)),
+        zoneLow,
+        zoneHigh,
         strength: level.score,
         distancePct: level.distancePct,
         updatedAtMs: payload.updatedAt,
@@ -729,12 +966,7 @@ export function reactionLevelsToSupportResistanceLevels(
         reason: level.evidence.join(" / "),
         explanation: level.evidence.join(" / "),
         evidence: level.evidence,
-        notionalUsd: Math.max(
-          level.components.tradeNotionalUsd,
-          level.components.oiEntryNotionalUsd,
-          level.components.trackedLiqNotionalUsd,
-          level.components.bookDepthUsd,
-        ),
+        notionalUsd: displayNotionalUsd,
         weightedLeverage: undefined,
         leverageMultiplier: undefined,
         pressureScore: level.score,
@@ -745,12 +977,17 @@ export function reactionLevelsToSupportResistanceLevels(
         flowSide: directionalFlow,
         zoneType: reactionZoneType(level.reactionLabel),
         coverage: level.coverage.includes("tracked_wallet_sample") ? "wallet_sample" : "market_only",
-        flowRank: undefined,
-        flowRelative: undefined,
+        flowRank: level.primarySource === "positioning" ? level.zoneRank ?? index + 1 : undefined,
+        flowRelative: level.primarySource === "positioning" ? 1 : undefined,
         leverageBucket: level.primarySource,
         walletCount: level.components.uniqueTraderCount,
         pressureSide: kind === "support" ? "long_liq" : "short_liq",
         pressureSource: undefined,
+        exposureSide: level.zoneSide,
+        inferredOiUsd: level.components.oiEntryNotionalUsd,
+        buyNotionalUsd: level.components.buyNotionalUsd,
+        sellNotionalUsd: level.components.sellNotionalUsd,
+        zoneTooltip: level.tooltip,
       } satisfies SupportResistanceLevel;
     });
 }

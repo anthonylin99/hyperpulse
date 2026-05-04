@@ -329,6 +329,20 @@ export interface SupportResistanceLevel {
   walletCount?: number;
   pressureSide?: PressureLevelSide;
   pressureSource?: PressureLevelSource;
+  exposureSide?: "bull" | "bear";
+  inferredOiUsd?: number;
+  buyNotionalUsd?: number;
+  sellNotionalUsd?: number;
+  zoneTooltip?: {
+    rank?: number;
+    side?: "bull" | "bear";
+    totalRecentFlowUsd?: number;
+    inferredOiUsd?: number;
+    buyNotionalUsd?: number;
+    sellNotionalUsd?: number;
+    reasonSelected?: string;
+    refreshedAtMs?: number;
+  };
 }
 
 export type PressureLevelSide = "long_liq" | "short_liq";
