@@ -21,7 +21,7 @@ services:
       dockerfile: workers/market-collector/Dockerfile
     command: ["npm", "run", "db:migrate"]
     environment:
-      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
+      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
     depends_on:
       db:
         condition: service_healthy
@@ -33,8 +33,8 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
     environment:
-      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       ENABLE_TRADING: "false"
       ENABLE_FACTORS: "false"
       ENABLE_WHALES: "false"
@@ -50,11 +50,11 @@ services:
       context: .
       dockerfile: workers/market-collector/Dockerfile
     environment:
-      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
-      MARKET_COLLECTOR_ASSET_LIMIT: "15"
-      MARKET_COLLECTOR_INTERVAL_MS: "300000"
-      MARKET_COLLECTOR_INTERVALS: 5m,15m,1h,1d
-      MARKET_COLLECTOR_LEVEL_INTERVALS: 15m,1h
+      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      MARKET_COLLECTOR_ASSET_LIMIT: ${MARKET_COLLECTOR_ASSET_LIMIT:-15}
+      MARKET_COLLECTOR_INTERVAL_MS: ${MARKET_COLLECTOR_INTERVAL_MS:-300000}
+      MARKET_COLLECTOR_INTERVALS: ${MARKET_COLLECTOR_INTERVALS:-5m,15m,1h,1d}
+      MARKET_COLLECTOR_LEVEL_INTERVALS: ${MARKET_COLLECTOR_LEVEL_INTERVALS:-15m,1h}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -65,18 +65,18 @@ services:
       context: .
       dockerfile: workers/reaction-map/Dockerfile
     environment:
-      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
-      REACTION_MAP_ASSETS: BTC,ETH,SOL
-      REACTION_MAP_BUCKET_MS: "60000"
-      REACTION_MAP_FLUSH_MS: "15000"
-      REACTION_MAP_BOOK_LEVEL_LIMIT: "40"
-      REACTION_MAP_WIDE_BOOK_N_SIG_FIGS: 3,2
-      REACTION_MAP_ZONE_WINDOWS: 5m,15m,1h
-      REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT: "0.8"
-      REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD: "250000"
-      REACTION_MAP_CLEANUP_RANGE_MIN_PCT: "2"
-      REACTION_MAP_CLEANUP_RANGE_MAX_PCT: "35"
-      REACTION_MAP_RETENTION_MS: "86400000"
+      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      REACTION_MAP_ASSETS: ${REACTION_MAP_ASSETS:-BTC,ETH,SOL}
+      REACTION_MAP_BUCKET_MS: ${REACTION_MAP_BUCKET_MS:-60000}
+      REACTION_MAP_FLUSH_MS: ${REACTION_MAP_FLUSH_MS:-15000}
+      REACTION_MAP_BOOK_LEVEL_LIMIT: ${REACTION_MAP_BOOK_LEVEL_LIMIT:-40}
+      REACTION_MAP_WIDE_BOOK_N_SIG_FIGS: ${REACTION_MAP_WIDE_BOOK_N_SIG_FIGS:-3,2}
+      REACTION_MAP_ZONE_WINDOWS: ${REACTION_MAP_ZONE_WINDOWS:-5m,15m,1h}
+      REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT: ${REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT:-0.8}
+      REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD: ${REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD:-250000}
+      REACTION_MAP_CLEANUP_RANGE_MIN_PCT: ${REACTION_MAP_CLEANUP_RANGE_MIN_PCT:-2}
+      REACTION_MAP_CLEANUP_RANGE_MAX_PCT: ${REACTION_MAP_CLEANUP_RANGE_MAX_PCT:-35}
+      REACTION_MAP_RETENTION_MS: ${REACTION_MAP_RETENTION_MS:-86400000}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -87,10 +87,10 @@ services:
       context: ./workers/whale-indexer
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgres://hyperpulse:hyperpulse@db:5432/hyperpulse
+      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
       TELEGRAM_ENABLED: "false"
       GOOGLE_SHEETS_ENABLED: "false"
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     depends_on:
       migrate:
         condition: service_completed_successfully

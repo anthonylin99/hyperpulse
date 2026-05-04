@@ -27,3 +27,15 @@
 - Replaced the leftover `railway:start` script alias with `digitalocean:start`.
 - Final rebuild with `WEB_PORT=3004` completed successfully. Next build ran during the Docker image build, lint passed, and the ETH reaction-level API smoke returned bull/bear zone data with tooltip metadata.
 - Final local Postgres check: active current-zone rows exist for BTC/ETH/SOL, lifecycle event rows exist, and local DB size is `95 MB`, under the 0.5 GB target.
+- After connector reauthentication, prepared migration `fcf86800-9bea-401b-aa29-b7f4c0527463` on Neon temp branch `mcp-migration-2026-05-03T23-35-48` (`br-dry-surf-am0wzlim`).
+- Verified temp branch had the new exposure-zone/whale-performance tables and no disposable tables from the cleanup list.
+- After explicit user approval, applied migration to Neon production branch `br-round-tree-amk0dtqc` and the temp branch was deleted.
+- Verified production `neondb` now has the new product tables, preserves rollout-safe legacy tables, removed the disposable tables, and reports `25 MB` database size.
+- Browser Use bridge later exposed through `mcp__node_repl__`, but this Browser Use build did not expose a navigation command, address-bar typing failed because no editable target was focused, and direct Playwright was unavailable in the Node REPL runtime.
+- Ran a temporary local Docker `reaction-map` worker against Neon production to mimic the future DigitalOcean worker. First smoke exposed a production schema mismatch: `reaction_context_snapshots` was missing worker-contract columns from local `0003`.
+- Added migration `0005_reaction_worker_source_table_compat.sql` to align Neon-created reaction source tables with the worker contract and keep local migration history aligned.
+- Prepared and verified Neon migration `d176a3e4-7128-48b8-a40b-ae598bc6f9f0` on temp branch `br-round-king-amdxhaq2`, then applied it to production after explicit approval.
+- Reran the temporary local Docker worker against Neon production. It flushed cleanly and populated production rows: context `12`, book `792`, trades `20`, current zones `23`, zone events `23`.
+- Stopped and removed the temporary smoke worker container after verification.
+- Browser Use direct `tab.goto` worked. Verified `http://localhost:3004/markets?asset=BTC`, clicked `OI Holding`, and confirmed Reaction Map, Order Book, OI Holding, inferred/not-exact copy, bull/bear zone labels, and no browser console errors.
+- Rebuilt and ran the local `migrate` service; local Docker DB applied `0005_reaction_worker_source_table_compat.sql`.

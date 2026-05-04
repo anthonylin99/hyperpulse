@@ -197,3 +197,11 @@
 - What helped: the existing reaction worker and raw bucket tables were close enough that zone promotion could be added as a compact worker-owned layer without replacing the public-stream ingestion path.
 - Friction or missing capability: Neon connector cleanup was blocked by reauthentication, Browser Use did not expose the required Node REPL runtime in this session, and the production web image does not include `scripts/public-smoke.mjs`.
 - Recommendation: reauthenticate Neon, apply the temp-branch cleanup SQL, and add a container-visible API smoke script for future production-image checks.
+
+## 2026-05-03
+
+- Request summary: smoke-test the DigitalOcean-style `reaction-map` worker locally against Neon production and rerun Browser Use verification.
+- Skills used: `neon-postgres:neon-postgres`, `docker-compose-runtime-discovery`, `verification-gate`, `webapp-testing`, `browser-use:browser`.
+- What helped: the short-lived Docker smoke caught a real production/local schema drift before the worker was deployed permanently.
+- Friction or missing capability: the Neon connection string surfaced through the connector output, so future deployment should store it only as a DigitalOcean secret and avoid command-line echoing.
+- Recommendation: add a worker startup schema-contract check that names missing columns before subscribing to streams.

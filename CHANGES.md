@@ -156,5 +156,19 @@
 
 - Request: implement the Neon refactor for top bull/bear exposure zones, whale-performance storage, Docker ingestion, and cleanup; remove Neon tables that are no longer needed.
 - Attempted: added forward migration `0004_exposure_zones_and_whale_performance.sql`, moved exposure-zone persistence into `workers/reaction-map`, made `/api/market/reaction-levels` read current zones first without Vercel persistence writes, updated OI Holding UI copy/tooltips, added structured whale-performance dual-writes, documented the Neon table-retention/drop matrix, and updated Docker/DigitalOcean architecture docs.
-- Decision: keep legacy whale/profile/positioning tables for one rollout in code, but classify disposable tables in `docs/neon-table-retention.md`; production Neon cleanup is not applied until the temp branch can be created and verified.
-- Result: Docker build passed, `docker compose exec web npm run lint` passed, local migration `0004` applied, the rebuilt reaction worker populated BTC/ETH/SOL current zones, and the BTC reaction-level API returned bull/bear zone rows with tooltip metadata. Neon connector cleanup was blocked by `ReauthenticationRequired: 401`; Browser Use verification was blocked because the required Node REPL/browser runtime was not exposed in this session.
+- Decision: keep legacy whale/profile/positioning tables for one rollout in code, but classify disposable tables in `docs/neon-table-retention.md`; destructive production cleanup runs only after temp-branch verification and explicit approval.
+- Result: Docker build passed, `docker compose exec web npm run lint` passed, local migration `0004` applied, the rebuilt reaction worker populated BTC/ETH/SOL current zones, and the BTC reaction-level API returned bull/bear zone rows with tooltip metadata. After Neon reauthentication, migration `fcf86800-9bea-401b-aa29-b7f4c0527463` passed on temp branch `br-dry-surf-am0wzlim`, was applied to production branch `br-round-tree-amk0dtqc`, deleted the temp branch, removed the disposable tables, and left production `neondb` at about 25 MB. Browser Use later exposed the Node REPL bridge, but the active Browser Use API did not expose a navigation command and address-bar typing could not focus an editable target, so visual verification remains blocked.
+
+## 2026-05-03
+
+- Request: mimic the future DigitalOcean `reaction-map` worker locally against Neon production and verify the BTC Reaction Map UI with Browser Use.
+- Attempted: ran a temporary Docker `reaction-map` container pointed at production Neon, found a production source-table compatibility gap, added forward migration `0005_reaction_worker_source_table_compat.sql`, tested it on a Neon temp branch, applied it to production after approval, reran the temporary worker, and stopped the smoke container after verification.
+- Decision: fix the schema to match the existing worker contract instead of weakening the worker writes. Keep the local smoke worker temporary; DigitalOcean should use the same image/env shape permanently.
+- Result: production Neon now receives worker rows cleanly: context, book, trade, current-zone, and zone-event rows populated. Browser Use navigated to `http://localhost:3004/markets?asset=BTC`, clicked `OI Holding`, and verified Reaction Map, Order Book, OI Holding, inferred/not-exact copy, bull/bear labels, and no console errors. Local Docker migration history was aligned by applying `0005` through the `migrate` service.
+
+## 2026-05-03
+
+- Request: clarify the exact DigitalOcean clone, env, and Docker commands for running the Reaction Map worker.
+- Attempted: updated `docker-compose.yml` so services can read `DATABASE_URL` and worker tuning from `.env` instead of always using local Postgres defaults, then rebuilt the `reaction-map` image.
+- Decision: keep local defaults for dev while allowing DigitalOcean to override via secrets or a droplet `.env`; do not paste production Neon credentials into docs or chat.
+- Result: `docker compose config --services` and `docker compose build reaction-map` pass. Deployment should run `reaction-map` with `--no-deps` so it does not start the local Postgres/migrate stack on the droplet.
