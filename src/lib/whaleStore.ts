@@ -40,6 +40,8 @@ const memoryTrackedLiquidationBuckets = new Map<string, TrackedLiquidationBucket
 const memoryTimingScores = new Map<string, WalletTimingScore>();
 const memoryWorkerStatus: { updatedAt: number; payload: Record<string, unknown> | null } | null = null;
 
+type WhaleStoreClient = Pool;
+
 function normalizePositioningAlert(alert: PositioningAlert): PositioningAlert {
   const price = alert.price ?? null;
   const clusterPrice = alert.clusterPrice ?? null;
@@ -190,6 +192,102 @@ async function ensureTables() {
     );
   `);
   await client.query(`
+    create table if not exists whale_wallets_current (
+      address text primary key,
+      wallet_hash text,
+      first_seen_at bigint,
+      last_seen_at bigint not null,
+      account_equity_usd double precision not null default 0,
+      perps_equity_usd double precision not null default 0,
+      spot_usdc double precision not null default 0,
+      total_open_notional_usd double precision not null default 0,
+      unrealized_pnl_usd double precision not null default 0,
+      realized_pnl_30d_usd double precision not null default 0,
+      funding_30d_usd double precision not null default 0,
+      open_positions_count integer not null default 0,
+      average_leverage double precision not null default 0,
+      win_rate_30d double precision,
+      directional_hit_rate_30d double precision,
+      pre_move_hit_rate_1h double precision,
+      pre_move_hit_rate_4h double precision,
+      pre_move_sample_size integer,
+      repeated_add_count_6h integer,
+      asset_focus text[],
+      risk_tags text[],
+      payload jsonb not null default '{}'::jsonb
+    );
+  `);
+  await client.query(`
+    create table if not exists whale_wallet_asset_stats (
+      address text not null,
+      asset text not null,
+      market_type text not null,
+      lookback_window text not null default '30d',
+      updated_at bigint not null,
+      realized_pnl_usd double precision not null default 0,
+      unrealized_pnl_usd double precision not null default 0,
+      funding_usd double precision not null default 0,
+      volume_usd double precision not null default 0,
+      trade_count integer not null default 0,
+      win_rate double precision,
+      directional_hit_rate double precision,
+      median_trade_size_usd double precision,
+      avg_hold_hours double precision,
+      long_notional_usd double precision not null default 0,
+      short_notional_usd double precision not null default 0,
+      net_notional_usd double precision not null default 0,
+      risk_bucket text,
+      payload jsonb not null default '{}'::jsonb,
+      primary key (address, asset, market_type, lookback_window)
+    );
+  `);
+  await client.query(`
+    create table if not exists whale_positioning_current (
+      address text not null,
+      asset text not null,
+      market_type text not null,
+      updated_at bigint not null,
+      side text not null check (side in ('long', 'short')),
+      size double precision not null,
+      signed_size double precision not null,
+      entry_px double precision not null,
+      mark_px double precision not null,
+      notional_usd double precision not null,
+      margin_used_usd double precision,
+      leverage double precision,
+      leverage_type text,
+      liquidation_px double precision,
+      liquidation_distance_pct double precision,
+      unrealized_pnl_usd double precision,
+      return_on_equity double precision,
+      asset_class text,
+      risk_bucket text,
+      payload jsonb not null default '{}'::jsonb,
+      primary key (address, asset, market_type)
+    );
+  `);
+  await client.query(`
+    create table if not exists whale_alert_events (
+      id text primary key,
+      address text not null,
+      asset text not null,
+      created_at bigint not null,
+      event_type text not null,
+      directionality text not null,
+      severity text not null,
+      conviction text,
+      side text,
+      market_type text,
+      asset_class text,
+      risk_bucket text,
+      notional_usd double precision,
+      leverage double precision,
+      wallet_realized_pnl_30d_usd double precision,
+      wallet_directional_hit_rate_30d double precision,
+      payload jsonb not null default '{}'::jsonb
+    );
+  `);
+  await client.query(`
     create table if not exists positioning_market_snapshots (
       id text primary key,
       asset text not null,
@@ -283,6 +381,10 @@ async function ensureTables() {
   await client.query(`create index if not exists whale_alerts_address_idx on whale_alerts (address);`);
   await client.query(`create index if not exists whale_alerts_directionality_idx on whale_alerts (directionality, created_at desc);`);
   await client.query(`create index if not exists whale_alerts_market_type_idx on whale_alerts (market_type, created_at desc);`);
+  await client.query(`create index if not exists whale_wallets_current_pnl_idx on whale_wallets_current (realized_pnl_30d_usd desc, last_seen_at desc);`);
+  await client.query(`create index if not exists whale_wallet_asset_stats_asset_idx on whale_wallet_asset_stats (asset, realized_pnl_usd desc, updated_at desc);`);
+  await client.query(`create index if not exists whale_positioning_asset_side_idx on whale_positioning_current (asset, side, updated_at desc);`);
+  await client.query(`create index if not exists whale_alert_events_feed_idx on whale_alert_events (created_at desc, severity, asset);`);
   await client.query(`create index if not exists whale_trade_episodes_created_at_idx on whale_trade_episodes (created_at desc);`);
   await client.query(`create index if not exists positioning_alerts_created_at_idx on positioning_alerts (created_at desc);`);
   await client.query(`create index if not exists positioning_alerts_asset_idx on positioning_alerts (asset, created_at desc);`);
@@ -292,6 +394,238 @@ async function ensureTables() {
   await client.query(`create index if not exists tracked_position_snapshots_liq_idx on tracked_position_snapshots (asset, side, liquidation_bucket_price, captured_at desc);`);
   await client.query(`create index if not exists liq_heatmap_buckets_asset_latest_idx on liq_heatmap_buckets (asset, created_at desc);`);
   await client.query(`create index if not exists liq_heatmap_buckets_asset_side_idx on liq_heatmap_buckets (asset, side, bucket_price, created_at desc);`);
+}
+
+async function upsertWhaleAlertEvent(client: WhaleStoreClient, alert: WhaleAlert): Promise<void> {
+  await client.query(
+    `
+    insert into whale_alert_events (
+      id, address, asset, created_at, event_type, directionality, severity, conviction,
+      side, market_type, asset_class, risk_bucket, notional_usd, leverage,
+      wallet_realized_pnl_30d_usd, wallet_directional_hit_rate_30d, payload
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
+    on conflict (id) do update set
+      address = excluded.address,
+      asset = excluded.asset,
+      created_at = excluded.created_at,
+      event_type = excluded.event_type,
+      directionality = excluded.directionality,
+      severity = excluded.severity,
+      conviction = excluded.conviction,
+      side = excluded.side,
+      market_type = excluded.market_type,
+      asset_class = excluded.asset_class,
+      risk_bucket = excluded.risk_bucket,
+      notional_usd = excluded.notional_usd,
+      leverage = excluded.leverage,
+      wallet_realized_pnl_30d_usd = excluded.wallet_realized_pnl_30d_usd,
+      wallet_directional_hit_rate_30d = excluded.wallet_directional_hit_rate_30d,
+      payload = excluded.payload
+  `,
+    [
+      alert.id,
+      alert.address.toLowerCase(),
+      alert.coin,
+      alert.timestamp,
+      alert.eventType,
+      alert.directionality,
+      alert.severity,
+      alert.conviction,
+      alert.side,
+      alert.marketType,
+      alert.assetClass,
+      alert.riskBucket,
+      alert.notionalUsd,
+      alert.leverage,
+      alert.walletRealizedPnl30d,
+      alert.walletDirectionalHitRate30d,
+      JSON.stringify(alert),
+    ],
+  );
+}
+
+async function upsertWhalePerformanceProfile(client: WhaleStoreClient, profile: WhaleWalletProfile): Promise<void> {
+  const address = profile.address.toLowerCase();
+  const lastSeenAt = profile.lastSeenAt ?? Date.now();
+  const winningTrades = profile.trades.filter((trade) => trade.realizedPnl > 0).length;
+  const winRate30d = profile.trades.length > 0 ? winningTrades / profile.trades.length : null;
+  const riskTags = [...new Set([...profile.behaviorTags, ...profile.styleTags, ...profile.focusTags])];
+
+  await client.query(
+    `
+    insert into whale_wallets_current (
+      address, wallet_hash, first_seen_at, last_seen_at, account_equity_usd,
+      perps_equity_usd, spot_usdc, total_open_notional_usd, unrealized_pnl_usd,
+      realized_pnl_30d_usd, funding_30d_usd, open_positions_count, average_leverage,
+      win_rate_30d, directional_hit_rate_30d, pre_move_hit_rate_1h, pre_move_hit_rate_4h,
+      pre_move_sample_size, repeated_add_count_6h, asset_focus, risk_tags, payload
+    )
+    values ($1, null, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb)
+    on conflict (address) do update set
+      first_seen_at = coalesce(whale_wallets_current.first_seen_at, excluded.first_seen_at),
+      last_seen_at = excluded.last_seen_at,
+      account_equity_usd = excluded.account_equity_usd,
+      perps_equity_usd = excluded.perps_equity_usd,
+      spot_usdc = excluded.spot_usdc,
+      total_open_notional_usd = excluded.total_open_notional_usd,
+      unrealized_pnl_usd = excluded.unrealized_pnl_usd,
+      realized_pnl_30d_usd = excluded.realized_pnl_30d_usd,
+      funding_30d_usd = excluded.funding_30d_usd,
+      open_positions_count = excluded.open_positions_count,
+      average_leverage = excluded.average_leverage,
+      win_rate_30d = excluded.win_rate_30d,
+      directional_hit_rate_30d = excluded.directional_hit_rate_30d,
+      pre_move_hit_rate_1h = excluded.pre_move_hit_rate_1h,
+      pre_move_hit_rate_4h = excluded.pre_move_hit_rate_4h,
+      pre_move_sample_size = excluded.pre_move_sample_size,
+      repeated_add_count_6h = excluded.repeated_add_count_6h,
+      asset_focus = excluded.asset_focus,
+      risk_tags = excluded.risk_tags,
+      payload = excluded.payload
+  `,
+    [
+      address,
+      profile.firstSeenAt,
+      lastSeenAt,
+      profile.accountEquity,
+      profile.perpsEquity,
+      profile.spotUsdc,
+      profile.totalOpenNotionalUsd,
+      profile.unrealizedPnl,
+      profile.realizedPnl30d,
+      profile.funding30d,
+      profile.openPositionsCount,
+      profile.averageLeverage,
+      winRate30d,
+      profile.directionalHitRate30d,
+      profile.preMoveHitRate1h ?? null,
+      profile.preMoveHitRate4h ?? null,
+      profile.preMoveSampleSize ?? null,
+      profile.repeatedAddCount6h ?? null,
+      profile.dominantAssets,
+      riskTags,
+      JSON.stringify(profile),
+    ],
+  );
+
+  for (const stat of buildWhaleAssetStats(profile)) {
+    await client.query(
+      `
+      insert into whale_wallet_asset_stats (
+        address, asset, market_type, lookback_window, updated_at, realized_pnl_usd,
+        unrealized_pnl_usd, funding_usd, volume_usd, trade_count, win_rate,
+        directional_hit_rate, median_trade_size_usd, avg_hold_hours, long_notional_usd,
+        short_notional_usd, net_notional_usd, risk_bucket, payload
+      )
+      values ($1, $2, $3, '30d', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb)
+      on conflict (address, asset, market_type, lookback_window) do update set
+        updated_at = excluded.updated_at,
+        realized_pnl_usd = excluded.realized_pnl_usd,
+        unrealized_pnl_usd = excluded.unrealized_pnl_usd,
+        funding_usd = excluded.funding_usd,
+        volume_usd = excluded.volume_usd,
+        trade_count = excluded.trade_count,
+        win_rate = excluded.win_rate,
+        directional_hit_rate = excluded.directional_hit_rate,
+        median_trade_size_usd = excluded.median_trade_size_usd,
+        avg_hold_hours = excluded.avg_hold_hours,
+        long_notional_usd = excluded.long_notional_usd,
+        short_notional_usd = excluded.short_notional_usd,
+        net_notional_usd = excluded.net_notional_usd,
+        risk_bucket = excluded.risk_bucket,
+        payload = excluded.payload
+    `,
+      [
+        address,
+        stat.asset,
+        stat.marketType,
+        stat.updatedAt,
+        stat.realizedPnlUsd,
+        stat.unrealizedPnlUsd,
+        stat.fundingUsd,
+        stat.volumeUsd,
+        stat.tradeCount,
+        stat.winRate,
+        stat.directionalHitRate,
+        stat.medianTradeSizeUsd,
+        stat.avgHoldHours,
+        stat.longNotionalUsd,
+        stat.shortNotionalUsd,
+        stat.netNotionalUsd,
+        stat.riskBucket,
+        JSON.stringify(stat),
+      ],
+    );
+  }
+
+  if (profile.positions.length === 0) {
+    await client.query(`delete from whale_positioning_current where address = $1`, [address]);
+    return;
+  }
+
+  const activeKeys = profile.positions.map((position) => `${position.coin}:${position.marketType}`);
+  await client.query(
+    `
+    delete from whale_positioning_current
+    where address = $1 and not ((asset || ':' || market_type) = any($2::text[]))
+  `,
+    [address, activeKeys],
+  );
+
+  for (const position of profile.positions) {
+    await client.query(
+      `
+      insert into whale_positioning_current (
+        address, asset, market_type, updated_at, side, size, signed_size, entry_px,
+        mark_px, notional_usd, margin_used_usd, leverage, leverage_type,
+        liquidation_px, liquidation_distance_pct, unrealized_pnl_usd,
+        return_on_equity, asset_class, risk_bucket, payload
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::jsonb)
+      on conflict (address, asset, market_type) do update set
+        updated_at = excluded.updated_at,
+        side = excluded.side,
+        size = excluded.size,
+        signed_size = excluded.signed_size,
+        entry_px = excluded.entry_px,
+        mark_px = excluded.mark_px,
+        notional_usd = excluded.notional_usd,
+        margin_used_usd = excluded.margin_used_usd,
+        leverage = excluded.leverage,
+        leverage_type = excluded.leverage_type,
+        liquidation_px = excluded.liquidation_px,
+        liquidation_distance_pct = excluded.liquidation_distance_pct,
+        unrealized_pnl_usd = excluded.unrealized_pnl_usd,
+        return_on_equity = excluded.return_on_equity,
+        asset_class = excluded.asset_class,
+        risk_bucket = excluded.risk_bucket,
+        payload = excluded.payload
+    `,
+      [
+        address,
+        position.coin,
+        position.marketType,
+        lastSeenAt,
+        position.side,
+        Math.abs(position.size),
+        whalePositionSignedSize(position),
+        position.entryPx,
+        position.markPx,
+        position.notionalUsd,
+        position.marginUsedUsd ?? null,
+        position.leverage,
+        position.leverageType ?? null,
+        position.liquidationPx,
+        position.liquidationDistancePct,
+        position.unrealizedPnl,
+        position.returnOnEquity,
+        position.assetClass,
+        position.riskBucket,
+        JSON.stringify(position),
+      ],
+    );
+  }
 }
 
 export async function upsertWhaleAlert(alert: WhaleAlert): Promise<void> {
@@ -329,6 +663,7 @@ export async function upsertWhaleAlert(alert: WhaleAlert): Promise<void> {
       JSON.stringify(alert),
     ],
   );
+  await upsertWhaleAlertEvent(client, alert);
 }
 
 export async function upsertWhaleProfile(profile: WhaleWalletProfile): Promise<void> {
@@ -348,6 +683,7 @@ export async function upsertWhaleProfile(profile: WhaleWalletProfile): Promise<v
   `,
     [profile.address.toLowerCase(), profile.lastSeenAt ?? Date.now(), JSON.stringify(profile)],
   );
+  await upsertWhalePerformanceProfile(client, profile);
 }
 
 export async function upsertWhaleEpisode(episode: WhaleEpisode): Promise<void> {
@@ -780,6 +1116,105 @@ function normalizeTrackedLiquidationBucket(row: Record<string, unknown>): Tracke
     trackedWalletCount,
     payload,
   };
+}
+
+function whalePositionSignedSize(position: WhaleWalletProfile["positions"][number]): number {
+  const rawSize = position.szi ?? position.size;
+  const absSize = Math.abs(rawSize);
+  return position.side === "short" ? -absSize : absSize;
+}
+
+function buildWhaleAssetStats(profile: WhaleWalletProfile) {
+  const now = profile.lastSeenAt ?? Date.now();
+  const byAsset = new Map<
+    string,
+    {
+      asset: string;
+      marketType: string;
+      realizedPnlUsd: number;
+      unrealizedPnlUsd: number;
+      fundingUsd: number;
+      volumeUsd: number;
+      tradeCount: number;
+      wins: number;
+      longNotionalUsd: number;
+      shortNotionalUsd: number;
+      medianTradeSizeUsd: number;
+      avgHoldHours: number;
+      riskBucket: string | null;
+    }
+  >();
+
+  const ensure = (asset: string, marketType = "perp") => {
+    const key = `${asset}:${marketType}`;
+    const existing = byAsset.get(key);
+    if (existing) return existing;
+    const next = {
+      asset,
+      marketType,
+      realizedPnlUsd: 0,
+      unrealizedPnlUsd: 0,
+      fundingUsd: 0,
+      volumeUsd: 0,
+      tradeCount: 0,
+      wins: 0,
+      longNotionalUsd: 0,
+      shortNotionalUsd: 0,
+      medianTradeSizeUsd: 0,
+      avgHoldHours: 0,
+      riskBucket: null,
+    };
+    byAsset.set(key, next);
+    return next;
+  };
+
+  for (const trade of profile.trades) {
+    const stat = ensure(trade.coin, "perp");
+    stat.realizedPnlUsd += trade.realizedPnl;
+    stat.fundingUsd += trade.funding;
+    stat.volumeUsd += Math.abs(trade.notionalUsd);
+    stat.tradeCount += 1;
+    stat.wins += trade.realizedPnl > 0 ? 1 : 0;
+    stat.avgHoldHours += trade.durationMs / 3_600_000;
+  }
+
+  for (const position of profile.positions) {
+    const stat = ensure(position.coin, position.marketType);
+    stat.unrealizedPnlUsd += position.unrealizedPnl;
+    stat.riskBucket = position.riskBucket;
+    if (position.side === "short") {
+      stat.shortNotionalUsd += position.notionalUsd;
+    } else {
+      stat.longNotionalUsd += position.notionalUsd;
+    }
+  }
+
+  const tradeSizesByAsset = new Map<string, number[]>();
+  for (const trade of profile.trades) {
+    const key = `${trade.coin}:perp`;
+    const sizes = tradeSizesByAsset.get(key) ?? [];
+    sizes.push(Math.abs(trade.notionalUsd));
+    tradeSizesByAsset.set(key, sizes);
+  }
+
+  return [...byAsset.values()].map((stat) => {
+    const sizes = (tradeSizesByAsset.get(`${stat.asset}:${stat.marketType}`) ?? []).sort((a, b) => a - b);
+    const median =
+      sizes.length === 0
+        ? 0
+        : sizes.length % 2 === 1
+          ? sizes[Math.floor(sizes.length / 2)]
+          : (sizes[sizes.length / 2 - 1] + sizes[sizes.length / 2]) / 2;
+    return {
+      ...stat,
+      updatedAt: now,
+      winRate: stat.tradeCount > 0 ? stat.wins / stat.tradeCount : null,
+      directionalHitRate: profile.directionalHitRate30d,
+      medianTradeSizeUsd: median,
+      avgHoldHours: stat.tradeCount > 0 ? stat.avgHoldHours / stat.tradeCount : null,
+      netNotionalUsd: stat.longNotionalUsd - stat.shortNotionalUsd,
+    };
+  });
 }
 
 export async function listTrackedLiquidationBuckets(asset: string, limit = 160, maxAgeMs = 30 * 60 * 1000): Promise<TrackedLiquidationBucket[]> {

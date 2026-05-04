@@ -28,9 +28,12 @@ if (!DATABASE_URL) {
 }
 
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
-const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, ["BTC", "ETH", "SOL", "HYPE"]).map((asset) =>
+const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, ["BTC", "ETH", "SOL"]).map((asset) =>
   asset.toUpperCase(),
 );
+const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["5m", "15m", "1h"])
+  .map(windowMsFromLabel)
+  .filter((value) => value != null);
 const WIDE_BOOK_N_SIG_FIGS = parseList(process.env.REACTION_MAP_WIDE_BOOK_N_SIG_FIGS, ["3", "2"])
   .map((value) => Number(value))
   .filter((value) => [2, 3, 4, 5].includes(value));
@@ -39,6 +42,10 @@ const FLUSH_MS = envNumber("REACTION_MAP_FLUSH_MS", 15_000, 2_000);
 const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 40, 5);
 const RETENTION_MS = envNumber("REACTION_MAP_RETENTION_MS", 24 * 60 * 60 * 1000, 30 * 60 * 1000);
 const RETENTION_SWEEP_MS = envNumber("REACTION_MAP_RETENTION_SWEEP_MS", 10 * 60 * 1000, 60_000);
+const ZONE_CLUSTER_WIDTH_PCT = envNumber("REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT", 0.8, 0.1);
+const ZONE_MIN_TRADE_NOTIONAL_USD = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD", 250_000, 1_000);
+const ZONE_RANGE_MIN_PCT = envNumber("REACTION_MAP_CLEANUP_RANGE_MIN_PCT", 2, 0.5);
+const ZONE_RANGE_MAX_PCT = envNumber("REACTION_MAP_CLEANUP_RANGE_MAX_PCT", 35, 5);
 const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
 const transport = new WebSocketTransport({ isTestnet: NETWORK === "testnet" });
 const subscriptions = new SubscriptionClient({ transport });
@@ -56,6 +63,21 @@ function envNumber(key, fallback, min = 0) {
   const parsed = Number(process.env[key]);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(parsed, min);
+}
+
+function windowMsFromLabel(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.endsWith("m")) {
+    const minutes = Number(normalized.slice(0, -1));
+    return Number.isFinite(minutes) ? minutes * 60 * 1000 : null;
+  }
+  if (normalized.endsWith("h")) {
+    const hours = Number(normalized.slice(0, -1));
+    return Number.isFinite(hours) ? hours * 60 * 60 * 1000 : null;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseNumber(value) {
@@ -113,6 +135,44 @@ function getAssetState(asset) {
 
 function bucketKey(bucketMs, priceBucket) {
   return `${bucketMs}:${priceBucket}`;
+}
+
+function compactUsd(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `$${(abs / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${(abs / 1_000).toFixed(1)}K`;
+  return `$${abs.toFixed(0)}`;
+}
+
+function zoneSideFor(price, currentPrice, buyNotionalUsd, sellNotionalUsd) {
+  if (price < currentPrice) return "bull";
+  if (price > currentPrice) return "bear";
+  return buyNotionalUsd >= sellNotionalUsd ? "bull" : "bear";
+}
+
+function zoneIdentity(asset, windowMs, side, zoneLow, zoneHigh) {
+  const low = zoneLow.toFixed(zoneLow >= 100 ? 0 : zoneLow >= 1 ? 2 : 4);
+  const high = zoneHigh.toFixed(zoneHigh >= 100 ? 0 : zoneHigh >= 1 ? 2 : 4);
+  return `reaction-zone:${asset}:${windowMs}:${side}:${low}:${high}`;
+}
+
+function scoreConfidence(score) {
+  if (score >= 70) return "high";
+  if (score >= 42) return "medium";
+  return "low";
+}
+
+function weightedZonePrice(candidates) {
+  let numerator = 0;
+  let denominator = 0;
+  for (const candidate of candidates) {
+    const weight = Math.max(candidate.tradeNotionalUsd, candidate.inferredOiNotionalUsd, candidate.bookNotionalUsd, 1);
+    numerator += candidate.priceBucket * weight;
+    denominator += weight;
+  }
+  return denominator > 0 ? numerator / denominator : candidates[0]?.priceBucket ?? 0;
 }
 
 function handleContext(asset, event) {
@@ -276,6 +336,10 @@ async function assertSchemaReady() {
   if (!result.rows[0]?.table_name) {
     throw new Error("Reaction-map tables are missing. Run migrations before starting the reaction-map worker.");
   }
+  const currentZones = await pool.query("select to_regclass('public.reaction_exposure_zones_current') as table_name");
+  if (!currentZones.rows[0]?.table_name) {
+    throw new Error("Exposure-zone tables are missing. Run migrations before starting the reaction-map worker.");
+  }
 }
 
 async function flushContextRow(row) {
@@ -389,6 +453,437 @@ async function flushTradeRow(row) {
   );
 }
 
+async function latestContext(asset, cutoff) {
+  const result = await pool.query(
+    `
+    select *
+    from reaction_context_snapshots
+    where asset = $1
+      and bucket_ms >= $2
+    order by captured_at desc
+    limit 1
+    `,
+    [asset, cutoff],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function recentAverageMovePct(asset, cutoff, currentPrice) {
+  const result = await pool.query(
+    `
+    select mark_px
+    from reaction_context_snapshots
+    where asset = $1
+      and bucket_ms >= $2
+      and mark_px > 0
+    order by bucket_ms asc
+    `,
+    [asset, cutoff],
+  );
+  const prices = result.rows.map((row) => parseNumber(row.mark_px)).filter((value) => value != null && value > 0);
+  if (prices.length < 2 || !currentPrice) return ZONE_RANGE_MIN_PCT;
+
+  const moves = [];
+  for (let index = 1; index < prices.length; index += 1) {
+    moves.push(Math.abs((prices[index] - prices[index - 1]) / currentPrice) * 100);
+  }
+  const average = moves.reduce((sum, value) => sum + value, 0) / Math.max(moves.length, 1);
+  return Math.min(ZONE_RANGE_MAX_PCT, Math.max(ZONE_RANGE_MIN_PCT, average * 3));
+}
+
+async function loadZoneCandidates(asset, windowMs, currentPrice) {
+  const cutoff = Date.now() - windowMs;
+  const [oiDeltaResult, bookResult, tradeResult] = await Promise.all([
+    pool.query(
+      `
+      select sum(greatest(coalesce(open_interest_delta_usd, 0), 0)) as positive_open_interest_delta_usd
+      from reaction_context_snapshots
+      where asset = $1
+        and bucket_ms >= $2
+      `,
+      [asset, cutoff],
+    ),
+    pool.query(
+      `
+      select
+        price_bucket,
+        max(bucket_size) as bucket_size,
+        sum(bid_notional_usd) / nullif(sum(greatest(sample_count, 1)), 0) as bid_depth_usd,
+        sum(ask_notional_usd) / nullif(sum(greatest(sample_count, 1)), 0) as ask_depth_usd,
+        max(peak_bid_notional_usd) as peak_bid_depth_usd,
+        max(peak_ask_notional_usd) as peak_ask_depth_usd
+      from reaction_orderbook_buckets
+      where asset = $1
+        and bucket_ms >= $2
+        and price_bucket between $3 and $4
+      group by price_bucket
+      limit 320
+      `,
+      [asset, cutoff, currentPrice * 0.65, currentPrice * 1.35],
+    ),
+    pool.query(
+      `
+      select
+        price_bucket,
+        max(bucket_size) as bucket_size,
+        sum(buy_notional_usd) as buy_notional_usd,
+        sum(sell_notional_usd) as sell_notional_usd,
+        sum(trade_count) as trade_count,
+        max(unique_trader_count) as unique_trader_count
+      from reaction_trade_buckets
+      where asset = $1
+        and bucket_ms >= $2
+        and price_bucket between $3 and $4
+      group by price_bucket
+      limit 320
+      `,
+      [asset, cutoff, currentPrice * 0.65, currentPrice * 1.35],
+    ),
+  ]);
+
+  const byPrice = new Map();
+  for (const row of bookResult.rows) {
+    const priceBucket = parseNumber(row.price_bucket);
+    if (!priceBucket || priceBucket <= 0) continue;
+    byPrice.set(priceBucket, {
+      priceBucket,
+      bucketSize: parseNumber(row.bucket_size) ?? bucketSizeForAsset(asset, currentPrice),
+      bidDepthUsd: Math.max(parseNumber(row.bid_depth_usd) ?? 0, 0),
+      askDepthUsd: Math.max(parseNumber(row.ask_depth_usd) ?? 0, 0),
+      buyNotionalUsd: 0,
+      sellNotionalUsd: 0,
+      tradeCount: 0,
+      uniqueTraderCount: 0,
+    });
+  }
+
+  for (const row of tradeResult.rows) {
+    const priceBucket = parseNumber(row.price_bucket);
+    if (!priceBucket || priceBucket <= 0) continue;
+    const existing =
+      byPrice.get(priceBucket) ??
+      {
+        priceBucket,
+        bucketSize: parseNumber(row.bucket_size) ?? bucketSizeForAsset(asset, currentPrice),
+        bidDepthUsd: 0,
+        askDepthUsd: 0,
+        buyNotionalUsd: 0,
+        sellNotionalUsd: 0,
+        tradeCount: 0,
+        uniqueTraderCount: 0,
+      };
+    existing.buyNotionalUsd = Math.max(parseNumber(row.buy_notional_usd) ?? 0, 0);
+    existing.sellNotionalUsd = Math.max(parseNumber(row.sell_notional_usd) ?? 0, 0);
+    existing.tradeCount = Math.max(Math.round(parseNumber(row.trade_count) ?? 0), 0);
+    existing.uniqueTraderCount = Math.max(Math.round(parseNumber(row.unique_trader_count) ?? 0), 0);
+    byPrice.set(priceBucket, existing);
+  }
+
+  const positiveOiDeltaUsd = Math.max(parseNumber(oiDeltaResult.rows[0]?.positive_open_interest_delta_usd) ?? 0, 0);
+  const totalTradeNotional = [...byPrice.values()].reduce(
+    (sum, row) => sum + row.buyNotionalUsd + row.sellNotionalUsd,
+    0,
+  );
+
+  return [...byPrice.values()]
+    .map((row) => {
+      const tradeNotionalUsd = row.buyNotionalUsd + row.sellNotionalUsd;
+      const flowBias = tradeNotionalUsd > 0 ? (row.buyNotionalUsd - row.sellNotionalUsd) / tradeNotionalUsd : 0;
+      const flowConfidence = Math.min(1, Math.max(0.35, Math.abs(flowBias) * 1.25));
+      const inferredOiNotionalUsd =
+        positiveOiDeltaUsd > 0 && totalTradeNotional > 0
+          ? positiveOiDeltaUsd * (tradeNotionalUsd / totalTradeNotional) * flowConfidence
+          : 0;
+      return {
+        ...row,
+        side: zoneSideFor(row.priceBucket, currentPrice, row.buyNotionalUsd, row.sellNotionalUsd),
+        tradeNotionalUsd,
+        bookNotionalUsd: Math.max(row.bidDepthUsd, row.askDepthUsd),
+        inferredOiNotionalUsd,
+      };
+    })
+    .filter((row) => row.tradeNotionalUsd >= ZONE_MIN_TRADE_NOTIONAL_USD);
+}
+
+function clusterCandidates(candidates, currentPrice) {
+  const bySide = {
+    bull: [],
+    bear: [],
+  };
+  for (const side of ["bull", "bear"]) {
+    const sideCandidates = candidates
+      .filter((candidate) => candidate.side === side)
+      .sort((a, b) => a.priceBucket - b.priceBucket);
+    const clusters = [];
+    for (const candidate of sideCandidates) {
+      const lastCluster = clusters[clusters.length - 1];
+      const center = lastCluster ? weightedZonePrice(lastCluster) : null;
+      const distance = center == null ? Infinity : Math.abs(((candidate.priceBucket - center) / currentPrice) * 100);
+      if (!lastCluster || distance > ZONE_CLUSTER_WIDTH_PCT) clusters.push([candidate]);
+      else lastCluster.push(candidate);
+    }
+    bySide[side] = clusters.map((cluster) => buildZoneFromCluster(cluster, side, currentPrice));
+  }
+  return bySide;
+}
+
+function buildZoneFromCluster(cluster, side, currentPrice) {
+  const weightedPrice = weightedZonePrice(cluster);
+  const zoneLow = Math.min(...cluster.map((item) => item.priceBucket - item.bucketSize / 2));
+  const zoneHigh = Math.max(...cluster.map((item) => item.priceBucket + item.bucketSize / 2));
+  const tradeNotionalUsd = cluster.reduce((sum, item) => sum + item.tradeNotionalUsd, 0);
+  const buyNotionalUsd = cluster.reduce((sum, item) => sum + item.buyNotionalUsd, 0);
+  const sellNotionalUsd = cluster.reduce((sum, item) => sum + item.sellNotionalUsd, 0);
+  const inferredOiNotionalUsd = cluster.reduce((sum, item) => sum + item.inferredOiNotionalUsd, 0);
+  const bookNotionalUsd = cluster.reduce((sum, item) => sum + item.bookNotionalUsd, 0);
+  const bidDepthUsd = cluster.reduce((sum, item) => sum + item.bidDepthUsd, 0);
+  const askDepthUsd = cluster.reduce((sum, item) => sum + item.askDepthUsd, 0);
+  const walletCount = Math.max(...cluster.map((item) => item.uniqueTraderCount), 0);
+  const clusterWidthPct = ((zoneHigh - zoneLow) / currentPrice) * 100;
+  const distancePct = ((weightedPrice - currentPrice) / currentPrice) * 100;
+  const score = Math.round(
+    Math.min(
+      100,
+      Math.log10(tradeNotionalUsd + 1) * 8 +
+        Math.log10(inferredOiNotionalUsd + 1) * 6 +
+        Math.log10(bookNotionalUsd + 1) * 4 +
+        Math.min(12, Math.abs(buyNotionalUsd - sellNotionalUsd) / Math.max(tradeNotionalUsd, 1) * 12),
+    ),
+  );
+  const reasonSelected = `Top ${side} OI zone from ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`;
+
+  return {
+    side,
+    zoneLow,
+    zoneMid: (zoneLow + zoneHigh) / 2,
+    zoneHigh,
+    weightedPrice,
+    distancePct,
+    score,
+    confidence: scoreConfidence(score),
+    candidateCount: cluster.length,
+    clusterWidthPct,
+    bookNotionalUsd,
+    tradeNotionalUsd,
+    inferredOiNotionalUsd,
+    trackedLiqNotionalUsd: 0,
+    buyNotionalUsd,
+    sellNotionalUsd,
+    bidDepthUsd,
+    askDepthUsd,
+    walletCount,
+    reasonSelected,
+  };
+}
+
+async function upsertExposureZones(asset, windowMs, currentPrice, zones) {
+  const now = Date.now();
+  const existingResult = await pool.query(
+    `
+    select zone_id, first_seen_at, score, zone_low, zone_high, rank, status
+    from reaction_exposure_zones_current
+    where asset = $1
+      and window_ms = $2
+    `,
+    [asset, windowMs],
+  );
+  const existing = new Map(existingResult.rows.map((row) => [row.zone_id, row]));
+  const nextZoneIds = [];
+
+  await pool.query("begin");
+  try {
+    await pool.query(
+      `
+      update reaction_exposure_zones_current
+      set status = 'retired', refreshed_at = $3
+      where asset = $1
+        and window_ms = $2
+        and status <> 'retired'
+      `,
+      [asset, windowMs, now],
+    );
+
+    for (const side of ["bull", "bear"]) {
+      const ranked = zones[side]
+        .sort((a, b) => b.score - a.score || b.tradeNotionalUsd - a.tradeNotionalUsd)
+        .slice(0, 5);
+
+      for (const [index, zone] of ranked.entries()) {
+        const rank = index + 1;
+        const zoneId = zoneIdentity(asset, windowMs, side, zone.zoneLow, zone.zoneHigh);
+        const existingZone = existing.get(zoneId);
+        const firstSeenAt = parseNumber(existingZone?.first_seen_at) ?? now;
+        const tooltip = {
+          rank,
+          side,
+          range: `${zone.zoneLow.toFixed(asset === "BTC" ? 0 : 2)}-${zone.zoneHigh.toFixed(asset === "BTC" ? 0 : 2)}`,
+          totalRecentFlowUsd: zone.tradeNotionalUsd,
+          inferredOiUsd: zone.inferredOiNotionalUsd,
+          buyNotionalUsd: zone.buyNotionalUsd,
+          sellNotionalUsd: zone.sellNotionalUsd,
+          distancePct: zone.distancePct,
+          reasonSelected: zone.reasonSelected,
+          refreshedAtMs: now,
+          caution: "Inferred from public Hyperliquid streams, not exact open positions.",
+        };
+
+        nextZoneIds.push(zoneId);
+        await pool.query(
+          `
+          insert into reaction_exposure_zones_current (
+            zone_id, asset, window_ms, side, rank, status, generated_at, refreshed_at,
+            first_seen_at, last_seen_at, current_price, zone_low, zone_mid, zone_high,
+            weighted_price, distance_pct, score, confidence, primary_source,
+            candidate_count, cluster_width_pct, book_notional_usd, trade_notional_usd,
+            inferred_oi_notional_usd, tracked_liq_notional_usd, buy_notional_usd,
+            sell_notional_usd, bid_depth_usd, ask_depth_usd, wallet_count, tooltip, payload
+          )
+          values (
+            $1,$2,$3,$4,$5,'active',$6,$6,$7,$6,$8,$9,$10,$11,$12,$13,$14,$15,'positioning',
+            $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb,$28::jsonb
+          )
+          on conflict (zone_id) do update set
+            rank = excluded.rank,
+            status = 'active',
+            generated_at = excluded.generated_at,
+            refreshed_at = excluded.refreshed_at,
+            last_seen_at = excluded.last_seen_at,
+            current_price = excluded.current_price,
+            zone_low = excluded.zone_low,
+            zone_mid = excluded.zone_mid,
+            zone_high = excluded.zone_high,
+            weighted_price = excluded.weighted_price,
+            distance_pct = excluded.distance_pct,
+            score = excluded.score,
+            confidence = excluded.confidence,
+            candidate_count = excluded.candidate_count,
+            cluster_width_pct = excluded.cluster_width_pct,
+            book_notional_usd = excluded.book_notional_usd,
+            trade_notional_usd = excluded.trade_notional_usd,
+            inferred_oi_notional_usd = excluded.inferred_oi_notional_usd,
+            tracked_liq_notional_usd = excluded.tracked_liq_notional_usd,
+            buy_notional_usd = excluded.buy_notional_usd,
+            sell_notional_usd = excluded.sell_notional_usd,
+            bid_depth_usd = excluded.bid_depth_usd,
+            ask_depth_usd = excluded.ask_depth_usd,
+            wallet_count = excluded.wallet_count,
+            tooltip = excluded.tooltip,
+            payload = excluded.payload
+          `,
+          [
+            zoneId,
+            asset,
+            windowMs,
+            side,
+            rank,
+            now,
+            firstSeenAt,
+            currentPrice,
+            zone.zoneLow,
+            zone.zoneMid,
+            zone.zoneHigh,
+            zone.weightedPrice,
+            zone.distancePct,
+            zone.score,
+            zone.confidence,
+            zone.candidateCount,
+            zone.clusterWidthPct,
+            zone.bookNotionalUsd,
+            zone.tradeNotionalUsd,
+            zone.inferredOiNotionalUsd,
+            zone.trackedLiqNotionalUsd,
+            zone.buyNotionalUsd,
+            zone.sellNotionalUsd,
+            zone.bidDepthUsd,
+            zone.askDepthUsd,
+            zone.walletCount,
+            JSON.stringify(tooltip),
+            JSON.stringify({ source: "hyperliquid_ws", clusterWidthPct: ZONE_CLUSTER_WIDTH_PCT }),
+          ],
+        );
+
+        const eventType = eventTypeForZone(existingZone, zone, rank);
+        if (eventType) {
+          await insertZoneEvent(asset, windowMs, zoneId, side, eventType, rank, currentPrice, zone, now);
+        }
+      }
+    }
+
+    await pool.query(
+      `
+      update reaction_exposure_zones_current
+      set status = 'retired', refreshed_at = $3
+      where asset = $1
+        and window_ms = $2
+        and status <> 'retired'
+        and not (zone_id = any($4::text[]))
+      `,
+      [asset, windowMs, now, nextZoneIds],
+    );
+    await pool.query("commit");
+  } catch (error) {
+    await pool.query("rollback").catch(() => {});
+    throw error;
+  }
+}
+
+function eventTypeForZone(existingZone, zone, rank) {
+  if (!existingZone) return "created";
+  const previousScore = parseNumber(existingZone.score) ?? zone.score;
+  const previousRank = Math.round(parseNumber(existingZone.rank) ?? rank);
+  const previousLow = parseNumber(existingZone.zone_low) ?? zone.zoneLow;
+  const previousHigh = parseNumber(existingZone.zone_high) ?? zone.zoneHigh;
+  if (previousRank !== rank) return "moved";
+  if (Math.abs(zone.score - previousScore) >= 12) return zone.score > previousScore ? "strengthened" : "weakened";
+  if (Math.abs(zone.zoneLow - previousLow) > zone.weightedPrice * 0.001 || Math.abs(zone.zoneHigh - previousHigh) > zone.weightedPrice * 0.001) {
+    return "expanded";
+  }
+  return null;
+}
+
+async function insertZoneEvent(asset, windowMs, zoneId, side, eventType, rank, currentPrice, zone, now) {
+  await pool.query(
+    `
+    insert into reaction_exposure_zone_events (
+      id, zone_id, asset, window_ms, side, event_type, event_at, rank,
+      current_price, zone_low, zone_mid, zone_high, score, payload
+    )
+    values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)
+    on conflict (id) do nothing
+    `,
+    [
+      `${zoneId}:${eventType}:${Math.floor(now / 60_000) * 60_000}`,
+      zoneId,
+      asset,
+      windowMs,
+      side,
+      eventType,
+      now,
+      rank,
+      currentPrice,
+      zone.zoneLow,
+      zone.zoneMid,
+      zone.zoneHigh,
+      zone.score,
+      JSON.stringify({ tradeNotionalUsd: zone.tradeNotionalUsd, inferredOiNotionalUsd: zone.inferredOiNotionalUsd }),
+    ],
+  );
+}
+
+async function promoteExposureZones() {
+  for (const asset of ASSETS) {
+    for (const windowMs of ZONE_WINDOWS_MS) {
+      const cutoff = Date.now() - windowMs;
+      const context = await latestContext(asset, cutoff);
+      const currentPrice = parseNumber(context?.mark_px) ?? parseNumber(context?.mid_px) ?? parseNumber(context?.oracle_px);
+      if (!currentPrice || currentPrice <= 0) continue;
+      const candidates = await loadZoneCandidates(asset, windowMs, currentPrice);
+      const zones = clusterCandidates(candidates, currentPrice);
+      await upsertExposureZones(asset, windowMs, currentPrice, zones);
+    }
+  }
+}
+
 async function flushState() {
   const currentBucket = bucketTime(Date.now());
   let contextRows = 0;
@@ -426,6 +921,43 @@ async function sweepRetention() {
   await pool.query("delete from reaction_orderbook_buckets where bucket_ms < $1", [cutoff]);
   await pool.query("delete from reaction_trade_buckets where bucket_ms < $1", [cutoff]);
   await pool.query("delete from reaction_level_snapshots where generated_at < $1", [cutoff]);
+
+  for (const asset of ASSETS) {
+    const context = await latestContext(asset, Date.now() - RETENTION_MS);
+    const currentPrice = parseNumber(context?.mark_px) ?? parseNumber(context?.mid_px) ?? parseNumber(context?.oracle_px);
+    if (!currentPrice || currentPrice <= 0) continue;
+
+    const rangePct = await recentAverageMovePct(asset, Date.now() - RETENTION_MS, currentPrice);
+    const low = currentPrice * (1 - rangePct / 100);
+    const high = currentPrice * (1 + rangePct / 100);
+
+    await pool.query(
+      `
+      delete from reaction_orderbook_buckets
+      where asset = $1
+        and (price_bucket < $2 or price_bucket > $3)
+      `,
+      [asset, low, high],
+    );
+    await pool.query(
+      `
+      delete from reaction_trade_buckets
+      where asset = $1
+        and (price_bucket < $2 or price_bucket > $3)
+      `,
+      [asset, low, high],
+    );
+    await pool.query(
+      `
+      update reaction_exposure_zones_current
+      set status = 'stale'
+      where asset = $1
+        and status = 'active'
+        and (zone_high < $2 or zone_low > $3)
+      `,
+      [asset, low, high],
+    );
+  }
 }
 
 async function subscribeAsset(asset) {
@@ -448,7 +980,9 @@ async function main() {
   }
 
   setInterval(() => {
-    flushState().catch((error) => console.error("[reaction-map] flush failed", error));
+    flushState()
+      .then(() => promoteExposureZones())
+      .catch((error) => console.error("[reaction-map] flush/promote failed", error));
   }, FLUSH_MS);
 
   setInterval(() => {

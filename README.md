@@ -32,7 +32,7 @@ Those surfaces can still exist in non-public environments, but they are not part
 - **Frontend**: Next.js App Router
 - **Primary deployment target**: Vercel
 - **Market data**: Hyperliquid-native APIs
-- **Whale worker**: Railway worker in non-public environments
+- **Ingestion workers**: DigitalOcean Docker droplet for always-on Reaction Map and whale-performance ingestion
 - **Database**: Neon Postgres for worker-backed analytics where enabled
 
 ## Feature Flags
@@ -81,6 +81,7 @@ HyperPulse now includes a lean warehouse foundation for market capture and marke
 - Market collector worker via `npm run market:collect`
 - Reaction Map stream worker via `npm run reaction:start`
 - Reaction-level API at `/api/market/reaction-levels?coin=BTC&window=15m`
+- Current exposure-zone serving table with top five bull and top five bear zones per asset/window
 - Docker Compose local stack via `npm run docker:up`
 - Private read-only MCP server via `npm run mcp:start`
 

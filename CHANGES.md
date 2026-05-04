@@ -137,3 +137,24 @@
 - Attempted: subscribed the reaction worker to wider Hyperliquid L2 book aggregations, changed level selection from nearest-price picking to distinct per-side reaction zones, and lowered the final display cutoff so deeper persistent shelves can surface after spacing filters.
 - Decision: keep weak close-in noise filtered, but allow lower-score distant book shelves when they are persistent and separated enough to answer “where could price react if it travels.”
 - Result: `docker compose up -d --build web reaction-map` and `docker compose exec web npm run build` pass. BTC API now returns spaced levels including 73k/74k/76k/78k downside and 81k/82k/83k/85k upside; Browser Use verifies the 1h Reaction Map chart no longer stacks levels around spot.
+
+## 2026-05-03
+
+- Request: add an OI Holding toggle using existing Postgres data instead of changing the database schema.
+- Attempted: added `overlayLevels.oiHolding` to the reaction payload, ranked top inferred holding buckets from trade concentration allocated against positive OI changes, renamed the chart tabs to `Order Book` and `OI Holding`, and updated hover copy to explain defend/break behavior without claiming exact positions.
+- Decision: no new table yet. OI Holding leads with top flow concentration and keeps inferred OI build as evidence, because public streams do not expose exact all-trader open positions or leverage.
+- Result: `docker compose up -d --build web` and `docker compose exec web npm run build` pass. The BTC reaction API returns OI Holding buckets, and Browser Use verifies the `OI Holding` tab renders `#1/#2 OI hold` tags with cautious copy and no exact-position claim.
+
+## 2026-05-03
+
+- Request: hide OI Holding when it only clusters around current spot, and avoid adding more worker/runtime bloat.
+- Attempted: added distance, spacing, and minimum-flow gates to OI Holding level selection, updated Reaction Map copy to say OI Holding only appears when far enough from spot to matter, and added an explicit hidden-state message for close-to-spot inferred builds.
+- Decision: keep this as a product guardrail in the existing scorer/UI. No new worker, migration, or hosted service was added.
+- Result: Docker web image build and `docker compose exec web npm run build` pass. The BTC reaction API returns normal levels but zero OI Holding levels for the current near-spot cluster, and Browser Use verifies the OI Holding hidden-state copy on `http://127.0.0.1:3004/markets?asset=BTC`.
+
+## 2026-05-03
+
+- Request: implement the Neon refactor for top bull/bear exposure zones, whale-performance storage, Docker ingestion, and cleanup; remove Neon tables that are no longer needed.
+- Attempted: added forward migration `0004_exposure_zones_and_whale_performance.sql`, moved exposure-zone persistence into `workers/reaction-map`, made `/api/market/reaction-levels` read current zones first without Vercel persistence writes, updated OI Holding UI copy/tooltips, added structured whale-performance dual-writes, documented the Neon table-retention/drop matrix, and updated Docker/DigitalOcean architecture docs.
+- Decision: keep legacy whale/profile/positioning tables for one rollout in code, but classify disposable tables in `docs/neon-table-retention.md`; production Neon cleanup is not applied until the temp branch can be created and verified.
+- Result: Docker build passed, `docker compose exec web npm run lint` passed, local migration `0004` applied, the rebuilt reaction worker populated BTC/ETH/SOL current zones, and the BTC reaction-level API returned bull/bear zone rows with tooltip metadata. Neon connector cleanup was blocked by `ReauthenticationRequired: 401`; Browser Use verification was blocked because the required Node REPL/browser runtime was not exposed in this session.

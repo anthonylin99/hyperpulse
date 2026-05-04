@@ -74,8 +74,8 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
 
 const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
   { label: "All", value: "all" },
-  { label: "Book", value: "book" },
-  { label: "Positioning", value: "positioning" },
+  { label: "Order Book", value: "book" },
+  { label: "OI Holding", value: "oi_holding" },
   { label: "Stress", value: "stress" },
 ];
 
@@ -189,6 +189,17 @@ function isActionableFlowLevel(level: SupportResistanceLevel): boolean {
 
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
   const isUpside = side === "upside";
+  if (level.leverageBucket === "positioning") {
+    const likelyLong = level.flowSide === "forced_sell";
+    return {
+      label: "Pivot",
+      summary: likelyLong
+        ? "Top inferred long holding. It can defend on retest, but a clean break can turn into sell pressure."
+        : "Top inferred short holding. It can reject on retest, but a clean hold above can turn into buy pressure.",
+      reason: "Ranked from public trade concentration allocated against positive OI change. This is not exact trader-position data.",
+      className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
+    };
+  }
   if (isStressZone(level)) {
     return {
       label: "Stress",
@@ -260,9 +271,20 @@ function riskCopy(level: SupportResistanceLevel): string {
   return level.flowSide === "forced_sell" ? "sell-risk" : "buy-risk";
 }
 
+function sideLabel(level: SupportResistanceLevel): string {
+  if (level.exposureSide === "bull") return "bull zone";
+  if (level.exposureSide === "bear") return "bear zone";
+  return level.flowSide === "forced_sell" ? "likely long holding" : "likely short holding";
+}
+
 function flowSummary(level: SupportResistanceLevel): string {
   if (isStressZone(level)) {
     return `Tracked/inferred stress / ${formatCompactUsd(level.notionalUsd)} ${level.flowSide === "forced_sell" ? "sell-stress" : "buy-stress"} / Score ${
+      level.lfxScore ?? level.pressureScore ?? "n/a"
+    }`;
+  }
+  if (level.leverageBucket === "positioning") {
+    return `Top #${level.flowRank ?? "?"} OI zone / ${formatCompactUsd(level.notionalUsd)} flow / ${sideLabel(level)} / Score ${
       level.lfxScore ?? level.pressureScore ?? "n/a"
     }`;
   }
@@ -362,7 +384,7 @@ function levelAlpha(level: SupportResistanceLevel, index: number): number {
 function chartTagForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): string {
   if (isStressZone(level)) return `${side === "downside" ? "sell" : "buy"} stress`;
   if (level.leverageBucket === "book") return `${side === "downside" ? "bid" : "ask"} book`;
-  if (level.leverageBucket === "positioning") return `${side === "downside" ? "long" : "short"} crowd`;
+  if (level.leverageBucket === "positioning") return `#${level.flowRank ?? "?"} ${level.exposureSide === "bear" ? "bear" : "bull"} OI`;
   if (level.leverageBucket === "mixed") return "mixed level";
   if (level.flowRank != null) return `#${level.flowRank} ${side === "downside" ? "sell" : "buy"} flow`;
   return level.label;
@@ -378,15 +400,15 @@ function reactionDisplayPriority(level: SupportResistanceLevel): number {
       : level.leverageBucket === "mixed"
         ? 8
         : level.leverageBucket === "positioning"
-          ? 6
+          ? 14
           : 0;
   return score + distanceBonus + sourceBonus;
 }
 
-function selectVisibleReactionLevels(levels: SupportResistanceLevel[]): SupportResistanceLevel[] {
+function selectVisibleReactionLevels(levels: SupportResistanceLevel[], limit = 4): SupportResistanceLevel[] {
   return [...levels]
     .sort((a, b) => reactionDisplayPriority(b) - reactionDisplayPriority(a))
-    .slice(0, 4)
+    .slice(0, limit)
     .sort((a, b) => a.price - b.price);
 }
 
@@ -431,6 +453,8 @@ export default function PriceChart({
     () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, overlayMode) : []),
     [overlayMode, reactionPayload, reactionSupported],
   );
+  const oiHoldingHidden =
+    overlayMode === "oi_holding" && reactionSupported && reactionPayload != null && levels.length === 0;
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
   const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
@@ -449,15 +473,17 @@ export default function PriceChart({
     () =>
       selectVisibleReactionLevels(
         levels.filter((level) => level.kind === "support" && (currentPrice == null || level.price < currentPrice)),
+        overlayMode === "oi_holding" ? 5 : 4,
       ),
-    [currentPrice, levels],
+    [currentPrice, levels, overlayMode],
   );
   const visibleUpsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
         levels.filter((level) => level.kind === "resistance" && (currentPrice == null || level.price > currentPrice)),
+        overlayMode === "oi_holding" ? 5 : 4,
       ),
-    [currentPrice, levels],
+    [currentPrice, levels, overlayMode],
   );
 
   const lockPageScrollInChart = () => {
@@ -748,11 +774,18 @@ export default function PriceChart({
   }, [candles, currentPrice, visibleDownsideFlows, visibleUpsideFlows]);
 
   const levelSourceNote =
-    latestLevelTimeMs != null
+    oiHoldingHidden
+      ? "OI Holding zones are warming up from current ingested flow."
+      : latestLevelTimeMs != null
       ? `Reaction Map - refreshed ${formatTimeMs(latestLevelTimeMs)}`
       : dataThroughTimeMs != null
         ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
         : "Reaction Map";
+  const levelAvailabilityMessage = oiHoldingHidden
+    ? "OI Holding zones need enough recent flow before they appear. Large near-spot zones are allowed when the ingested flow is strong enough."
+    : reactionSupported
+      ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
+      : "Reaction Map is available for Hyperliquid perps.";
   const hasActionablePlan = tradePlan.bias !== "wait";
 
   return (
@@ -778,7 +811,7 @@ export default function PriceChart({
               )}
             </div>
             <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Inferred from public trades, OI changes, book depth, funding, and tracked samples when available.
+              Order Book shows visible shelves. OI Holding shows inferred bull and bear zones from current ingested flow.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -871,7 +904,7 @@ export default function PriceChart({
       {!loading && !error && candles.length > 0 ? (
         <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
           <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
-            Reaction levels are inferred market pressure, not complete trader-position truth or a promise that price must hold.
+            Reaction zones are inferred market pressure, not complete trader-position truth or a promise that price must hold.
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -922,9 +955,7 @@ export default function PriceChart({
             ) : null}
             {reactionUnavailable || (reactionSupported && levels.length === 0) ? (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                {reactionSupported
-                  ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
-                  : "Reaction Map is available for Hyperliquid perps."}
+                {levelAvailabilityMessage}
               </div>
             ) : null}
           </div>
@@ -1087,6 +1118,19 @@ function LevelHoverCard({
       </div>
       <div className="mt-1 text-[11px] leading-5 text-zinc-400">{read.reason}</div>
       <div className="mt-2 text-[10px] leading-4 text-zinc-500">{flowSummary(band.level)}</div>
+      {band.level.zoneTooltip ? (
+        <div className="mt-2 grid grid-cols-2 gap-1.5 text-[10px] leading-4 text-zinc-500">
+          <span>Rank #{band.level.zoneTooltip.rank ?? band.level.flowRank ?? "?"}</span>
+          <span>{band.level.zoneTooltip.side === "bear" ? "Bear zone" : "Bull zone"}</span>
+          <span>Flow {formatCompactUsd(band.level.zoneTooltip.totalRecentFlowUsd)}</span>
+          <span>OI {formatCompactUsd(band.level.zoneTooltip.inferredOiUsd)}</span>
+          <span>Buy {formatCompactUsd(band.level.zoneTooltip.buyNotionalUsd)}</span>
+          <span>Sell {formatCompactUsd(band.level.zoneTooltip.sellNotionalUsd)}</span>
+        </div>
+      ) : null}
+      {band.level.zoneTooltip?.reasonSelected ? (
+        <div className="mt-1 text-[10px] leading-4 text-zinc-500">{band.level.zoneTooltip.reasonSelected}</div>
+      ) : null}
       {showPath ? <div className="mt-1 text-[10px] leading-4 text-zinc-500">Next: {path}</div> : null}
       {band.level.evidence && band.level.evidence.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">

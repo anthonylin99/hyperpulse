@@ -173,3 +173,27 @@
 - What helped: comparing API output against stored book buckets showed the bug was both ingestion granularity and nearest-level display selection.
 - Friction or missing capability: Browser Use still needs the Node REPL path fallback in this desktop session, but it verified the 1h chart after rebuild.
 - Recommendation: add scorer fixtures that assert per-side spacing and deeper shelf selection for BTC-like books.
+
+## 2026-05-03
+
+- Request summary: add an OI Holding Reaction Map toggle without changing the database schema.
+- Skills used: `brainstorming`, `coding-discipline`, `verification-gate`, `webapp-testing`, `browser-use:browser`.
+- What helped: existing `reaction_trade_buckets` and `reaction_context_snapshots` already had enough data to compute top flow/OI holding buckets without a migration.
+- Friction or missing capability: local 15m OI deltas can be tiny, so the UI now leads with flow concentration while showing inferred OI build as evidence.
+- Recommendation: validate this on a longer live Neon-backed run before deciding whether to persist a dedicated `reaction_oi_holding_buckets` table.
+
+## 2026-05-03
+
+- Request summary: hide OI Holding when inferred levels are clustered around spot and avoid adding worker/runtime bloat.
+- Skills used: `coding-discipline`, `verification-gate`, `webapp-testing`.
+- What helped: keeping the fix inside `reactionLevels` and `PriceChart` made the behavior honest without changing the database or worker stack.
+- Friction or missing capability: Docker Desktop initially was not reachable and the default web port was already occupied, so validation used the rebuilt Compose web container on port `3004`.
+- Recommendation: keep OI Holding hidden until a longer-running production collector can prove useful, spaced holding zones.
+
+## 2026-05-03
+
+- Request summary: implement Neon exposure-zone and whale-performance refactor with top bull/bear zones, worker-owned persistence, dynamic cleanup, and production cleanup planning.
+- Skills used: `prompt-master`, `brainstorming`, `planning-with-files`, `executing-plans`, `spin-up-agent-team`, `verification-gate`, `repo-execution`, `coding-discipline`, `docker-compose-runtime-discovery`, `backend-dev-guidelines`, `ui-ux-pro-max`, `webapp-testing`.
+- What helped: the existing reaction worker and raw bucket tables were close enough that zone promotion could be added as a compact worker-owned layer without replacing the public-stream ingestion path.
+- Friction or missing capability: Neon connector cleanup was blocked by reauthentication, Browser Use did not expose the required Node REPL runtime in this session, and the production web image does not include `scripts/public-smoke.mjs`.
+- Recommendation: reauthenticate Neon, apply the temp-branch cleanup SQL, and add a container-visible API smoke script for future production-image checks.
