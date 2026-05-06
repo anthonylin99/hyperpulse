@@ -18,6 +18,7 @@ import {
   computeByAsset,
   computeByTimeOfDay,
   computeByDayOfWeek,
+  isPerpFill,
 } from "@/lib/analytics";
 import { generateInsights } from "@/lib/insights";
 import { withNetworkParam } from "@/lib/hyperliquid";
@@ -93,10 +94,11 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       if (cached) {
         const data = JSON.parse(cached);
         if (data.fills?.length > 0) {
-          setFills(data.fills);
           setFunding(data.funding ?? []);
           // Recompute analytics from cached data
-          const rawTrades = groupFillsIntoTrades(data.fills);
+          const cachedFills = (data.fills as Fill[]).filter(isPerpFill);
+          setFills(cachedFills);
+          const rawTrades = groupFillsIntoTrades(cachedFills);
           const tradesWithFunding = mergeFundingIntoTrades(rawTrades, data.funding ?? []);
           setTrades(tradesWithFunding);
           const startBal = Math.max(...tradesWithFunding.map((t) => t.notional), 1000);
@@ -262,21 +264,23 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         nSamples: Number(f.nSamples ?? 0),
       }));
 
-      setFills(normalizedFills);
+      const perpFills = normalizedFills.filter(isPerpFill);
+
+      setFills(perpFills);
       setFunding(normalizedFunding);
 
       // Cache fills + funding for instant load next time
       try {
         localStorage.setItem(
           `hp_cache_${address.toLowerCase()}`,
-          JSON.stringify({ fills: normalizedFills, funding: normalizedFunding, cachedAt: Date.now() }),
+          JSON.stringify({ fills: perpFills, funding: normalizedFunding, cachedAt: Date.now() }),
         );
       } catch {
         // localStorage full — ignore
       }
 
       // Compute analytics
-      const rawTrades = groupFillsIntoTrades(normalizedFills);
+      const rawTrades = groupFillsIntoTrades(perpFills);
       const tradesWithFunding = mergeFundingIntoTrades(
         rawTrades,
         normalizedFunding,

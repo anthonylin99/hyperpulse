@@ -14,9 +14,18 @@ import type {
 // HL fills include a `dir` field: "Open Long", "Close Long", "Open Short", "Close Short"
 // We accumulate fills per coin until the position flips or closes.
 
+export function isPerpFill(fill: Pick<Fill, "dir">): boolean {
+  return (
+    fill.dir === "Open Long" ||
+    fill.dir === "Close Long" ||
+    fill.dir === "Open Short" ||
+    fill.dir === "Close Short"
+  );
+}
+
 export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
   // Sort chronologically
-  const sorted = [...fills].sort((a, b) => a.time - b.time);
+  const sorted = [...fills].filter(isPerpFill).sort((a, b) => a.time - b.time);
   const trades: RoundTripTrade[] = [];
 
   // Track open positions per coin
@@ -33,16 +42,10 @@ export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
       if (fill.dir === "Open Short" || fill.dir === "Close Short") {
         return { isOpen: fill.dir === "Open Short", direction: "short" as const };
       }
-      // Spot fills typically use Buy/Sell. Treat Buy as open/add long, Sell as close/reduce long.
-      if (fill.dir === "Buy") {
-        return { isOpen: true, direction: "long" as const };
-      }
-      if (fill.dir === "Sell") {
-        return { isOpen: false, direction: "long" as const };
-      }
-      // Fallback: assume open long to avoid dropping fills silently
-      return { isOpen: true, direction: "long" as const };
+      return null;
     })();
+
+    if (!normalized) continue;
 
     const isOpen = normalized.isOpen;
     const direction = normalized.direction;
@@ -70,10 +73,10 @@ export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
       // Position fully closed (or close enough due to rounding)
       if (pos.size <= 0.000001) {
         const entryFills = pos.fills.filter(
-          (f) => f.dir.startsWith("Open") || f.dir === "Buy",
+          (f) => f.dir.startsWith("Open"),
         );
         const exitFills = pos.fills.filter(
-          (f) => f.dir.startsWith("Close") || f.dir === "Sell",
+          (f) => f.dir.startsWith("Close"),
         );
 
         if (entryFills.length > 0 && exitFills.length > 0) {

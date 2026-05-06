@@ -375,7 +375,9 @@ function normalizeFills(rawFills = []) {
 }
 
 function groupFillsIntoTrades(fills) {
-  const sorted = [...fills].sort((a, b) => a.time - b.time);
+  const sorted = [...fills]
+    .filter((fill) => ['Open Long', 'Close Long', 'Open Short', 'Close Short'].includes(fill.dir))
+    .sort((a, b) => a.time - b.time);
   const trades = [];
   const openPositions = new Map();
 
@@ -383,10 +385,9 @@ function groupFillsIntoTrades(fills) {
     const normalized = (() => {
       if (fill.dir === 'Open Long' || fill.dir === 'Close Long') return { isOpen: fill.dir === 'Open Long', direction: 'long' };
       if (fill.dir === 'Open Short' || fill.dir === 'Close Short') return { isOpen: fill.dir === 'Open Short', direction: 'short' };
-      if (fill.dir === 'Buy') return { isOpen: true, direction: 'long' };
-      if (fill.dir === 'Sell') return { isOpen: false, direction: 'long' };
-      return { isOpen: true, direction: 'long' };
+      return null;
     })();
+    if (!normalized) continue;
 
     const existing = openPositions.get(fill.coin);
     if (normalized.isOpen) {
@@ -404,8 +405,8 @@ function groupFillsIntoTrades(fills) {
     existing.size -= fill.sz;
     if (existing.size > 0.000001) continue;
 
-    const entryFills = existing.fills.filter((item) => item.dir.startsWith('Open') || item.dir === 'Buy');
-    const exitFills = existing.fills.filter((item) => item.dir.startsWith('Close') || item.dir === 'Sell');
+    const entryFills = existing.fills.filter((item) => item.dir.startsWith('Open'));
+    const exitFills = existing.fills.filter((item) => item.dir.startsWith('Close'));
     if (entryFills.length && exitFills.length) {
       const totalEntryNotional = entryFills.reduce((sum, item) => sum + item.px * item.sz, 0);
       const totalEntrySize = entryFills.reduce((sum, item) => sum + item.sz, 0);
