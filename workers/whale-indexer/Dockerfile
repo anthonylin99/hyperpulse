@@ -9,5 +9,7 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./package.json
 COPY index.mjs ./index.mjs
+COPY supervisor.mjs ./supervisor.mjs
 COPY schema.sql ./schema.sql
+COPY momentum-alerts ./momentum-alerts
 CMD ["npm", "start"]

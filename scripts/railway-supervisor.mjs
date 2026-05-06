@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 const children = new Map();
+const restartTimers = new Map();
 let shuttingDown = false;
 
 console.log("[start] worker supervisor mode");
@@ -27,6 +28,8 @@ function log(name, message) {
 function stopAll(signal = "SIGTERM") {
   if (shuttingDown) return;
   shuttingDown = true;
+  for (const timer of restartTimers.values()) clearTimeout(timer);
+  restartTimers.clear();
   for (const [name, child] of children.entries()) {
     if (!child.killed) {
       console.log(`[supervisor] stopping ${name}`);
@@ -51,16 +54,26 @@ function startWorker(worker) {
     children.delete(worker.name);
     console.error(`[supervisor] ${worker.name} exited code=${code ?? "null"} signal=${signal ?? "null"}`);
     if (!shuttingDown) {
-      stopAll();
-      process.exitCode = code && code !== 0 ? code : 1;
+      const delayMs = 5000;
+      console.error(`[supervisor] restarting ${worker.name} in ${delayMs}ms`);
+      const timer = setTimeout(() => {
+        restartTimers.delete(worker.name);
+        startWorker(worker);
+      }, delayMs);
+      restartTimers.set(worker.name, timer);
     }
   });
 
   child.on("error", (error) => {
     console.error(`[supervisor] ${worker.name} failed to start`, error);
     if (!shuttingDown) {
-      stopAll();
-      process.exitCode = 1;
+      const delayMs = 5000;
+      console.error(`[supervisor] retrying ${worker.name} in ${delayMs}ms`);
+      const timer = setTimeout(() => {
+        restartTimers.delete(worker.name);
+        startWorker(worker);
+      }, delayMs);
+      restartTimers.set(worker.name, timer);
     }
   });
 }
