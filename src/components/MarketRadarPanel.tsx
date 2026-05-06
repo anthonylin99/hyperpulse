@@ -22,18 +22,22 @@ function sourceLabel(source: string | undefined) {
   return "Market-only scan";
 }
 
-function signalTone(severity: MarketRadarSignal["severity"]) {
-  if (severity === "high") return "border-rose-500/25 bg-rose-500/10 text-rose-300";
-  if (severity === "medium") return "border-amber-500/25 bg-amber-500/10 text-amber-300";
+function signalTone(signal: MarketRadarSignal) {
+  if (signal.kind === "strongest_asset") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-300";
+  if (signal.kind === "weakest_asset") return "border-rose-500/25 bg-rose-500/10 text-rose-300";
+  if (signal.kind === "crowded_long") return "border-orange-500/25 bg-orange-500/10 text-orange-300";
+  if (signal.kind === "crowded_short") return "border-sky-500/25 bg-sky-500/10 text-sky-300";
+  if (signal.severity === "high") return "border-amber-500/25 bg-amber-500/10 text-amber-300";
+  if (signal.severity === "medium") return "border-zinc-700 bg-zinc-950/70 text-zinc-300";
   return "border-zinc-800 bg-zinc-950/70 text-zinc-400";
 }
 
 function kindLabel(kind: MarketRadarSignal["kind"]) {
   switch (kind) {
     case "strongest_asset":
-      return "Strength";
+      return "Long bias";
     case "weakest_asset":
-      return "Weakness";
+      return "Short bias";
     case "crowded_long":
       return "Crowded long";
     case "crowded_short":
@@ -56,7 +60,7 @@ function formatRadarTime(time: number | undefined): string {
 
 const radarMethodology = [
   "Liquidity gate: >=$10M OI and >=$20M 24h volume.",
-  "Ranks 24h log return after adjusting for BTC beta and the liquid perp basket.",
+  "Shows both long momentum and relative short/laggard candidates.",
   "Adds volume/OI participation, then penalizes overcrowded funding.",
 ];
 
@@ -85,7 +89,11 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
   }, []);
 
   const hero = variant === "hero";
-  const signals = data?.signals.slice(0, hero ? 8 : 6) ?? [];
+  const allSignals = data?.signals ?? [];
+  const longSignals = allSignals.filter((signal) => signal.kind === "strongest_asset").slice(0, 3);
+  const shortSignals = allSignals.filter((signal) => signal.kind === "weakest_asset").slice(0, 3);
+  const contextSignals = allSignals.filter((signal) => signal.kind !== "strongest_asset" && signal.kind !== "weakest_asset").slice(0, hero ? 2 : 1);
+  const signals = [...longSignals, ...shortSignals, ...contextSignals].slice(0, hero ? 8 : 7);
 
   if (hero) {
     return (
@@ -121,7 +129,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
         <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-4">
           {signals.length === 0 ? (
             <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 p-3 text-xs leading-5 text-zinc-500 md:col-span-2 xl:col-span-4">
-              Radar is warming up. HyperPulse will show multiple qualified strength runners, weakness runners, crowded longs, and paid shorts here.
+              Radar is warming up. HyperPulse will show qualified long momentum, short momentum, crowded longs, and paid shorts here.
             </div>
           ) : (
             signals.map((signal) => (
@@ -131,7 +139,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
                 className="group rounded-xl border border-zinc-800 bg-zinc-950/55 p-3 transition hover:border-teal-500/25 hover:bg-zinc-950/80"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", signalTone(signal.severity))}>
+                  <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", signalTone(signal))}>
                     {kindLabel(signal.kind)}
                   </span>
                   <span className="font-mono text-xs text-zinc-100">{signal.value}</span>
@@ -172,7 +180,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
       <div className="mt-3 space-y-2">
         {signals.length === 0 ? (
           <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 p-3 text-xs leading-5 text-zinc-500">
-            Radar is warming up. HyperPulse will show strength, weakness, funding crowding, and tracked-flow context here.
+            Radar is warming up. HyperPulse will show long bias, short bias, funding crowding, and tracked-flow context here.
           </div>
         ) : (
           signals.map((signal) => (
@@ -185,7 +193,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-medium text-zinc-100">{signal.asset}</span>
-                    <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", signalTone(signal.severity))}>
+                    <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", signalTone(signal))}>
                       {kindLabel(signal.kind)}
                     </span>
                   </div>

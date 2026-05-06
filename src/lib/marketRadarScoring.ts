@@ -223,8 +223,10 @@ export function selectMomentumEdges(args: {
         const beatsBtc = asset.coin === "BTC" ? asset.basketResidualPct > 0 : asset.btcResidualPct > 0;
         return asset.rawReturn24hPct > 0 && asset.basketResidualPct > 0 && beatsBtc && asset.strongScore >= threshold;
       }
-      const lagsBtc = asset.coin === "BTC" ? asset.basketResidualPct < 0 : asset.btcResidualPct < 0;
-      return asset.rawReturn24hPct < 0 && asset.basketResidualPct < 0 && lagsBtc && asset.weakScore >= threshold;
+      const lagsBtc = asset.coin === "BTC" ? asset.basketResidualPct < -0.25 : asset.btcResidualPct < -0.25;
+      const lagsBasket = asset.basketResidualPct < -0.25;
+      const hasDownsidePressure = asset.rawReturn24hPct < 0 || asset.btcResidualPct < -1 || asset.basketResidualPct < -1;
+      return lagsBasket && lagsBtc && hasDownsidePressure && asset.weakScore >= threshold;
     })
     .sort((a, b) => (args.direction === "strong" ? b.strongScore - a.strongScore : b.weakScore - a.weakScore))
     .slice(0, args.limit);

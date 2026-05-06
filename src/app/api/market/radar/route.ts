@@ -23,6 +23,7 @@ type ParsedAsset = {
 const RADAR_MAX_PER_BUCKET = 3;
 const RADAR_MIN_VOLUME_USD = 20_000_000;
 const RADAR_SCORE_THRESHOLD = 0.75;
+const RADAR_WEAK_SCORE_THRESHOLD = 0.35;
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
 const BETA_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const BETA_MIN_SAMPLES = 72;
@@ -205,8 +206,17 @@ function buildCrowdingSignal(kind: MarketRadarSignal["kind"], asset: ParsedAsset
 function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: MomentumEdgeAsset, index: number, timestamp: number): MarketRadarSignal {
   const details = kind === "strongest_asset" ? asset.strongDetails : asset.weakDetails;
   const score = kind === "strongest_asset" ? asset.strongScore : asset.weakScore;
-  const edgeLabel = kind === "strongest_asset" ? "Momentum Edge" : "Weakness Edge";
-  const residualPrefix = kind === "strongest_asset" ? "Outperformed" : "Underperformed";
+  const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : "Short Momentum";
+  const weakEvidence =
+    asset.coin === "BTC"
+      ? [
+          `Lagged liquid perp basket by ${Math.abs(details.basketResidualPct).toFixed(2)}%`,
+          `Raw 24h BTC move ${formatPct(details.rawReturn24hPct)}`,
+        ]
+      : [
+          `Lagged BTC by ${Math.abs(details.btcResidualPct).toFixed(2)}%`,
+          `Lagged liquid perp basket by ${Math.abs(details.basketResidualPct).toFixed(2)}%`,
+        ];
   return {
     id: `${kind}:${asset.coin}:${timestamp}`,
     kind,
@@ -216,8 +226,12 @@ function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: M
     severity: severityFromRadarScore(score),
     timestamp,
     evidence: [
-      `${residualPrefix} BTC by ${formatPct(details.btcResidualPct)}`,
-      `${residualPrefix} liquid perp basket by ${formatPct(details.basketResidualPct)}`,
+      ...(kind === "strongest_asset"
+        ? [
+            `Outperformed BTC by ${formatPct(details.btcResidualPct)}`,
+            `Outperformed liquid perp basket by ${formatPct(details.basketResidualPct)}`,
+          ]
+        : weakEvidence),
       `Momentum z-score ${details.crossSectionalZ >= 0 ? "+" : ""}${details.crossSectionalZ.toFixed(2)}`,
       `Beta to BTC ${details.betaStatus === "ready" ? details.btcBeta.toFixed(2) : "fallback 1.00"}`,
       `${details.volumeConfirmation ? "Volume confirming" : "Volume below universe median"} · ${details.oiConfirmation ? "OI base liquid" : "OI below universe median"}`,
@@ -246,7 +260,7 @@ export async function GET(req: NextRequest) {
     const betas = await loadBtcBetas(rows.map((asset) => asset.coin));
     const scored = computeMomentumEdges(rows, betas);
     const strongestAssets = selectMomentumEdges({ assets: scored, direction: "strong", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_SCORE_THRESHOLD });
-    const weakestAssets = selectMomentumEdges({ assets: scored, direction: "weak", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_SCORE_THRESHOLD });
+    const weakestAssets = selectMomentumEdges({ assets: scored, direction: "weak", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_WEAK_SCORE_THRESHOLD });
     const crowdedLong = [...rows].sort((a, b) => b.fundingAPR - a.fundingAPR)[0];
     const crowdedShort = [...rows].sort((a, b) => a.fundingAPR - b.fundingAPR)[0];
 
