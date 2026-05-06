@@ -54,6 +54,12 @@ function formatRadarTime(time: number | undefined): string {
   return formatEasternTime(time, true);
 }
 
+const radarMethodology = [
+  "Liquidity gate: >=$10M OI and >=$20M 24h volume.",
+  "Ranks 24h log return after adjusting for BTC beta and the liquid perp basket.",
+  "Adds volume/OI participation, then penalizes overcrowded funding.",
+];
+
 export default function MarketRadarPanel({ variant = "compact" }: { variant?: "compact" | "hero" }) {
   const [data, setData] = useState<RadarResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,7 +95,8 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
             <SectionEyebrow className="text-teal-300">Market Radar v1</SectionEyebrow>
             <div className="mt-1 text-sm font-medium text-zinc-100">Quick context before the directory</div>
             <div className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
-              BTC/basket-adjusted momentum edge, weakness, and funding crowding from Hyperliquid. Refreshes every 2m.
+              Momentum Edge is not raw 24h green. It scans liquid Hyperliquid perps for BTC-adjusted and basket-adjusted
+              relative strength, then checks participation and funding crowding. Refreshes every 2m.
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -101,6 +108,14 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
               Updated {formatRadarTime(data?.generatedAt)}
             </div>
           </div>
+        </div>
+
+        <div className="grid gap-2 border-b border-zinc-800 bg-zinc-950/30 px-3 py-2 text-[11px] leading-5 text-zinc-500 md:grid-cols-3">
+          {radarMethodology.map((item) => (
+            <div key={item} className="rounded-xl border border-zinc-800/80 bg-zinc-950/45 px-3 py-2">
+              {item}
+            </div>
+          ))}
         </div>
 
         <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-4">
@@ -143,6 +158,9 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
           <div className="mt-1 text-sm font-medium text-zinc-100">What stands out now</div>
           <div className="mt-1 text-[11px] text-zinc-500">
             {sourceLabel(data?.source)} · refreshes every 2m
+          </div>
+          <div className="mt-1 max-w-[260px] text-[10px] leading-4 text-zinc-600">
+            Liquidity-gated relative strength: BTC residual, basket residual, participation, funding penalty.
           </div>
           <div className="mt-0.5 font-mono text-[10px] text-zinc-600">Updated {formatRadarTime(data?.generatedAt)}</div>
         </div>

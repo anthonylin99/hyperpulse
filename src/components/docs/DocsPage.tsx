@@ -7,6 +7,7 @@ const quickLinks = [
   { href: "#data-sources", label: "Data Sources" },
   { href: "#portfolio", label: "Portfolio Analytics" },
   { href: "#signals", label: "Market Signals" },
+  { href: "#market-radar", label: "Market Radar" },
   { href: "#pressure-levels", label: "Pressure Levels" },
   { href: "#whales", label: "Whales" },
   { href: "#sentiment", label: "Next 24h Bias" },
@@ -285,6 +286,53 @@ export default function DocsPage() {
             <p>
               Confidence is graded from sample size and absolute correlation strength. Sparse history or weak
               correlation forces the signal back toward low confidence rather than overstating precision.
+            </p>
+          </Section>
+
+          <Section id="market-radar" eyebrow="Radar" title="How Momentum Edge is calculated">
+            <p>
+              Market Radar is a relative-strength scan, not a raw list of the biggest green candles. It starts with
+              Hyperliquid perp markets, keeps only liquid names, then asks which assets are outperforming after
+              adjusting for BTC and the broader liquid perp basket.
+            </p>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Momentum Edge pipeline</div>
+              <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                <div>1. Filter to active perps with at least $10M open interest and $20M 24h volume.</div>
+                <div>2. Compute 24h log return from mark price versus previous-day price.</div>
+                <div>3. Estimate each asset&apos;s BTC beta from 1h candles when enough history exists; otherwise use a 1.00 fallback.</div>
+                <div>4. Compute BTC-adjusted residual return and liquid-basket residual return.</div>
+                <div>5. Robust-z-score raw return, BTC residual, basket residual, volume, and open interest participation.</div>
+                <div>6. Penalize longs when funding is very expensive and shorts when funding is very negative.</div>
+                <div>7. Show only qualified leaders above the current radar threshold, capped at three strength and three weakness names.</div>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Strength score</div>
+                <div className="mt-2 font-mono text-xs text-teal-300">
+                  40% BTC residual + 30% basket residual + 20% raw return + 10% participation - funding penalty
+                </div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  A Momentum Edge must be positive on raw 24h return, positive versus the basket, and positive versus
+                  BTC-adjusted return for non-BTC assets.
+                </div>
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="text-xs font-medium text-zinc-100">Weakness score</div>
+                <div className="mt-2 font-mono text-xs text-rose-300">
+                  40% negative BTC residual + 30% negative basket residual + 20% negative raw return + 10% participation - funding penalty
+                </div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  A Weakness Edge must be negative on raw 24h return, negative versus the basket, and lag BTC after
+                  beta adjustment for non-BTC assets.
+                </div>
+              </div>
+            </div>
+            <p>
+              The radar also shows crowded-long and crowded-short context from funding APR, open interest, 24h volume,
+              and 24h move. Those crowding cards are separate from Momentum Edge and should be read as positioning
+              pressure, not standalone trade calls.
             </p>
           </Section>
 
