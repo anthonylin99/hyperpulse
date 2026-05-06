@@ -35,14 +35,19 @@ const ASSET_LIMIT = clamp(envNumber("MOMENTUM_ALERT_ASSET_LIMIT", 45), 5, 80);
 const MIN_OI_USD = envNumber("MOMENTUM_ALERT_MIN_OI_USD", 8_000_000);
 const MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_MIN_VOLUME_USD", 20_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
-const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 3), 1, 12);
+const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 8), 1, 24);
 const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 8), TELEGRAM_DAILY_CAP, 24);
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = process.env.MOMENTUM_ALERT_CANDLE_INTERVAL || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
 const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 72);
 const HIGH_SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_HIGH_SCORE_THRESHOLD", 82);
-const DRY_RUN = process.env.MOMENTUM_ALERT_DRY_RUN === "true";
+const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
+const DRY_RUN_REQUESTED = process.env.MOMENTUM_ALERT_DRY_RUN === "true";
+const DRY_RUN = DRY_RUN_REQUESTED && (!PROD_LIKE || process.env.MOMENTUM_ALERT_ALLOW_PROD_DRY_RUN === "true");
+if (DRY_RUN_REQUESTED && !DRY_RUN) {
+  console.warn("[momentum-alerts] ignoring MOMENTUM_ALERT_DRY_RUN=true in production-like environment");
+}
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === "true";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
@@ -621,16 +626,14 @@ async function persistAlert(candidate, now) {
 
   const easternDate = alert.payload.easternDate;
   const telegramCount = await countQueuedOrSentToday(easternDate);
-  const canSendTelegram = TELEGRAM_ENABLED && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID && telegramCount < TELEGRAM_DAILY_CAP && alert.severity === "high";
+  const canSendTelegram = TELEGRAM_ENABLED && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID && telegramCount < TELEGRAM_DAILY_CAP;
   const message = buildTelegramText(alert);
   const queueStatus = canSendTelegram ? "queued" : "disabled";
   const lastError = canSendTelegram
     ? null
-    : TELEGRAM_ENABLED && alert.severity !== "high"
-      ? "Medium-severity alert stored but Telegram is reserved for high-confidence alerts."
-      : TELEGRAM_ENABLED
-        ? "Telegram daily cap reached or credentials missing."
-        : "Telegram disabled.";
+    : TELEGRAM_ENABLED
+      ? "Telegram daily cap reached or credentials missing."
+      : "Telegram disabled.";
 
   await pool.query(
     `insert into notification_queue (id, event_type, event_id, channel, status, created_at, message_hash, last_error, payload)

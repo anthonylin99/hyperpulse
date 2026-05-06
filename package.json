@@ -21,7 +21,8 @@
     "reaction:start": "node workers/reaction-map/index.mjs",
     "docker:up": "docker compose up --build",
     "mcp:start": "node workers/mcp-server/index.mjs",
-    "railway:start": "npm run worker:start"
+    "railway:start": "node scripts/railway-supervisor.mjs",
+    "telegram:test": "node scripts/send-telegram-test.mjs"
   },
   "dependencies": {
     "@farcaster/mini-app-solana": "^1.1.3",

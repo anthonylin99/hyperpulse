@@ -911,6 +911,20 @@ export type MarketRadarSignalKind =
   | "whale_flow"
   | "factor_confirmation";
 
+export interface MarketRadarScoreDetails {
+  score: number;
+  rawReturn24hPct: number;
+  btcReturn24hPct: number;
+  basketReturn24hPct: number;
+  btcResidualPct: number;
+  basketResidualPct: number;
+  crossSectionalZ: number;
+  btcBeta: number;
+  betaStatus: "ready" | "fallback";
+  volumeConfirmation: boolean;
+  oiConfirmation: boolean;
+}
+
 export interface MarketRadarSignal {
   id: string;
   kind: MarketRadarSignalKind;
@@ -921,6 +935,7 @@ export interface MarketRadarSignal {
   timestamp: number;
   evidence: string[];
   routeHref: string;
+  scoreDetails?: MarketRadarScoreDetails;
 }
 
 
