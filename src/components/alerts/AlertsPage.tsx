@@ -11,8 +11,46 @@ import { SectionEyebrow } from "@/components/trading-ui";
 type AlertsResponse = {
   alerts: MomentumAlert[];
   generatedAt: number;
-  worker: { updatedAt: number | null; status: string; message: string | null } | null;
+  worker: MomentumDiagnostics["worker"];
+  diagnostics: MomentumDiagnostics;
   source: string;
+};
+
+type MomentumDiagnostics = {
+  configured: boolean;
+  worker: {
+    updatedAt: number | null;
+    status: string;
+    message: string | null;
+    ageMs: number | null;
+    stale: boolean;
+    dryRun: boolean | null;
+    scanned: number | null;
+    candidates: number | null;
+    inserted: number | null;
+    queued: number | null;
+    sent: number | null;
+    selected: string[];
+    telegramCap: number | null;
+    storeCap: number | null;
+  } | null;
+  delivery: {
+    queued: number;
+    sent: number;
+    failed: number;
+    disabled: number;
+    recentError: string | null;
+  };
+  status:
+    | "live"
+    | "store_unconfigured"
+    | "no_worker_run"
+    | "worker_stale"
+    | "dry_run_only"
+    | "telegram_missing_or_disabled"
+    | "telegram_failing"
+    | "no_qualified_alerts";
+  message: string;
 };
 
 function formatPct(value: number | null | undefined, digits = 1) {
@@ -68,6 +106,7 @@ export default function AlertsPage() {
   }, []);
 
   const alerts = useMemo(() => data?.alerts ?? [], [data?.alerts]);
+  const diagnostics = data?.diagnostics ?? null;
   const stats = useMemo(() => {
     const last24h = alerts.filter((alert) => alert.createdAt >= Date.now() - 24 * 60 * 60 * 1000);
     const winners = alerts.filter((alert) => (alert.returnSinceAlertPct ?? 0) > 0).length;
@@ -99,11 +138,13 @@ export default function AlertsPage() {
           </div>
         </div>
         <div className="grid gap-px bg-zinc-800 md:grid-cols-3">
-          <StatCard label="Alerts 24h" value={stats.last24h.toString()} helper="hard capped at 3/day" />
+          <StatCard label="Alerts 24h" value={stats.last24h.toString()} helper={`Telegram cap ${diagnostics?.worker?.telegramCap ?? 8}/day`} />
           <StatCard label="Stored alerts" value={stats.stored.toString()} helper="reviewable snapshots" />
           <StatCard label="Hit rate" value={stats.hitRate == null ? "n/a" : `${stats.hitRate.toFixed(0)}%`} helper="positive since alert" />
         </div>
       </section>
+
+      {diagnostics ? <DiagnosticBanner diagnostics={diagnostics} /> : null}
 
       {error ? (
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div>
@@ -129,7 +170,7 @@ export default function AlertsPage() {
               <Bell className="h-5 w-5" />
             </div>
             <div className="mt-4 text-sm font-medium text-zinc-200">No momentum alerts yet.</div>
-            <div className="mt-2 text-sm text-zinc-500">When the worker spots a selective liquid-perp momentum setup, it will appear here with the exact alert price.</div>
+            <div className="mx-auto mt-2 max-w-xl text-sm text-zinc-500">{diagnostics?.message ?? "When the worker spots a selective liquid-perp momentum setup, it will appear here with the exact alert price."}</div>
           </div>
         ) : (
           <div className="divide-y divide-zinc-800">
@@ -140,6 +181,34 @@ export default function AlertsPage() {
         )}
       </section>
     </div>
+  );
+}
+
+function DiagnosticBanner({ diagnostics }: { diagnostics: MomentumDiagnostics }) {
+  const isHealthy = diagnostics.status === "live" || diagnostics.status === "no_qualified_alerts";
+  const tone = isHealthy
+    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
+    : diagnostics.status === "dry_run_only" || diagnostics.status === "worker_stale" || diagnostics.status === "no_worker_run"
+      ? "border-amber-500/25 bg-amber-500/10 text-amber-100"
+      : "border-rose-500/25 bg-rose-500/10 text-rose-100";
+  const worker = diagnostics.worker;
+  return (
+    <section className={cn("rounded-2xl border px-4 py-3", tone)}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-sm font-medium">{diagnostics.message}</div>
+          <div className="mt-1 text-xs opacity-75">
+            Latest cycle: scanned {worker?.scanned ?? "n/a"} · candidates {worker?.candidates ?? "n/a"} · inserted {worker?.inserted ?? "n/a"} · queued {worker?.queued ?? "n/a"} · sent {worker?.sent ?? "n/a"}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <span className="rounded-full border border-current/20 px-2 py-1 font-mono uppercase">{diagnostics.status.replaceAll("_", " ")}</span>
+          <span className="rounded-full border border-current/20 px-2 py-1 font-mono">queued {diagnostics.delivery.queued}</span>
+          <span className="rounded-full border border-current/20 px-2 py-1 font-mono">sent {diagnostics.delivery.sent}</span>
+          {diagnostics.delivery.failed ? <span className="rounded-full border border-current/20 px-2 py-1 font-mono">failed {diagnostics.delivery.failed}</span> : null}
+        </div>
+      </div>
+    </section>
   );
 }
 

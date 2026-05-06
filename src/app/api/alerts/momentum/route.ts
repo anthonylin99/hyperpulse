@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
-import { listMomentumAlerts, getMomentumWorkerStatus } from "@/lib/momentumAlerts";
+import { listMomentumAlerts, getMomentumAlertDiagnostics } from "@/lib/momentumAlerts";
 import { enforceRateLimit, jsonError, jsonSuccess, logServerError } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
@@ -38,10 +38,12 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get("limit") ?? 50), 1), 100);
     const alerts = await listMomentumAlerts(limit);
     if (alerts.length === 0) {
+      const diagnostics = await getMomentumAlertDiagnostics(0);
       return jsonSuccess({
         alerts: [],
         generatedAt: Date.now(),
-        worker: await getMomentumWorkerStatus(),
+        worker: diagnostics.worker,
+        diagnostics,
         source: "momentum-alert-events",
       });
     }
@@ -56,10 +58,12 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    const diagnostics = await getMomentumAlertDiagnostics(enriched.length);
     return jsonSuccess({
       alerts: enriched,
       generatedAt: Date.now(),
-      worker: await getMomentumWorkerStatus(),
+      worker: diagnostics.worker,
+      diagnostics,
       source: "momentum-alert-events",
     });
   } catch (error) {

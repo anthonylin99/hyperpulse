@@ -3,6 +3,7 @@ import type { MomentumAlert, NotificationDeliveryStatus } from "@/types";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
+const WORKER_STALE_MS = 15 * 60 * 1000;
 
 let pool: Pool | null = null;
 let disabledUntil = 0;
@@ -50,6 +51,37 @@ function normalizeAlert(row: Record<string, unknown>, deliveryStatus?: Notificat
     deliveryStatus: deliveryStatus ?? null,
   };
 }
+
+export type MomentumWorkerStatus = {
+  updatedAt: number | null;
+  status: string;
+  message: string | null;
+  ageMs: number | null;
+  stale: boolean;
+  dryRun: boolean | null;
+  scanned: number | null;
+  candidates: number | null;
+  inserted: number | null;
+  queued: number | null;
+  sent: number | null;
+  selected: string[];
+  telegramCap: number | null;
+  storeCap: number | null;
+};
+
+export type MomentumAlertDiagnostics = {
+  configured: boolean;
+  worker: MomentumWorkerStatus | null;
+  delivery: {
+    queued: number;
+    sent: number;
+    failed: number;
+    disabled: number;
+    recentError: string | null;
+  };
+  status: "live" | "store_unconfigured" | "no_worker_run" | "worker_stale" | "dry_run_only" | "telegram_missing_or_disabled" | "telegram_failing" | "no_qualified_alerts";
+  message: string;
+};
 
 export function isMomentumAlertStoreConfigured(): boolean {
   return Boolean(getPool());
@@ -142,23 +174,115 @@ export async function listMomentumAlerts(limit = 50): Promise<MomentumAlert[]> {
   }
 }
 
-export async function getMomentumWorkerStatus(): Promise<{ updatedAt: number | null; status: string; message: string | null } | null> {
+function normalizeWorkerStatus(row: Record<string, unknown> | undefined): MomentumWorkerStatus | null {
+  if (!row) return null;
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  const updatedAt = asNumber(row.completed_at) ?? asNumber(row.started_at);
+  const ageMs = updatedAt ? Date.now() - updatedAt : null;
+  const selectedRaw = payload.selected;
+  return {
+    updatedAt,
+    status: String(row.status ?? "unknown"),
+    message: typeof row.message === "string" ? row.message : null,
+    ageMs,
+    stale: ageMs == null ? true : ageMs > WORKER_STALE_MS,
+    dryRun: typeof payload.dryRun === "boolean" ? payload.dryRun : null,
+    scanned: asNumber(payload.scanned),
+    candidates: asNumber(payload.candidates),
+    inserted: asNumber(payload.inserted),
+    queued: asNumber(payload.queued),
+    sent: asNumber(payload.sent),
+    selected: Array.isArray(selectedRaw) ? selectedRaw.map(String) : [],
+    telegramCap: asNumber(payload.telegramDailyCap ?? payload.telegramCap),
+    storeCap: asNumber(payload.storeDailyCap ?? payload.storeCap),
+  };
+}
+
+export async function getMomentumWorkerStatus(): Promise<MomentumWorkerStatus | null> {
   const client = getPool();
   if (!client) return null;
 
   try {
     const result = await client.query(
-      `select started_at, completed_at, status, message from worker_runs where worker = 'momentum-alerts' order by started_at desc limit 1`,
+      `select started_at, completed_at, status, message, payload from worker_runs where worker = 'momentum-alerts' order by started_at desc limit 1`,
     );
-    const row = result.rows[0];
-    if (!row) return null;
-    return {
-      updatedAt: asNumber(row.completed_at) ?? asNumber(row.started_at),
-      status: String(row.status ?? "unknown"),
-      message: typeof row.message === "string" ? row.message : null,
-    };
+    return normalizeWorkerStatus(result.rows[0]);
   } catch (error) {
     markStoreUnavailable(error);
     return null;
+  }
+}
+
+async function getDeliveryCounts(client: Pool) {
+  const counts = await client.query(
+    `select status, count(*)::int as count
+     from notification_queue
+     where event_type = 'momentum_alert' and channel = 'telegram'
+     group by status`,
+  );
+  const lastFailure = await client.query(
+    `select last_error
+     from notification_queue
+     where event_type = 'momentum_alert' and channel = 'telegram' and last_error is not null
+     order by created_at desc
+     limit 1`,
+  );
+  const delivery = { queued: 0, sent: 0, failed: 0, disabled: 0, recentError: null as string | null };
+  for (const row of counts.rows) {
+    const key = String(row.status) as keyof typeof delivery;
+    if (key === "queued" || key === "sent" || key === "failed" || key === "disabled") delivery[key] = Number(row.count ?? 0);
+  }
+  delivery.recentError = typeof lastFailure.rows[0]?.last_error === "string" ? lastFailure.rows[0].last_error : null;
+  return delivery;
+}
+
+export async function getMomentumAlertDiagnostics(alertCount = 0): Promise<MomentumAlertDiagnostics> {
+  const client = getPool();
+  if (!client) {
+    return {
+      configured: false,
+      worker: null,
+      delivery: { queued: 0, sent: 0, failed: 0, disabled: 0, recentError: null },
+      status: "store_unconfigured",
+      message: "Momentum alert database is not configured for this deployment.",
+    };
+  }
+
+  try {
+    await ensureMomentumAlertTables();
+    const [worker, delivery] = await Promise.all([getMomentumWorkerStatus(), getDeliveryCounts(client)]);
+    let status: MomentumAlertDiagnostics["status"] = "live";
+    let message = "Momentum worker is live and writing alert snapshots when candidates qualify.";
+
+    if (!worker) {
+      status = "no_worker_run";
+      message = "No momentum worker run has been recorded yet. Railway may not be starting the worker supervisor.";
+    } else if (worker.stale) {
+      status = "worker_stale";
+      message = "Momentum worker is stale. Check Railway logs for the worker supervisor and momentum-alerts process.";
+    } else if (worker.dryRun) {
+      status = "dry_run_only";
+      message = "Latest momentum worker run was dry-run only, so it did not store or send live alerts.";
+    } else if (delivery.failed > 0 && delivery.sent === 0 && alertCount > 0) {
+      status = "telegram_failing";
+      message = delivery.recentError ? `Telegram delivery is failing: ${delivery.recentError}` : "Telegram delivery is failing.";
+    } else if (delivery.disabled > 0 && delivery.sent === 0 && alertCount > 0) {
+      status = "telegram_missing_or_disabled";
+      message = "Alerts are being stored, but Telegram is disabled, missing credentials, or capped.";
+    } else if (alertCount === 0) {
+      status = "no_qualified_alerts";
+      message = "Worker is running, but no live candidate has cleared the alert rules yet.";
+    }
+
+    return { configured: true, worker, delivery, status, message };
+  } catch (error) {
+    markStoreUnavailable(error);
+    return {
+      configured: true,
+      worker: null,
+      delivery: { queued: 0, sent: 0, failed: 0, disabled: 0, recentError: null },
+      status: "store_unconfigured",
+      message: "Momentum alert diagnostics are temporarily unavailable.",
+    };
   }
 }

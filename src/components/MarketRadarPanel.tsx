@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Radar, RefreshCw } from "lucide-react";
+import { Info, Radar, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/format";
 import { formatEasternTime } from "@/lib/time";
 import type { MarketRadarSignal } from "@/types";
@@ -64,6 +64,17 @@ const radarMethodology = [
   "Adds volume/OI participation, then penalizes overcrowded funding.",
 ];
 
+function formatSigned(value: number | null | undefined, digits = 1) {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
+}
+
+function compactEvidence(signal: MarketRadarSignal) {
+  const details = signal.scoreDetails;
+  if (!details) return signal.evidence[0] ?? "";
+  return `vs BTC ${formatSigned(details.btcResidualPct)}% · vs Basket ${formatSigned(details.basketResidualPct)}% · z ${formatSigned(details.crossSectionalZ, 1)}`;
+}
+
 function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
   return (
     <Link
@@ -78,7 +89,7 @@ function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
               {signal.severity}
             </span>
           </div>
-          <div className="mt-1 truncate text-[10px] text-zinc-500">{signal.evidence[0]}</div>
+          <div className="mt-1 truncate text-[10px] text-zinc-500">{compactEvidence(signal)}</div>
         </div>
         <div className="shrink-0 text-right font-mono text-xs text-zinc-100">{signal.value}</div>
       </div>
@@ -89,6 +100,7 @@ function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
 export default function MarketRadarPanel({ variant = "compact" }: { variant?: "compact" | "hero" | "rail" }) {
   const [data, setData] = useState<RadarResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showFormula, setShowFormula] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -116,6 +128,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
   const shortSignals = allSignals.filter((signal) => signal.kind === "weakest_asset").slice(0, 3);
   const contextSignals = allSignals.filter((signal) => signal.kind !== "strongest_asset" && signal.kind !== "weakest_asset").slice(0, hero ? 2 : 1);
   const signals = [...longSignals, ...shortSignals, ...contextSignals].slice(0, hero ? 8 : 7);
+  const railSignals = [...longSignals, ...shortSignals];
 
   if (variant === "rail") {
     const topLong = longSignals[0];
@@ -125,8 +138,18 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-3">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <SectionEyebrow>Momentum</SectionEyebrow>
-            <div className="mt-1 text-sm font-medium text-zinc-100">Leaders / laggards</div>
+            <div className="flex items-center gap-2">
+              <SectionEyebrow>Momentum</SectionEyebrow>
+              <button
+                type="button"
+                onClick={() => setShowFormula((value) => !value)}
+                className="rounded-full border border-zinc-800 bg-zinc-950/70 p-1 text-zinc-500 transition hover:border-teal-500/30 hover:text-teal-200"
+                aria-label="Explain momentum score"
+              >
+                <Info className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="mt-1 text-sm font-medium text-zinc-100">Running / lagging</div>
             <div className="mt-0.5 font-mono text-[10px] text-zinc-600">2m scan · {formatRadarTime(data?.generatedAt)}</div>
           </div>
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-300">
@@ -134,7 +157,13 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
           </div>
         </div>
 
-        {signals.length === 0 ? (
+        {showFormula ? (
+          <div className="mb-3 rounded-xl border border-teal-500/20 bg-teal-500/10 px-3 py-2 text-[11px] leading-5 text-teal-100">
+            Score = BTC residual z + basket residual z + raw return z + OI/volume participation - funding crowding penalty.
+          </div>
+        ) : null}
+
+        {railSignals.length === 0 ? (
           <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 p-3 text-xs leading-5 text-zinc-500">
             Radar is warming up.
           </div>
@@ -169,25 +198,14 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
             </div>
 
             <div>
-              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Short momentum</div>
+              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Short bias</div>
+              <div className="mb-1.5 text-[10px] leading-4 text-zinc-600">Relative weakness, not an entry by itself.</div>
               <div className="space-y-1.5">
                 {shortSignals.length > 0 ? shortSignals.map((signal) => <RadarMiniRow key={signal.id} signal={signal} />) : (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-[11px] text-zinc-500">No qualified short edge.</div>
                 )}
               </div>
             </div>
-
-            {contextSignals[0] ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", signalTone(contextSignals[0]))}>
-                    {kindLabel(contextSignals[0].kind)}
-                  </span>
-                  <span className="font-mono text-xs text-zinc-100">{contextSignals[0].asset}</span>
-                </div>
-                <div className="mt-1 truncate text-[10px] text-zinc-500">{contextSignals[0].evidence[0]}</div>
-              </div>
-            ) : null}
           </div>
         )}
       </section>

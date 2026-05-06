@@ -5,6 +5,8 @@ import { spawn } from "node:child_process";
 const children = new Map();
 let shuttingDown = false;
 
+console.log("[start] worker supervisor mode");
+
 const workerDir = new URL(".", import.meta.url).pathname;
 const siblingMomentumWorker = resolve(workerDir, "../momentum-alerts/index.mjs");
 const bundledMomentumWorker = resolve(workerDir, "momentum-alerts/index.mjs");

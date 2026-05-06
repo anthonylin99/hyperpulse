@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 const children = new Map();
 let shuttingDown = false;
 
+console.log("[start] worker supervisor mode");
+
 const workers = [
   {
     name: "whale-indexer",
