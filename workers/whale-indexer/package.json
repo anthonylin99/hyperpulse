@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node index.mjs"
+    "start": "node supervisor.mjs"
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.32.1",

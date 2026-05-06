@@ -43,16 +43,20 @@ const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000)
 const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 72);
 const HIGH_SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_HIGH_SCORE_THRESHOLD", 82);
 const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
-const DRY_RUN_REQUESTED = process.env.MOMENTUM_ALERT_DRY_RUN === "true";
-const DRY_RUN = DRY_RUN_REQUESTED && (!PROD_LIKE || process.env.MOMENTUM_ALERT_ALLOW_PROD_DRY_RUN === "true");
-if (DRY_RUN_REQUESTED && !DRY_RUN) {
-  console.warn("[momentum-alerts] ignoring MOMENTUM_ALERT_DRY_RUN=true in production-like environment");
-}
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === "true";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
+const DRY_RUN_REQUESTED = process.env.MOMENTUM_ALERT_DRY_RUN === "true";
+const DRY_RUN =
+  DRY_RUN_REQUESTED &&
+  !TELEGRAM_ENABLED &&
+  (!PROD_LIKE || process.env.MOMENTUM_ALERT_ALLOW_PROD_DRY_RUN === "true");
+if (DRY_RUN_REQUESTED && !DRY_RUN) {
+  console.warn("[momentum-alerts] ignoring MOMENTUM_ALERT_DRY_RUN=true because Telegram/prod delivery is enabled");
+}
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://hyperpulsehl.com";
 const CONFIGURED_ASSETS = parseList(process.env.MOMENTUM_ALERT_ASSETS);
+const DEBUG = process.env.MOMENTUM_ALERT_DEBUG === "true";
 
 const PRIORITY_ASSETS = new Set([
   "BTC", "ETH", "SOL", "HYPE", "ZEC", "TAO", "TON", "AAVE", "NEAR", "LINK", "SUI", "DOGE",
@@ -442,7 +446,22 @@ function scoreCandidate(asset, features, oiChangePct) {
   const continuation = r24h >= 10 && r4h >= 2.5 && features.nearHigh;
   const broadRunner = r24h >= 15 && r4h >= 3.5 && volumeVs >= 1.1;
   const localRunner = r4h >= 7 && r1h >= 1.0 && volumeVs >= 1.15;
-  if (!strongMove || !confirmation || (!ignition && !continuation && !broadRunner && !localRunner)) return null;
+  // Catch mature trend days that have already broken out and are consolidating near highs.
+  // This is the ZEC/TON case: the 24h move is obvious, but the latest 4h window may have cooled.
+  const trendDayRunner =
+    r24h >= 18 &&
+    r1h >= 0.25 &&
+    volumeVs >= 1.1 &&
+    (features.nearHigh || r1h >= 1.5);
+  const qualifiesByMove = strongMove || trendDayRunner;
+  if (!qualifiesByMove || !confirmation || (!ignition && !continuation && !broadRunner && !localRunner && !trendDayRunner)) {
+    if (DEBUG && (r24h >= 10 || r4h >= 4 || r1h >= 2)) {
+      console.log(
+        `[momentum-alerts] reject ${asset.asset} move=${qualifiesByMove} confirm=${confirmation} r1=${r1h.toFixed(2)} r4=${r4h.toFixed(2)} r24=${r24h.toFixed(2)} vol=${volumeVs.toFixed(2)} breakout=${features.breakout} nearHigh=${features.nearHigh}`,
+      );
+    }
+    return null;
+  }
 
   let score = 42;
   score += Math.min(Math.max(r1h, 0) * 4, 14);
@@ -452,12 +471,18 @@ function scoreCandidate(asset, features, oiChangePct) {
   if (features.nearHigh) score += 7;
   if (broadRunner) score += 6;
   if (localRunner) score += 4;
+  if (trendDayRunner) score += 5;
   score += Math.min(Math.max(volumeVs - 1, 0) * 7, 14);
   if (oiChangePct != null) score += Math.min(Math.max(oiChangePct, 0) * 1.4, 10);
   if (fundingApr > 65) score -= Math.min((fundingApr - 65) * 0.18, 10);
   if (fundingApr < -40) score -= Math.min(Math.abs(fundingApr + 40) * 0.08, 5);
   score = Math.max(0, Math.min(100, score));
-  if (score < SCORE_THRESHOLD) return null;
+  if (score < SCORE_THRESHOLD) {
+    if (DEBUG && (r24h >= 10 || r4h >= 4 || r1h >= 2)) {
+      console.log(`[momentum-alerts] reject ${asset.asset} score=${score.toFixed(1)} threshold=${SCORE_THRESHOLD}`);
+    }
+    return null;
+  }
 
   return {
     triggerKind: ignition ? "momentum_ignition" : "momentum_continuation",
