@@ -60,6 +60,24 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  momentum-alerts:
+    build:
+      context: .
+      dockerfile: workers/momentum-alerts/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      MOMENTUM_ALERT_INTERVAL_MS: ${MOMENTUM_ALERT_INTERVAL_MS:-300000}
+      MOMENTUM_ALERT_ASSET_LIMIT: ${MOMENTUM_ALERT_ASSET_LIMIT:-30}
+      MOMENTUM_ALERT_DAILY_CAP: ${MOMENTUM_ALERT_DAILY_CAP:-3}
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   reaction-map:
     build:
       context: .

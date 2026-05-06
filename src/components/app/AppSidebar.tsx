@@ -4,21 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Bell,
   BookOpenText,
   BriefcaseBusiness,
   House,
   Layers3,
   Shield,
   Waves,
+  type LucideIcon,
 } from "lucide-react";
 import BrandLogo from "@/components/brand/BrandLogo";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { APP_TABS, type AppTabKey } from "@/lib/appTabs";
 import { cn } from "@/lib/format";
 
-const TAB_ICONS: Record<AppTabKey, typeof BarChart3> = {
+const TAB_ICONS: Record<AppTabKey, LucideIcon> = {
   home: House,
   markets: BarChart3,
+  alerts: Bell,
   factors: Layers3,
   whales: Waves,
   portfolio: BriefcaseBusiness,
@@ -28,6 +31,7 @@ const TAB_ICONS: Record<AppTabKey, typeof BarChart3> = {
 const TAB_HELPERS: Record<AppTabKey, string> = {
   home: "Landing + proof",
   markets: "Directory + context",
+  alerts: "Momentum history",
   factors: "Regime baskets",
   whales: "Tracked flow",
   portfolio: "Review workspace",

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { APP_TABS } from "@/lib/appTabs";
@@ -8,7 +9,23 @@ import { useAppConfig } from "@/context/AppConfigContext";
 
 export default function AppTabStrip() {
   const pathname = usePathname();
+  const [recentAlertCount, setRecentAlertCount] = useState(0);
   const { whalesEnabled, factorsEnabled } = useAppConfig();
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/alerts/momentum?limit=10", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!mounted || !payload?.alerts) return;
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        setRecentAlertCount(payload.alerts.filter((alert: { createdAt?: number }) => Number(alert.createdAt) >= cutoff).length);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const tabs = APP_TABS.filter((tab) => {
     if (!whalesEnabled && tab.key === "whales") return false;
     if (!factorsEnabled && tab.key === "factors") return false;
@@ -35,7 +52,14 @@ export default function AppTabStrip() {
                     : "text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200",
                 )}
               >
-                {tab.label}
+                <span className="inline-flex items-center gap-1.5">
+                  {tab.label}
+                  {tab.key === "alerts" && recentAlertCount > 0 ? (
+                    <span className="rounded-full bg-emerald-400 px-1.5 py-0.5 font-mono text-[10px] leading-none text-zinc-950">
+                      {recentAlertCount > 9 ? "9+" : recentAlertCount}
+                    </span>
+                  ) : null}
+                </span>
               </Link>
             );
           })}

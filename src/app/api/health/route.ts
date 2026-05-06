@@ -21,6 +21,7 @@ export async function GET() {
     featureFlags: {
       tradingEnabled: isTradingEnabled(),
       whalesEnabled: isWhalesEnabled(),
+      momentumAlertsEnabled: true,
     },
     timestamp: new Date().toISOString(),
   };

@@ -6,6 +6,7 @@ const expectPublicFlags = process.env.HYPERPULSE_EXPECT_PUBLIC_FLAGS === "1";
 const checks = [
   { path: "/", expect: "HyperPulse" },
   { path: "/markets", expect: "Market directory" },
+  { path: "/alerts", expect: "Momentum timeline" },
   { path: "/portfolio", expect: "read-only" },
   { path: "/docs", expect: "Docs" },
   { path: "/api/public-config", json: true },

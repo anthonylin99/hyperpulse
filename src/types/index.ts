@@ -923,6 +923,46 @@ export interface MarketRadarSignal {
   routeHref: string;
 }
 
+
+export type MomentumAlertKind = "momentum_ignition" | "momentum_continuation";
+export type MomentumAlertSeverity = "high" | "medium" | "low";
+export type NotificationChannel = "telegram";
+
+export interface NotificationDeliveryStatus {
+  channel: NotificationChannel;
+  status: string;
+  sentAt: number | null;
+  attempts: number;
+  lastError: string | null;
+}
+
+export interface MomentumAlert {
+  id: string;
+  asset: string;
+  createdAt: number;
+  alertPrice: number;
+  currentPriceAtEval: number;
+  return1hPct: number | null;
+  return4hPct: number | null;
+  return24hPct: number | null;
+  openInterestUsd: number | null;
+  openInterestChangePct: number | null;
+  volume24hUsd: number | null;
+  volumeVsBaseline: number | null;
+  fundingApr: number | null;
+  triggerKind: MomentumAlertKind;
+  score: number;
+  severity: MomentumAlertSeverity;
+  reason: string;
+  invalidationPrice: number | null;
+  targetPrice: number | null;
+  routeHref: string;
+  payload: Record<string, unknown>;
+  currentPrice?: number | null;
+  returnSinceAlertPct?: number | null;
+  deliveryStatus?: NotificationDeliveryStatus | null;
+}
+
 export interface CohortsLiteBucket {
   id: string;
   label: string;

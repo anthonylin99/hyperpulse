@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Layers3, Target } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Layers3, Minus, Plus, Target } from "lucide-react";
 import { cn, formatChartPrice, formatCompactUsd, formatTimestampShort } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick } from "@/lib/time";
@@ -76,6 +76,12 @@ const PAD = { top: 20, right: 78, bottom: 34, left: 24 };
 const MIN_BODY_HEIGHT = 2.4;
 const NEAR_DISTANCE_PCT = 6;
 const MAX_PLOTTED_BANDS = 10;
+const ZOOM_LEVELS = [
+  { label: "Fit", value: 1 },
+  { label: "2x", value: 2 },
+  { label: "4x", value: 4 },
+] as const;
+type LiquidityZoom = (typeof ZOOM_LEVELS)[number]["value"];
 
 function bandLabel(side: LiquidityBandSide) {
   switch (side) {
@@ -176,6 +182,7 @@ function bandSizeLabel(band: LiquidityBand) {
 
 export default function LiquidityMapPanel({ coin }: { coin: string }) {
   const [range, setRange] = useState<LiquidityRange>("3d");
+  const [zoom, setZoom] = useState<LiquidityZoom>(1);
   const [data, setData] = useState<LiquidityMapResponse | null>(null);
   const [activeBand, setActiveBand] = useState<LiquidityBand | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,6 +230,17 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
   }, [data]);
 
   const hiddenBandCount = Math.max((data?.bands.length ?? 0) - plottedBands.length, 0);
+  const zoomIndex = ZOOM_LEVELS.findIndex((item) => item.value === zoom);
+  const canZoomOut = zoomIndex > 0;
+  const canZoomIn = zoomIndex >= 0 && zoomIndex < ZOOM_LEVELS.length - 1;
+  const zoomOut = () => {
+    if (!canZoomOut) return;
+    setZoom(ZOOM_LEVELS[zoomIndex - 1].value);
+  };
+  const zoomIn = () => {
+    if (!canZoomIn) return;
+    setZoom(ZOOM_LEVELS[zoomIndex + 1].value);
+  };
 
   const chart = useMemo((): ChartScales | null => {
     if (!data || data.candles.length === 0) return null;
@@ -232,8 +250,17 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
     const maxRaw = Math.max(...candlePrices, ...bandPrices, data.currentPrice);
     if (!Number.isFinite(minRaw) || !Number.isFinite(maxRaw) || minRaw <= 0 || maxRaw <= minRaw) return null;
     const padding = Math.max((maxRaw - minRaw) * 0.08, data.currentPrice * 0.0015);
-    const minPrice = minRaw - padding;
-    const maxPrice = maxRaw + padding;
+    const fitMinPrice = minRaw - padding;
+    const fitMaxPrice = maxRaw + padding;
+    const fitSpan = Math.max(fitMaxPrice - fitMinPrice, data.currentPrice * 0.003);
+    const zoomSpan = Math.max(fitSpan / zoom, data.currentPrice * 0.006);
+    const midpoint = data.currentPrice;
+    let minPrice = midpoint - zoomSpan / 2;
+    let maxPrice = midpoint + zoomSpan / 2;
+    if (zoom === 1) {
+      minPrice = fitMinPrice;
+      maxPrice = fitMaxPrice;
+    }
     const minTime = data.candles[0].time;
     const maxTime = data.candles[data.candles.length - 1].time;
     const plotWidth = WIDTH - PAD.left - PAD.right;
@@ -242,7 +269,7 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
     const yForPrice = (price: number) => PAD.top + ((maxPrice - price) / Math.max(maxPrice - minPrice, 1)) * plotHeight;
     const maxBandNotional = Math.max(...plottedBands.map((band) => band.notionalUsd), 1);
     return { minPrice, maxPrice, maxBandNotional, xForTime, yForPrice, plotWidth, plotHeight };
-  }, [data, plottedBands]);
+  }, [data, plottedBands, zoom]);
 
   const action = useMemo(() => {
     const bands = data?.bands ?? [];
@@ -323,7 +350,42 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                   {formatChartPrice(data.currentPrice)}
                 </span>
               </div>
-              <div className="text-[11px] text-zinc-500">Updated {formatTimestampShort(data.generatedAt)}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-950 p-0.5">
+                  <button
+                    type="button"
+                    onClick={zoomOut}
+                    disabled={!canZoomOut}
+                    aria-label="Zoom liquidity map out"
+                    className="rounded-full p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  {ZOOM_LEVELS.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => setZoom(item.value)}
+                      className={cn(
+                        "rounded-full px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition",
+                        zoom === item.value ? "bg-teal-500/15 text-teal-200" : "text-zinc-500 hover:text-zinc-200",
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={zoomIn}
+                    disabled={!canZoomIn}
+                    aria-label="Zoom liquidity map in"
+                    className="rounded-full p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="text-[11px] text-zinc-500">Updated {formatTimestampShort(data.generatedAt)}</div>
+              </div>
             </div>
 
             <div className="border-b border-zinc-900/90 px-4 py-3">
@@ -345,6 +407,10 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                     <stop offset="100%" stopColor="rgba(255,255,255,0.16)" />
                   </linearGradient>
                 </defs>
+
+                <clipPath id="liquidityPlotClip">
+                  <rect x={PAD.left} y={PAD.top} width={chart.plotWidth} height={chart.plotHeight} rx="0" />
+                </clipPath>
 
                 <rect x={PAD.left} y={PAD.top} width={chart.plotWidth} height={chart.plotHeight} fill="#070a0f" />
 
@@ -383,61 +449,63 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                   );
                 })}
 
-                {plottedBands.map((band) => {
-                  const tone = bandTone(band.side);
-                  const y1 = chart.yForPrice(band.highPrice);
-                  const y2 = chart.yForPrice(band.lowPrice);
-                  const height = Math.max(Math.abs(y2 - y1), band.source === "tracked_liquidation" ? 7 : 4);
-                  const intensity = Math.min(1, Math.max(0.1, band.notionalUsd / chart.maxBandNotional));
-                  const baseAlpha = band.source === "tracked_liquidation" ? 0.18 : 0.1;
-                  const alpha = Math.min(0.72, baseAlpha + intensity * (band.source === "tracked_liquidation" ? 0.5 : 0.32));
-                  const y = chart.yForPrice(band.price) - height / 2;
-                  const active = highlighted === band;
-                  return (
-                    <g key={`${band.source}-${band.side}-${band.distancePct}`} onMouseEnter={() => setActiveBand(band)} onClick={() => setActiveBand(band)} className="cursor-pointer">
-                      <rect x={PAD.left} y={y} width={chart.plotWidth} height={height} fill={colorWithAlpha(tone.fill, alpha)} />
-                      <rect x={PAD.left} y={y} width={chart.plotWidth} height={height} fill="url(#liquidityFade)" opacity={band.source === "tracked_liquidation" ? 0.72 : 0.4} />
-                      {active ? <line x1={PAD.left} x2={WIDTH - PAD.right} y1={chart.yForPrice(band.price)} y2={chart.yForPrice(band.price)} stroke={tone.stroke} strokeWidth="1.5" /> : null}
-                    </g>
-                  );
-                })}
+                <g clipPath="url(#liquidityPlotClip)">
+                  {plottedBands.map((band) => {
+                    const tone = bandTone(band.side);
+                    const y1 = chart.yForPrice(band.highPrice);
+                    const y2 = chart.yForPrice(band.lowPrice);
+                    const height = Math.max(Math.abs(y2 - y1), band.source === "tracked_liquidation" ? 7 : 4);
+                    const intensity = Math.min(1, Math.max(0.1, band.notionalUsd / chart.maxBandNotional));
+                    const baseAlpha = band.source === "tracked_liquidation" ? 0.18 : 0.1;
+                    const alpha = Math.min(0.72, baseAlpha + intensity * (band.source === "tracked_liquidation" ? 0.5 : 0.32));
+                    const y = chart.yForPrice(band.price) - height / 2;
+                    const active = highlighted === band;
+                    return (
+                      <g key={`${band.source}-${band.side}-${band.distancePct}`} onMouseEnter={() => setActiveBand(band)} onClick={() => setActiveBand(band)} className="cursor-pointer">
+                        <rect x={PAD.left} y={y} width={chart.plotWidth} height={height} fill={colorWithAlpha(tone.fill, alpha)} />
+                        <rect x={PAD.left} y={y} width={chart.plotWidth} height={height} fill="url(#liquidityFade)" opacity={band.source === "tracked_liquidation" ? 0.72 : 0.4} />
+                        {active ? <line x1={PAD.left} x2={WIDTH - PAD.right} y1={chart.yForPrice(band.price)} y2={chart.yForPrice(band.price)} stroke={tone.stroke} strokeWidth="1.5" /> : null}
+                      </g>
+                    );
+                  })}
 
-                {[action.upsideMagnet, action.downsideMagnet].filter(Boolean).map((band) => {
-                  if (!band || !plottedBands.includes(band)) return null;
-                  const tone = bandTone(band.side);
-                  const y = chart.yForPrice(band.price);
-                  const label = band.distancePct > 0 ? "Long TP / Short SL" : "Short TP / Long SL";
-                  return (
-                    <g key={`trade-label-${band.side}-${band.distancePct}`}>
-                      <line x1={PAD.left} x2={WIDTH - PAD.right} y1={y} y2={y} stroke={tone.stroke} strokeDasharray="5 4" opacity="0.86" />
-                      <rect x={WIDTH - PAD.right - 112} y={y - 12} width="112" height="24" rx="5" fill="rgba(9,9,11,0.92)" stroke={tone.stroke} />
-                      <text x={WIDTH - PAD.right - 56} y={y + 4} textAnchor="middle" fill={tone.stroke} fontSize="10" fontFamily="monospace">
-                        {label}
-                      </text>
-                    </g>
-                  );
-                })}
+                  {[action.upsideMagnet, action.downsideMagnet].filter(Boolean).map((band) => {
+                    if (!band || !plottedBands.includes(band)) return null;
+                    const tone = bandTone(band.side);
+                    const y = chart.yForPrice(band.price);
+                    const label = band.distancePct > 0 ? "Long TP / Short SL" : "Short TP / Long SL";
+                    return (
+                      <g key={`trade-label-${band.side}-${band.distancePct}`}>
+                        <line x1={PAD.left} x2={WIDTH - PAD.right} y1={y} y2={y} stroke={tone.stroke} strokeDasharray="5 4" opacity="0.86" />
+                        <rect x={WIDTH - PAD.right - 112} y={y - 12} width="112" height="24" rx="5" fill="rgba(9,9,11,0.92)" stroke={tone.stroke} />
+                        <text x={WIDTH - PAD.right - 56} y={y + 4} textAnchor="middle" fill={tone.stroke} fontSize="10" fontFamily="monospace">
+                          {label}
+                        </text>
+                      </g>
+                    );
+                  })}
 
-                {data.candles.map((candle, index) => {
-                  const x = chart.xForTime(candle.time);
-                  const next = data.candles[index + 1];
-                  const nextX = next ? chart.xForTime(next.time) : x + chart.plotWidth / Math.max(data.candles.length, 1);
-                  const candleWidth = Math.max(1, Math.min(7, (nextX - x) * 0.58));
-                  const isUp = candle.close >= candle.open;
-                  const color = isUp ? "#2dd4bf" : "#fb7185";
-                  const highY = chart.yForPrice(candle.high);
-                  const lowY = chart.yForPrice(candle.low);
-                  const openY = chart.yForPrice(candle.open);
-                  const closeY = chart.yForPrice(candle.close);
-                  const bodyTop = Math.min(openY, closeY);
-                  const bodyHeight = Math.max(Math.abs(closeY - openY), MIN_BODY_HEIGHT);
-                  return (
-                    <g key={`${candle.time}-${index}`}>
-                      <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1.15" opacity="0.95" />
-                      <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="0.7" fill={color} opacity="0.94" />
-                    </g>
-                  );
-                })}
+                  {data.candles.map((candle, index) => {
+                    const x = chart.xForTime(candle.time);
+                    const next = data.candles[index + 1];
+                    const nextX = next ? chart.xForTime(next.time) : x + chart.plotWidth / Math.max(data.candles.length, 1);
+                    const candleWidth = Math.max(1, Math.min(7, (nextX - x) * 0.58));
+                    const isUp = candle.close >= candle.open;
+                    const color = isUp ? "#2dd4bf" : "#fb7185";
+                    const highY = chart.yForPrice(candle.high);
+                    const lowY = chart.yForPrice(candle.low);
+                    const openY = chart.yForPrice(candle.open);
+                    const closeY = chart.yForPrice(candle.close);
+                    const bodyTop = Math.min(openY, closeY);
+                    const bodyHeight = Math.max(Math.abs(closeY - openY), MIN_BODY_HEIGHT);
+                    return (
+                      <g key={`${candle.time}-${index}`}>
+                        <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1.15" opacity="0.95" />
+                        <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="0.7" fill={color} opacity="0.94" />
+                      </g>
+                    );
+                  })}
+                </g>
 
                 <line
                   x1={PAD.left}
@@ -453,7 +521,7 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                 </text>
               </svg>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
-                <span>Showing nearby/actionable bands only so price remains readable.</span>
+                <span>{zoom === 1 ? "Showing nearby/actionable bands only so price remains readable." : `${zoom}x zoom around current price; switch to Fit to see the full plotted range.`}</span>
                 {hiddenBandCount > 0 ? <span>{hiddenBandCount} distant cluster{hiddenBandCount === 1 ? "" : "s"} hidden from chart scale.</span> : null}
               </div>
             </div>

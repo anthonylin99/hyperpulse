@@ -22,6 +22,7 @@ export function getPublicAppRoutes() {
   const routes = [
     { path: "/", label: "Home" },
     { path: "/markets", label: "Markets" },
+    { path: "/alerts", label: "Alerts" },
     { path: "/portfolio", label: "Portfolio" },
     { path: "/docs", label: "Docs" },
   ];
