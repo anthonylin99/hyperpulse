@@ -72,7 +72,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
   }, []);
 
   const hero = variant === "hero";
-  const signals = data?.signals.slice(0, hero ? 4 : 5) ?? [];
+  const signals = data?.signals.slice(0, hero ? 8 : 6) ?? [];
 
   if (hero) {
     return (
@@ -99,7 +99,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
         <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-4">
           {signals.length === 0 ? (
             <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 p-3 text-xs leading-5 text-zinc-500 md:col-span-2 xl:col-span-4">
-              Radar is warming up. HyperPulse will show the strongest liquid perp, weakest liquid perp, crowded longs, and paid shorts here.
+              Radar is warming up. HyperPulse will show multiple qualified strength runners, weakness runners, crowded longs, and paid shorts here.
             </div>
           ) : (
             signals.map((signal) => (

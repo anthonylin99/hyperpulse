@@ -31,11 +31,13 @@ const WORKER = "momentum-alerts";
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
 const RUN_ONCE = process.argv.includes("--once") || process.env.MOMENTUM_ALERT_ONCE === "true";
 const LOOP_INTERVAL_MS = Math.max(envNumber("MOMENTUM_ALERT_INTERVAL_MS", 5 * 60 * 1000), 60_000);
-const ASSET_LIMIT = clamp(envNumber("MOMENTUM_ALERT_ASSET_LIMIT", 30), 5, 60);
+const ASSET_LIMIT = clamp(envNumber("MOMENTUM_ALERT_ASSET_LIMIT", 45), 5, 80);
 const MIN_OI_USD = envNumber("MOMENTUM_ALERT_MIN_OI_USD", 8_000_000);
 const MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_MIN_VOLUME_USD", 20_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
-const DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 3), 1, 12);
+const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 3), 1, 12);
+const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 8), TELEGRAM_DAILY_CAP, 24);
+const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = process.env.MOMENTUM_ALERT_CANDLE_INTERVAL || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
 const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 72);
@@ -52,6 +54,10 @@ const PRIORITY_ASSETS = new Set([
   "AVAX", "BNB", "XRP", "ENA", "PENDLE", "ONDO", "ARB", "OP", "INJ", "LTC", "BCH", "WLD", "RENDER",
 ]);
 const EXCLUDED_ASSETS = new Set(parseList(process.env.MOMENTUM_ALERT_EXCLUDED_ASSETS, ["PURR", "HFUN"]));
+const AI_ASSETS = new Set(["TAO", "NEAR", "RENDER", "FET", "AIXBT", "WLD", "IO"]);
+const DEFI_ASSETS = new Set(["AAVE", "UNI", "CRV", "GMX", "JUP", "PENDLE", "ONDO", "MORPHO", "ENA", "CAKE"]);
+const MEME_ASSETS = new Set(["DOGE", "WIF", "POPCAT", "FARTCOIN", "TRUMP", "kPEPE", "PENGU", "BRETT"]);
+const MAJOR_ASSETS = new Set(["BTC", "ETH", "SOL", "HYPE"]);
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 5 });
 const info = new InfoClient({ transport: new HttpTransport({ isTestnet: NETWORK === "testnet" }) });
@@ -120,6 +126,15 @@ function formatPrice(value) {
 function formatPct(value, digits = 1) {
   if (!Number.isFinite(value)) return "n/a";
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
+}
+
+function momentumBucket(asset) {
+  const symbol = normalizeSymbol(asset);
+  if (MAJOR_ASSETS.has(symbol)) return "majors";
+  if (AI_ASSETS.has(symbol)) return "ai";
+  if (DEFI_ASSETS.has(symbol)) return "defi";
+  if (MEME_ASSETS.has(symbol)) return "meme";
+  return "alts";
 }
 
 function easternDateKey(time = Date.now()) {
@@ -417,10 +432,12 @@ function scoreCandidate(asset, features, oiChangePct) {
   const volumeVs = features.volumeVsBaseline ?? 1;
   const fundingApr = asset.fundingApr;
   const strongMove = (r1h >= 1.2 && r4h >= 3) || (r4h >= 5) || (r24h >= 12 && r4h >= 2.5);
-  const confirmation = volumeVs >= 1.35 || (oiChangePct ?? 0) >= 2;
+  const confirmation = volumeVs >= 1.25 || (oiChangePct ?? 0) >= 2 || (r24h >= 15 && volumeVs >= 1.1);
   const ignition = features.breakout && r4h >= 3.5 && r1h >= 0.8;
   const continuation = r24h >= 10 && r4h >= 2.5 && features.nearHigh;
-  if (!strongMove || !confirmation || (!ignition && !continuation)) return null;
+  const broadRunner = r24h >= 15 && r4h >= 3.5 && volumeVs >= 1.1;
+  const localRunner = r4h >= 7 && r1h >= 1.0 && volumeVs >= 1.15;
+  if (!strongMove || !confirmation || (!ignition && !continuation && !broadRunner && !localRunner)) return null;
 
   let score = 42;
   score += Math.min(Math.max(r1h, 0) * 4, 14);
@@ -428,6 +445,8 @@ function scoreCandidate(asset, features, oiChangePct) {
   score += Math.min(Math.max(r24h, 0) * 0.9, 18);
   if (features.breakout) score += 12;
   if (features.nearHigh) score += 7;
+  if (broadRunner) score += 6;
+  if (localRunner) score += 4;
   score += Math.min(Math.max(volumeVs - 1, 0) * 7, 14);
   if (oiChangePct != null) score += Math.min(Math.max(oiChangePct, 0) * 1.4, 10);
   if (fundingApr > 65) score -= Math.min((fundingApr - 65) * 0.18, 10);
@@ -492,6 +511,7 @@ async function buildCandidate(asset) {
     : fallbackTarget;
   const volumeVs = features.volumeVsBaseline ?? 1;
   const oiText = oiChangePct == null ? "OI context limited" : `OI ${formatPct(oiChangePct)}`;
+  const bucket = momentumBucket(asset.asset);
   const reason = `${asset.asset} broke higher with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`;
 
   return {
@@ -515,6 +535,7 @@ async function buildCandidate(asset) {
     routeHref: `/markets?asset=${encodeURIComponent(asset.asset)}`,
     payload: {
       direction: "long",
+      signalBucket: bucket,
       easternDate: easternDateKey(),
       interval: CANDLE_INTERVAL,
       breakout: features.breakout,
@@ -600,7 +621,7 @@ async function persistAlert(candidate, now) {
 
   const easternDate = alert.payload.easternDate;
   const telegramCount = await countQueuedOrSentToday(easternDate);
-  const canSendTelegram = TELEGRAM_ENABLED && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID && telegramCount < DAILY_CAP && alert.severity === "high";
+  const canSendTelegram = TELEGRAM_ENABLED && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID && telegramCount < TELEGRAM_DAILY_CAP && alert.severity === "high";
   const message = buildTelegramText(alert);
   const queueStatus = canSendTelegram ? "queued" : "disabled";
   const lastError = canSendTelegram
@@ -674,7 +695,7 @@ async function flushTelegramQueue() {
 
 async function runCycle() {
   await assertTablesReady();
-  const runId = await startRun({ network: NETWORK, dryRun: DRY_RUN, dailyCap: DAILY_CAP });
+  const runId = await startRun({ network: NETWORK, dryRun: DRY_RUN, storeDailyCap: STORE_DAILY_CAP, telegramDailyCap: TELEGRAM_DAILY_CAP });
   const now = Date.now();
   const easternDate = easternDateKey(now);
   try {
@@ -693,12 +714,16 @@ async function runCycle() {
     }
 
     candidates.sort((a, b) => b.score - a.score);
-    let remaining = Math.max(DAILY_CAP - await countAlertsToday(easternDate), 0);
+    let remaining = Math.max(STORE_DAILY_CAP - await countAlertsToday(easternDate), 0);
     let inserted = 0;
     let queued = 0;
     const selected = [];
+    const bucketCounts = new Map();
     for (const candidate of candidates) {
       if (remaining <= 0) break;
+      const bucket = candidate.payload?.signalBucket ?? momentumBucket(candidate.asset);
+      const bucketCount = bucketCounts.get(bucket) ?? 0;
+      if (bucketCount >= MAX_PER_SIGNAL_BUCKET) continue;
       const result = await persistAlert({
         ...candidate,
         payload: { ...candidate.payload, easternDate },
@@ -707,6 +732,7 @@ async function runCycle() {
       inserted += 1;
       queued += result.queued ? 1 : 0;
       selected.push(result.alert.asset);
+      bucketCounts.set(bucket, bucketCount + 1);
       remaining -= 1;
     }
     const sent = await flushTelegramQueue();
@@ -717,6 +743,7 @@ async function runCycle() {
       queued,
       sent,
       selected,
+      buckets: Object.fromEntries(bucketCounts.entries()),
       easternDate,
     });
     console.log(`[momentum-alerts] success scanned=${universe.length} candidates=${candidates.length} inserted=${inserted} queued=${queued} sent=${sent}`);
@@ -727,7 +754,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms cap=${DAILY_CAP}/day assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT}`}`);
+  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT}`}`);
   await runCycle();
   if (RUN_ONCE) {
     await pool.end();

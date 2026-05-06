@@ -17,6 +17,11 @@ type ParsedAsset = {
   dayVolumeUsd: number;
 };
 
+const RADAR_MAX_PER_BUCKET = 3;
+const STRENGTH_MIN_MOVE_PCT = 2.5;
+const WEAKNESS_MIN_MOVE_PCT = -2.5;
+const RADAR_MIN_VOLUME_USD = 20_000_000;
+
 function parseAssetRows(data: unknown): ParsedAsset[] {
   const [meta, assetCtxs] = data as [
     { universe?: Array<{ name: string; isDelisted?: boolean }> },
@@ -86,6 +91,20 @@ function buildAssetSignal(kind: MarketRadarSignal["kind"], asset: ParsedAsset, l
   };
 }
 
+function rankedLiquidMovers(rows: ParsedAsset[], direction: "strongest" | "weakest"): ParsedAsset[] {
+  const sorted = [...rows].sort((a, b) =>
+    direction === "strongest"
+      ? b.priceChange24h - a.priceChange24h
+      : a.priceChange24h - b.priceChange24h,
+  );
+  const thresholded = sorted.filter((asset) =>
+    direction === "strongest"
+      ? asset.priceChange24h >= STRENGTH_MIN_MOVE_PCT
+      : asset.priceChange24h <= WEAKNESS_MIN_MOVE_PCT,
+  );
+  return (thresholded.length > 0 ? thresholded.slice(0, RADAR_MAX_PER_BUCKET) : sorted.slice(0, 1));
+}
+
 export async function GET(req: NextRequest) {
   const limited = enforceRateLimit(req, {
     key: "api-market-radar",
@@ -96,17 +115,23 @@ export async function GET(req: NextRequest) {
 
   try {
     const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
-    const rows = parseAssetRows(await info.metaAndAssetCtxs()).filter((asset) => asset.openInterestUsd >= MIN_OI_USD);
+    const rows = parseAssetRows(await info.metaAndAssetCtxs()).filter(
+      (asset) => asset.openInterestUsd >= MIN_OI_USD && asset.dayVolumeUsd >= RADAR_MIN_VOLUME_USD,
+    );
     const timestamp = Date.now();
     const signals: MarketRadarSignal[] = [];
 
-    const strongest = [...rows].sort((a, b) => b.priceChange24h - a.priceChange24h)[0];
-    const weakest = [...rows].sort((a, b) => a.priceChange24h - b.priceChange24h)[0];
+    const strongestAssets = rankedLiquidMovers(rows, "strongest");
+    const weakestAssets = rankedLiquidMovers(rows, "weakest");
     const crowdedLong = [...rows].sort((a, b) => b.fundingAPR - a.fundingAPR)[0];
     const crowdedShort = [...rows].sort((a, b) => a.fundingAPR - b.fundingAPR)[0];
 
-    if (strongest) signals.push(buildAssetSignal("strongest_asset", strongest, "Strongest liquid perp", timestamp));
-    if (weakest) signals.push(buildAssetSignal("weakest_asset", weakest, "Weakest liquid perp", timestamp));
+    strongestAssets.forEach((asset, index) => {
+      signals.push(buildAssetSignal("strongest_asset", asset, index === 0 ? "Strongest liquid perp" : `Strength runner #${index + 1}`, timestamp));
+    });
+    weakestAssets.forEach((asset, index) => {
+      signals.push(buildAssetSignal("weakest_asset", asset, index === 0 ? "Weakest liquid perp" : `Weakness runner #${index + 1}`, timestamp));
+    });
     if (crowdedLong) signals.push(buildAssetSignal("crowded_long", crowdedLong, "Most expensive long crowd", timestamp));
     if (crowdedShort) signals.push(buildAssetSignal("crowded_short", crowdedShort, "Most paid short crowd", timestamp));
 
