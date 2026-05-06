@@ -64,7 +64,29 @@ const radarMethodology = [
   "Adds volume/OI participation, then penalizes overcrowded funding.",
 ];
 
-export default function MarketRadarPanel({ variant = "compact" }: { variant?: "compact" | "hero" }) {
+function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
+  return (
+    <Link
+      href={signal.routeHref}
+      className="group block rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 transition hover:border-teal-500/25 hover:bg-zinc-950/80"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-semibold text-zinc-100">{signal.asset}</span>
+            <span className={cn("rounded-full border px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em]", signalTone(signal))}>
+              {signal.severity}
+            </span>
+          </div>
+          <div className="mt-1 truncate text-[10px] text-zinc-500">{signal.evidence[0]}</div>
+        </div>
+        <div className="shrink-0 text-right font-mono text-xs text-zinc-100">{signal.value}</div>
+      </div>
+    </Link>
+  );
+}
+
+export default function MarketRadarPanel({ variant = "compact" }: { variant?: "compact" | "hero" | "rail" }) {
   const [data, setData] = useState<RadarResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -94,6 +116,83 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
   const shortSignals = allSignals.filter((signal) => signal.kind === "weakest_asset").slice(0, 3);
   const contextSignals = allSignals.filter((signal) => signal.kind !== "strongest_asset" && signal.kind !== "weakest_asset").slice(0, hero ? 2 : 1);
   const signals = [...longSignals, ...shortSignals, ...contextSignals].slice(0, hero ? 8 : 7);
+
+  if (variant === "rail") {
+    const topLong = longSignals[0];
+    const topShort = shortSignals[0];
+
+    return (
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-3">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <SectionEyebrow>Momentum</SectionEyebrow>
+            <div className="mt-1 text-sm font-medium text-zinc-100">Leaders / laggards</div>
+            <div className="mt-0.5 font-mono text-[10px] text-zinc-600">2m scan · {formatRadarTime(data?.generatedAt)}</div>
+          </div>
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-300">
+            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
+          </div>
+        </div>
+
+        {signals.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 p-3 text-xs leading-5 text-zinc-500">
+            Radar is warming up.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Link
+                href={topLong?.routeHref ?? "/markets"}
+                className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 transition hover:border-emerald-400/35"
+              >
+                <div className="text-[9px] uppercase tracking-[0.14em] text-emerald-300/80">Running</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-zinc-100">{topLong?.asset ?? "—"}</div>
+                <div className="mt-1 truncate font-mono text-xs text-emerald-300">{topLong?.value ?? "waiting"}</div>
+              </Link>
+              <Link
+                href={topShort?.routeHref ?? "/markets"}
+                className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 transition hover:border-rose-400/35"
+              >
+                <div className="text-[9px] uppercase tracking-[0.14em] text-rose-300/80">Lagging</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-zinc-100">{topShort?.asset ?? "—"}</div>
+                <div className="mt-1 truncate font-mono text-xs text-rose-300">{topShort?.value ?? "waiting"}</div>
+              </Link>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Long momentum</div>
+              <div className="space-y-1.5">
+                {longSignals.length > 0 ? longSignals.map((signal) => <RadarMiniRow key={signal.id} signal={signal} />) : (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-[11px] text-zinc-500">No qualified long edge.</div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Short momentum</div>
+              <div className="space-y-1.5">
+                {shortSignals.length > 0 ? shortSignals.map((signal) => <RadarMiniRow key={signal.id} signal={signal} />) : (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-[11px] text-zinc-500">No qualified short edge.</div>
+                )}
+              </div>
+            </div>
+
+            {contextSignals[0] ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", signalTone(contextSignals[0]))}>
+                    {kindLabel(contextSignals[0].kind)}
+                  </span>
+                  <span className="font-mono text-xs text-zinc-100">{contextSignals[0].asset}</span>
+                </div>
+                <div className="mt-1 truncate text-[10px] text-zinc-500">{contextSignals[0].evidence[0]}</div>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </section>
+    );
+  }
 
   if (hero) {
     return (

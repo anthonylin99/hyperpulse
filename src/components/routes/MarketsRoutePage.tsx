@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { MousePointerClick } from "lucide-react";
 import CohortsLitePanel from "@/components/CohortsLitePanel";
 import MarketRadarPanel from "@/components/MarketRadarPanel";
-import MarketOverviewPanel from "@/components/MarketOverviewPanel";
 import MarketTable from "@/components/MarketTable";
+import SentimentSlider from "@/components/SentimentSlider";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
@@ -32,8 +32,6 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           </div>
         )}
 
-        <MarketRadarPanel variant="hero" />
-
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
           <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-900/75">
             <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
@@ -59,11 +57,11 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           </section>
 
           <div className="space-y-4 xl:sticky xl:top-[96px]">
-            <MarketOverviewPanel
-              title="Tape Context"
-              description="Next-session bias and major benchmark context stay close, but secondary to the directory."
-              variant="compact"
-            />
+            <MarketRadarPanel variant="rail" />
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-3">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Tape Bias</div>
+              <SentimentSlider variant="compact" />
+            </section>
             {whalesEnabled ? <CohortsLitePanel /> : null}
           </div>
         </div>
