@@ -9,6 +9,7 @@ import {
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { computeCorrelationMatrix } from "@/lib/correlation";
 import { getResearchDailyPrices, normalizeResearchAssets } from "@/lib/researchMarketData";
+import { isPerpFill } from "@/lib/analytics";
 import type { CorrelationCluster, DailyMarketPrice } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,7 @@ function markPrice(position: RawAssetPosition["position"]): number {
 }
 
 function assetFromFill(fill: Record<string, unknown>): string | null {
+  if (!isPerpFill(fill)) return null;
   const coin = String(fill.coin ?? "").trim();
   if (!coin || coin.startsWith("@")) return null;
   return coin;

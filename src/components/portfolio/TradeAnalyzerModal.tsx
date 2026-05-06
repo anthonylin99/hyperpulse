@@ -250,13 +250,7 @@ export default function TradeAnalyzerModal({
   onClose,
 }: TradeAnalyzerModalProps) {
   const { sizingSnapshots } = usePortfolio();
-  const marketType = useMemo<"perp" | "spot">(
-    () =>
-      trade.fills.some((fill) => fill.dir === "Buy" || fill.dir === "Sell")
-        ? "spot"
-        : "perp",
-    [trade.fills],
-  );
+  const marketType = "perp";
   const sizingSnapshot = useMemo(
     () => findSizingForTrade(trade, sizingSnapshots),
     [trade, sizingSnapshots],
@@ -450,7 +444,7 @@ export default function TradeAnalyzerModal({
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-                  {marketType === "spot" ? "HIP-3 spot" : "Perp"}
+                  Perp
                 </div>
                 {displayAsset.venue ? (
                   <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
@@ -479,9 +473,7 @@ export default function TradeAnalyzerModal({
               subValue={
                 sizedTrade.capitalSource === "captured"
                   ? `${sizingSnapshot?.sizingPct.toFixed(1) ?? "0.0"}% of tradeable capital`
-                  : sizedTrade.capitalSource === "spot"
-                    ? "Spot trade, 1.0x capital"
-                    : "No sizing snapshot"
+                  : "No sizing snapshot"
               }
             />
             <MetricCard

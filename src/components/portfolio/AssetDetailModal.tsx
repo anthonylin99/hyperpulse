@@ -33,15 +33,7 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
     [funding, coin],
   );
 
-  const marketType = useMemo<"perp" | "spot">(
-    () =>
-      coinTrades.some((trade) =>
-        trade.fills.some((fill) => fill.dir === "Buy" || fill.dir === "Sell"),
-      )
-        ? "spot"
-        : "perp",
-    [coinTrades],
-  );
+  const marketType = "perp";
 
   const stats = useMemo(() => {
     if (coinTrades.length === 0) return null;
@@ -157,7 +149,7 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
               Price Chart
             </div>
             <div className="rounded-full border border-zinc-700 bg-zinc-800/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">
-              {marketType === "spot" ? "HIP-3 spot" : "Perp"}
+              Perp
             </div>
           </div>
           <div className="h-[260px] rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-3">

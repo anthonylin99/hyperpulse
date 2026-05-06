@@ -1,3 +1,4 @@
+import { isPerpFill } from "@/lib/analytics";
 import type { AccountState, Position, TradeSizingSnapshot } from "@/types";
 
 function normalizeTradeAsset(asset: string): string {
@@ -57,7 +58,7 @@ export function enrichTradeWithSizing<
 >(trade: T, snapshots: TradeSizingSnapshot[]): T & {
   capitalUsedUsd: number | null;
   leverageUsed: number | null;
-  capitalSource: "captured" | "estimated" | "spot" | "unavailable";
+  capitalSource: "captured" | "estimated" | "unavailable";
 } {
   const sizing = findSizingForTrade(trade, snapshots);
   if (sizing) {
@@ -69,13 +70,12 @@ export function enrichTradeWithSizing<
     };
   }
 
-  const isSpot = trade.fills?.some((fill) => fill.dir === "Buy" || fill.dir === "Sell") ?? false;
-  if (isSpot) {
+  if (trade.fills && !trade.fills.every(isPerpFill)) {
     return {
       ...trade,
-      capitalUsedUsd: trade.notional,
-      leverageUsed: 1,
-      capitalSource: "spot",
+      capitalUsedUsd: null,
+      leverageUsed: null,
+      capitalSource: "unavailable",
     };
   }
 

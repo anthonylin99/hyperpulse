@@ -14,12 +14,13 @@ import type {
 // HL fills include a `dir` field: "Open Long", "Close Long", "Open Short", "Close Short"
 // We accumulate fills per coin until the position flips or closes.
 
-export function isPerpFill(fill: Pick<Fill, "dir">): boolean {
+export function isPerpFill(fill: { dir?: unknown }): boolean {
+  const dir = String(fill.dir ?? "");
   return (
-    fill.dir === "Open Long" ||
-    fill.dir === "Close Long" ||
-    fill.dir === "Open Short" ||
-    fill.dir === "Close Short"
+    dir === "Open Long" ||
+    dir === "Close Long" ||
+    dir === "Open Short" ||
+    dir === "Close Short"
   );
 }
 
