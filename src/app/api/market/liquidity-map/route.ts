@@ -18,9 +18,9 @@ const RANGE_MS: Record<string, number> = {
   "7d": 7 * 24 * 60 * 60 * 1000,
 };
 const DEFAULT_RANGE = "3d";
-const DEFAULT_INTERVAL_BY_RANGE: Record<string, "5m" | "15m" | "1h"> = {
+const DEFAULT_INTERVAL_BY_RANGE: Record<string, "5m" | "30m" | "1h"> = {
   "24h": "5m",
-  "3d": "15m",
+  "3d": "30m",
   "7d": "1h",
 };
 const MAX_DISTANCE_PCT = 18;
@@ -29,7 +29,7 @@ const BOOK_BUCKET_STEP_PCT = 0.1;
 const MIN_BOOK_DISTANCE_PCT = 0.25;
 const TRACKED_PROFILE_LIMIT = 750;
 const TRACKED_PNL_FLOOR_USD = 200_000;
-const BOOK_BAND_LIMIT_PER_SIDE = 18;
+const BOOK_BAND_LIMIT_PER_SIDE = 80;
 const STRUCTURE_LEVEL_LIMIT_PER_SIDE = 4;
 
 type LiquidityBandSide = "short_liq" | "long_liq" | "ask_liquidity" | "bid_liquidity" | "structure_resistance" | "structure_support";
@@ -293,11 +293,17 @@ export async function GET(request: Request) {
       },
     );
 
-    const source = summary.trackedBandCount > 0 ? "tracked-liquidations-plus-book" : "visible-orderbook-only";
+    const source = summary.trackedBandCount > 0
+      ? "tracked-liquidations-plus-book"
+      : summary.bookBandCount > 0
+        ? "visible-orderbook-only"
+        : "price-structure-only";
     const caveat =
       summary.trackedBandCount > 0
         ? "Tracked liquidation bands come from monitored profitable wallets; visible book bands come from current Hyperliquid L2 depth. This is not a full exchange-wide Coinglass map."
-        : "No monitored-wallet liquidation bands are available for this asset right now, so this view shows visible Hyperliquid order-book liquidity only. This is not a liquidation heatmap.";
+        : summary.bookBandCount > 0
+          ? "No monitored-wallet liquidation bands are available for this asset right now, so this view shows current visible Hyperliquid order-book liquidity plus price structure."
+          : "No monitored-wallet liquidation or visible book clusters are available nearby, so this view shows closed-candle structure levels only.";
 
     return jsonSuccess(
       {

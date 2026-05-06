@@ -43,7 +43,7 @@ type LiquidityMapResponse = {
   candles: LiquidityCandle[];
   bands: LiquidityBand[];
   maxDistancePct: number;
-  source: "tracked-liquidations-plus-book" | "visible-orderbook-only";
+  source: "tracked-liquidations-plus-book" | "visible-orderbook-only" | "price-structure-only";
   caveat: string;
   summary: {
     shortLiquidationUsd: number;
@@ -71,11 +71,11 @@ type ChartScales = {
 
 const RANGES: LiquidityRange[] = ["24h", "3d", "7d"];
 const WIDTH = 1040;
-const HEIGHT = 470;
-const PAD = { top: 20, right: 78, bottom: 34, left: 24 };
+const HEIGHT = 520;
+const PAD = { top: 24, right: 82, bottom: 38, left: 28 };
 const MIN_BODY_HEIGHT = 2.4;
 const NEAR_DISTANCE_PCT = 6;
-const MAX_PLOTTED_BANDS = 10;
+const MAX_PLOTTED_BANDS = 8;
 const ZOOM_LEVELS = [
   { label: "Fit", value: 1 },
   { label: "2x", value: 2 },
@@ -182,7 +182,7 @@ function bandSizeLabel(band: LiquidityBand) {
 
 export default function LiquidityMapPanel({ coin }: { coin: string }) {
   const [range, setRange] = useState<LiquidityRange>("3d");
-  const [zoom, setZoom] = useState<LiquidityZoom>(1);
+  const [zoom, setZoom] = useState<LiquidityZoom>(2);
   const [data, setData] = useState<LiquidityMapResponse | null>(null);
   const [activeBand, setActiveBand] = useState<LiquidityBand | null>(null);
   const [loading, setLoading] = useState(true);
@@ -338,7 +338,7 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
       {loading ? (
         <div className="h-[560px] rounded-2xl border border-zinc-800 skeleton" />
       ) : data && chart ? (
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-3">
           <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#070a0f]">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
               <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -399,7 +399,8 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
             </div>
 
             <div className="p-3">
-              <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="h-[540px] w-full rounded-[18px] border border-zinc-800 bg-[#070a0f]">
+              <div className="overflow-x-auto rounded-[18px] border border-zinc-800 bg-[#070a0f]">
+                <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="block aspect-[1040/520] min-w-[1040px] w-full bg-[#070a0f]" shapeRendering="geometricPrecision">
                 <defs>
                   <linearGradient id="liquidityFade" x1="0%" x2="100%" y1="0%" y2="0%">
                     <stop offset="0%" stopColor="rgba(255,255,255,0.02)" />
@@ -457,9 +458,11 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                     const height = Math.max(Math.abs(y2 - y1), band.source === "tracked_liquidation" ? 7 : 4);
                     const intensity = Math.min(1, Math.max(0.1, band.notionalUsd / chart.maxBandNotional));
                     const baseAlpha = band.source === "tracked_liquidation" ? 0.18 : 0.1;
-                    const alpha = Math.min(0.72, baseAlpha + intensity * (band.source === "tracked_liquidation" ? 0.5 : 0.32));
-                    const y = chart.yForPrice(band.price) - height / 2;
                     const active = highlighted === band;
+                    const alpha = active
+                      ? Math.min(0.62, baseAlpha + intensity * 0.46)
+                      : Math.min(0.36, baseAlpha + intensity * (band.source === "tracked_liquidation" ? 0.24 : 0.16));
+                    const y = chart.yForPrice(band.price) - height / 2;
                     return (
                       <g key={`${band.source}-${band.side}-${band.distancePct}`} onMouseEnter={() => setActiveBand(band)} onClick={() => setActiveBand(band)} className="cursor-pointer">
                         <rect x={PAD.left} y={y} width={chart.plotWidth} height={height} fill={colorWithAlpha(tone.fill, alpha)} />
@@ -500,8 +503,8 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                     const bodyHeight = Math.max(Math.abs(closeY - openY), MIN_BODY_HEIGHT);
                     return (
                       <g key={`${candle.time}-${index}`}>
-                        <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1.15" opacity="0.95" />
-                        <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="0.7" fill={color} opacity="0.94" />
+                        <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1.2" opacity="0.96" shapeRendering="crispEdges" />
+                        <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx="0.6" fill={color} opacity="0.96" shapeRendering="crispEdges" />
                       </g>
                     );
                   })}
@@ -519,7 +522,8 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                 <text x={WIDTH - PAD.right + 33} y={chart.yForPrice(data.currentPrice) + 4} textAnchor="middle" fill="#09090b" fontSize="11" fontFamily="monospace">
                   {formatChartPrice(data.currentPrice)}
                 </text>
-              </svg>
+                </svg>
+              </div>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
                 <span>{zoom === 1 ? "Showing nearby/actionable bands only so price remains readable." : `${zoom}x zoom around current price; switch to Fit to see the full plotted range.`}</span>
                 {hiddenBandCount > 0 ? <span>{hiddenBandCount} distant cluster{hiddenBandCount === 1 ? "" : "s"} hidden from chart scale.</span> : null}
@@ -527,7 +531,7 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
             </div>
           </div>
 
-          <aside className="space-y-3">
+          <aside className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr_0.9fr]">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
               <div className="flex items-center gap-2">
                 <Target className="h-4 w-4 text-teal-300" />
@@ -536,10 +540,10 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
               <div className="mt-3 grid gap-2">
                 <MiniLevel label="Nearest resistance" band={action.nearestResistance} empty="No resistance nearby" />
                 <MiniLevel label="Nearest support" band={action.nearestSupport} empty="No support nearby" />
-                <MiniLevel label="Nearest short-liq risk" band={action.nearestShortLiq} empty="No tracked short-liq nearby" />
-                <MiniLevel label="Nearest long-liq risk" band={action.nearestLongLiq} empty="No tracked long-liq nearby" />
-                <MiniLevel label="Nearest ask wall" band={action.nearestAsk} empty="No nearby ask wall" />
-                <MiniLevel label="Nearest bid wall" band={action.nearestBid} empty="No nearby bid wall" />
+                {action.nearestShortLiq ? <MiniLevel label="Nearest short-liq risk" band={action.nearestShortLiq} empty="" /> : null}
+                {action.nearestLongLiq ? <MiniLevel label="Nearest long-liq risk" band={action.nearestLongLiq} empty="" /> : null}
+                {action.nearestAsk ? <MiniLevel label="Nearest ask wall" band={action.nearestAsk} empty="" /> : null}
+                {action.nearestBid ? <MiniLevel label="Nearest bid wall" band={action.nearestBid} empty="" /> : null}
               </div>
             </div>
 
@@ -594,7 +598,9 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
                 <div className="mt-3 text-[11px] leading-5 text-zinc-500">
                   Use case: {bandUse(highlighted.side)}. {highlighted.source === "tracked_liquidation"
                     ? `${highlighted.walletCount} monitored wallet${highlighted.walletCount === 1 ? "" : "s"} contribute to this band.`
-                    : `${highlighted.orderCount} visible order${highlighted.orderCount === 1 ? "" : "s"} contribute to this band.`}
+                    : highlighted.source === "price_structure"
+                      ? `${highlighted.touches ?? 1} confirmed touch${(highlighted.touches ?? 1) === 1 ? "" : "es"} define this structure level.`
+                      : `${highlighted.orderCount} visible order${highlighted.orderCount === 1 ? "" : "s"} contribute to this band.`}
                 </div>
               </div>
             ) : null}
