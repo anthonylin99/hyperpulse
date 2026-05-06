@@ -6,7 +6,9 @@ const children = new Map();
 let shuttingDown = false;
 
 const workerDir = new URL(".", import.meta.url).pathname;
-const momentumWorker = resolve(workerDir, "../momentum-alerts/index.mjs");
+const siblingMomentumWorker = resolve(workerDir, "../momentum-alerts/index.mjs");
+const bundledMomentumWorker = resolve(workerDir, "momentum-alerts/index.mjs");
+const momentumWorker = existsSync(siblingMomentumWorker) ? siblingMomentumWorker : bundledMomentumWorker;
 
 const workers = [
   {

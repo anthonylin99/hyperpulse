@@ -22,7 +22,8 @@
     "docker:up": "docker compose up --build",
     "mcp:start": "node workers/mcp-server/index.mjs",
     "railway:start": "node scripts/railway-supervisor.mjs",
-    "telegram:test": "node scripts/send-telegram-test.mjs"
+    "telegram:test": "node scripts/send-telegram-test.mjs",
+    "momentum:status": "node scripts/momentum-alert-status.mjs"
   },
   "dependencies": {
     "@farcaster/mini-app-solana": "^1.1.3",
