@@ -253,9 +253,9 @@ export default function PortfolioWorkspace() {
 
               {subtab === "positions" && (
                 <div className="space-y-4">
+                  {hasPositions ? <PositionsTable density={density} /> : <EmptyPositionsState />}
                   <RiskStrip density={density} />
                   {hasPositions ? <PositionTradeLevelsPanel /> : null}
-                  {hasPositions ? <PositionsTable density={density} /> : <EmptyPositionsState />}
                 </div>
               )}
 
@@ -263,8 +263,8 @@ export default function PortfolioWorkspace() {
                 <div className="space-y-4">
                   {hasTrades ? (
                     <>
-                      <MonthlyPnL />
                       <TradeJournal density={density} />
+                      <MonthlyPnL />
                     </>
                   ) : (
                     <EmptyJournalState />
