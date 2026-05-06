@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start.mjs",
     "lint": "next lint",
     "digest:manual": "node scripts/run-positioning-digest.mjs",
     "portfolio:capture": "node scripts/capture-portfolio-sizing.mjs",
