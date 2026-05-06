@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { formatUSD, cn } from "@/lib/format";
-import { enrichTradesWithSizing } from "@/lib/portfolioSizing";
+import { enrichTradesWithSizing, tradeReturnOnCapitalPct } from "@/lib/portfolioSizing";
 import { getNotes, setNote } from "@/lib/tradeNotes";
 import type { RoundTripTrade } from "@/types";
 import TradeAnalyzerModal from "./TradeAnalyzerModal";
@@ -37,7 +37,7 @@ function exportCSV(
 ) {
   const headers = [
     "Date", "Asset", "Direction", "Entry Price", "Exit Price",
-    "Size (USD)", "Initial Margin %", "P&L", "P&L %", "Duration (min)", "Fees", "Funding", "Notes"
+    "Size (USD)", "Initial Margin", "P&L", "P&L % (margin)", "Duration (min)", "Fees", "Funding", "Notes"
   ];
   const rows = trades.map((t) => [
     new Date(t.exitTime).toISOString(),
@@ -48,7 +48,7 @@ function exportCSV(
     t.notional.toFixed(2),
     sizingByTrade[t.id] ?? "Not captured",
     t.pnl.toFixed(2),
-    t.pnlPct.toFixed(2),
+    tradeReturnOnCapitalPct(t).toFixed(2),
     (t.duration / 60000).toFixed(1),
     t.fees.toFixed(4),
     t.fundingPaid.toFixed(4),
@@ -129,7 +129,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
       .slice(0, 24);
   }, [coins, symbolQuery]);
 
-  const sorted = useMemo(() => {
+  const sizedTrades = useMemo(() => {
     const query = symbolQuery.trim().toUpperCase();
     let filtered =
       filterCoin === "all"
@@ -150,13 +150,16 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
       filtered = filtered.filter((t) => t.exitTime <= ceiling);
     }
 
+    const enriched = enrichTradesWithSizing(filtered, sizingSnapshots);
+
+    let next = enriched;
     if (filterResult === "winners") {
-      filtered = filtered.filter((t) => t.pnl > 0);
+      next = next.filter((t) => t.pnl > 0);
     } else if (filterResult === "losers") {
-      filtered = filtered.filter((t) => t.pnl <= 0);
+      next = next.filter((t) => t.pnl <= 0);
     }
 
-    filtered = [...filtered].sort((a, b) => {
+    return [...next].sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
         case "time":
@@ -166,7 +169,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
           cmp = a.pnl - b.pnl;
           break;
         case "pnlPct":
-          cmp = a.pnlPct - b.pnlPct;
+          cmp = tradeReturnOnCapitalPct(a) - tradeReturnOnCapitalPct(b);
           break;
         case "duration":
           cmp = a.duration - b.duration;
@@ -177,14 +180,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
-
-    return filtered;
-  }, [trades, sortKey, sortDir, filterCoin, filterResult, fromDate, toDate, symbolQuery]);
-
-  const sizedTrades = useMemo(
-    () => enrichTradesWithSizing(sorted, sizingSnapshots),
-    [sorted, sizingSnapshots],
-  );
+  }, [trades, sizingSnapshots, sortKey, sortDir, filterCoin, filterResult, fromDate, toDate, symbolQuery]);
 
   const summary = useMemo(() => {
     const totalPnl = sizedTrades.reduce((s, t) => s + t.pnl, 0);
@@ -496,6 +492,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
             {paged.map((trade) => {
               const hasNote = !!notes[trade.id];
               const isExpanded = expandedNote === trade.id;
+              const marginReturnPct = tradeReturnOnCapitalPct(trade);
               return (
                 <Fragment key={trade.id}>
                   <tr
@@ -563,11 +560,11 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                     <td
                       className={cn(
                         "px-2 py-2 text-center font-mono",
-                        trade.pnlPct >= 0 ? "text-emerald-400" : "text-red-400",
+                        marginReturnPct >= 0 ? "text-emerald-400" : "text-red-400",
                       )}
                     >
-                      {trade.pnlPct >= 0 ? "+" : ""}
-                      {trade.pnlPct.toFixed(2)}%
+                      {marginReturnPct >= 0 ? "+" : ""}
+                      {marginReturnPct.toFixed(2)}%
                     </td>
                     <td className="px-2 py-2 text-center text-zinc-400">
                       {formatDuration(trade.duration)}

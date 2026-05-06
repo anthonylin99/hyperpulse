@@ -6,7 +6,7 @@ import { useMarket } from "@/context/MarketContext";
 import { usePortfolio } from "@/context/PortfolioContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatFundingAPR, formatUSD } from "@/lib/format";
-import { getTradeableUsdcCapital, positionSizingPct } from "@/lib/portfolioSizing";
+import { getTradeableUsdcCapital, positionReturnOnCapitalPct, positionSizingPct } from "@/lib/portfolioSizing";
 import {
   emptyPositionNote,
   getPositionNotes,
@@ -195,7 +195,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
             {sorted.map((position) => {
               const isLong = position.szi > 0;
               const notional = Math.abs(position.szi) * position.markPx;
-              const pnlPct = position.returnOnEquity * 100;
+              const pnlPct = positionReturnOnCapitalPct(position);
               const dist = liqDistancePct(position);
               const tone = riskTone(dist);
               const isSpot = position.marketType === "hip3_spot";

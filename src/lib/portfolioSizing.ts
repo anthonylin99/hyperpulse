@@ -99,3 +99,35 @@ export function enrichTradesWithSizing<
 >(trades: T[], snapshots: TradeSizingSnapshot[]) {
   return trades.map((trade) => enrichTradeWithSizing(trade, snapshots));
 }
+
+export function tradeReturnOnCapitalPct(trade: {
+  pnl: number;
+  pnlPct: number;
+  capitalUsedUsd?: number | null;
+  leverageUsed?: number | null;
+}): number {
+  if (trade.capitalUsedUsd != null && Number.isFinite(trade.capitalUsedUsd) && trade.capitalUsedUsd > 0) {
+    return (trade.pnl / trade.capitalUsedUsd) * 100;
+  }
+  if (trade.leverageUsed != null && Number.isFinite(trade.leverageUsed) && trade.leverageUsed > 0) {
+    return trade.pnlPct * trade.leverageUsed;
+  }
+  return trade.pnlPct;
+}
+
+export function positionReturnOnCapitalPct(position: {
+  unrealizedPnl: number;
+  marginUsed: number;
+  leverage: number;
+  returnOnEquity: number;
+  marketType?: string;
+}): number {
+  if (position.marketType === "hip3_spot") return position.returnOnEquity * 100;
+  if (Number.isFinite(position.marginUsed) && position.marginUsed > 0) {
+    return (position.unrealizedPnl / position.marginUsed) * 100;
+  }
+  if (Number.isFinite(position.leverage) && position.leverage > 0) {
+    return position.returnOnEquity * 100 * position.leverage;
+  }
+  return position.returnOnEquity * 100;
+}
