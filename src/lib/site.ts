@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { isTradingEnabled, isWhalesEnabled } from "@/lib/appConfig";
 
-const DEFAULT_SITE_URL = "https://hyperpulse-gold.vercel.app";
+const DEFAULT_SITE_URL = "https://hyperpulsehl.com";
 const DEFAULT_OG_IMAGE = "/opengraph-image";
 const DEFAULT_TWITTER_IMAGE = "/twitter-image";
 

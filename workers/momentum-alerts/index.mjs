@@ -44,7 +44,7 @@ const DRY_RUN = process.env.MOMENTUM_ALERT_DRY_RUN === "true";
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === "true";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://hyperpulse-gold.vercel.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://hyperpulsehl.com";
 const CONFIGURED_ASSETS = parseList(process.env.MOMENTUM_ALERT_ASSETS);
 
 const PRIORITY_ASSETS = new Set([
