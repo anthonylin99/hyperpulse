@@ -84,7 +84,7 @@ Everything is already built (`WalletContext.tsx`, `WalletModal.tsx`, `WalletConn
 3. **Wire `MarketTable.tsx`** — pass `walletConnected={isConnected}` from `useWallet()` to `AssetRow`
 4. **Wire trade buttons** — when wallet connected, Long/Short buttons in `AssetRow` open `TradeDrawer` with the selected coin
 5. **Wire `PortfolioPanel.tsx`** — replace "Coming Soon" in sidebar with real portfolio panel
-6. **Test on mainnet** — user's API wallet: `0x1dae1974fe97c32d304a57c4056d90545d319f38`, main wallet: `0x509292a9d8348d6264B84f8F57E4C074148fCA24`
+6. **Test on mainnet** — use a disposable test account or private deployment notes; do not commit live wallet addresses or API wallet details.
 
 **Key architecture note**: Hyperliquid uses "agent wallets" (API wallets). The private key signs trades via `ExchangeClient`, but the **main wallet address** is needed for all info queries (`clearinghouseState`, etc.). `WalletContext` already handles this dual-address flow — `connect(apiPrivateKey, mainWalletAddress)`.
 
