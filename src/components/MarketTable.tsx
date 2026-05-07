@@ -463,7 +463,7 @@ export default function MarketTable({
                       setupSignal={setupSignal}
                       detailNode={
                         selectedAsset === asset.coin ? (
-                          <tr key={`${asset.coin}-detail`}>
+                          <tr key={`${asset.coin}-detail`} id={`market-asset-${asset.coin.replace(/[^a-zA-Z0-9_-]/g, "-")}`}>
                             <td colSpan={perpsTotalColumns} className="p-0">
                               <AssetDetail
                                 asset={asset}

@@ -20,6 +20,12 @@ if (!url) {
   process.exit(1);
 }
 
+const telegramTokenPresent = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+const telegramChatPresent = Boolean(process.env.TELEGRAM_CHAT_ID);
+const telegramEnabled = process.env.TELEGRAM_ENABLED === "false"
+  ? false
+  : process.env.TELEGRAM_ENABLED === "true" || (telegramTokenPresent && telegramChatPresent);
+
 const pool = new Pool({ connectionString: url, max: 1 });
 const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
 
@@ -29,6 +35,15 @@ function asIso(value) {
 }
 
 try {
+  console.log("\nMomentum runtime config");
+  console.table([{
+    database: "configured",
+    telegramToken: telegramTokenPresent ? "present" : "missing",
+    telegramChat: telegramChatPresent ? "present" : "missing",
+    telegramEnabled,
+    dryRunEnv: process.env.MOMENTUM_ALERT_DRY_RUN ?? "unset",
+  }]);
+
   const runs = await pool.query(
     `select started_at, completed_at, status, message, payload
      from worker_runs

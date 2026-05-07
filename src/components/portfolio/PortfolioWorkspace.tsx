@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { BarChart3, CircleDashed, FolderKanban, Rows3, SlidersHorizontal } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BarChart3, BookOpenCheck, CircleDashed, FolderKanban, Rows3, SlidersHorizontal } from "lucide-react";
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import StatsGrid from "@/components/portfolio/StatsGrid";
@@ -19,16 +19,19 @@ import FundingAnalysis from "@/components/portfolio/FundingAnalysis";
 import SystemProfile from "@/components/portfolio/SystemProfile";
 import TradeSignals from "@/components/portfolio/TradeSignals";
 import MoreStats from "@/components/portfolio/MoreStats";
+import ShadowBookPanel from "@/components/portfolio/ShadowBookPanel";
 import { usePortfolio } from "@/context/PortfolioContext";
+import { useShadowBook } from "@/context/ShadowBookContext";
 import { useWallet } from "@/context/WalletContext";
 import { cn, formatUSD } from "@/lib/format";
 
-type PortfolioSubtab = "overview" | "positions" | "journal" | "details";
+type PortfolioSubtab = "overview" | "positions" | "journal" | "shadow" | "details";
 
 const PORTFOLIO_TABS: Array<{ key: PortfolioSubtab; label: string; helper: string }> = [
   { key: "overview", label: "Overview", helper: "Performance first" },
   { key: "positions", label: "Positions", helper: "Live exposure" },
   { key: "journal", label: "Journal", helper: "Closed trade review" },
+  { key: "shadow", label: "Shadow Book", helper: "Paper trade review" },
   { key: "details", label: "Details", helper: "Deep diagnostics" },
 ];
 
@@ -36,6 +39,7 @@ const TAB_ICONS: Record<PortfolioSubtab, typeof BarChart3> = {
   overview: BarChart3,
   positions: Rows3,
   journal: FolderKanban,
+  shadow: BookOpenCheck,
   details: SlidersHorizontal,
 };
 
@@ -118,6 +122,7 @@ function DetailSection({
 export default function PortfolioWorkspace() {
   const { trades, loading, error } = usePortfolio();
   const { accountState } = useWallet();
+  const { trades: shadowTrades } = useShadowBook();
   const [subtab, setSubtab] = useState<PortfolioSubtab>("overview");
   const density = "compact" as const;
 
@@ -126,8 +131,15 @@ export default function PortfolioWorkspace() {
   const totalHoldings = perpPositions + spotPositions;
   const hasPositions = totalHoldings > 0;
   const hasTrades = trades.length > 0;
-  const hasContent = hasTrades || hasPositions;
+  const hasShadowTrades = shadowTrades.length > 0;
+  const hasContent = hasTrades || hasPositions || hasShadowTrades;
   const accountValue = accountState?.accountValue ?? 0;
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URL(window.location.href).searchParams.get("section") === "shadow") {
+      setSubtab("shadow");
+    }
+  }, []);
 
   const overviewSections = useMemo(
     () => (
@@ -202,12 +214,12 @@ export default function PortfolioWorkspace() {
                     </div>
                   </div>
                   <div className="mt-2 text-sm text-zinc-400">
-                    Overview, live exposure, journal, and diagnostics.
+                    Overview, live exposure, journal, paper tracking, and diagnostics.
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 {PORTFOLIO_TABS.map((tab) => {
                   const Icon = TAB_ICONS[tab.key];
                   return (
@@ -271,6 +283,8 @@ export default function PortfolioWorkspace() {
                   )}
                 </div>
               )}
+
+              {subtab === "shadow" && <ShadowBookPanel />}
 
               {subtab === "details" && (
                 <div className="space-y-4">

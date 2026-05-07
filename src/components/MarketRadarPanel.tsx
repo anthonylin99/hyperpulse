@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Info, Radar, RefreshCw } from "lucide-react";
+import { useMarket } from "@/context/MarketContext";
 import { cn } from "@/lib/format";
 import { formatEasternTime } from "@/lib/time";
 import type { MarketRadarSignal } from "@/types";
@@ -75,10 +77,36 @@ function compactEvidence(signal: MarketRadarSignal) {
   return `vs BTC ${formatSigned(details.btcResidualPct)}% · vs Basket ${formatSigned(details.basketResidualPct)}% · z ${formatSigned(details.crossSectionalZ, 1)}`;
 }
 
+function marketAssetElementId(asset: string) {
+  return `market-asset-${asset.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function useOpenMarketAsset(signal?: MarketRadarSignal) {
+  const pathname = usePathname();
+  const { setSelectedAsset } = useMarket();
+
+  return (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!signal || pathname !== "/markets") return;
+    event.preventDefault();
+    const asset = signal.asset.toUpperCase();
+    setSelectedAsset(asset);
+    window.history.replaceState(null, "", `/markets?asset=${encodeURIComponent(asset)}`);
+    window.setTimeout(() => {
+      document.getElementById(marketAssetElementId(asset))?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 80);
+  };
+}
+
 function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
+  const openAsset = useOpenMarketAsset(signal);
+
   return (
     <Link
       href={signal.routeHref}
+      onClick={openAsset}
       className="group block rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 transition hover:border-teal-500/25 hover:bg-zinc-950/80"
     >
       <div className="flex items-center justify-between gap-3">
@@ -93,6 +121,35 @@ function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
         </div>
         <div className="shrink-0 text-right font-mono text-xs text-zinc-100">{signal.value}</div>
       </div>
+    </Link>
+  );
+}
+
+function RadarTopCard({
+  signal,
+  label,
+  tone,
+}: {
+  signal?: MarketRadarSignal;
+  label: string;
+  tone: "long" | "short";
+}) {
+  const openAsset = useOpenMarketAsset(signal);
+  const toneClasses = tone === "long"
+    ? "border-emerald-500/20 bg-emerald-500/10 hover:border-emerald-400/35"
+    : "border-rose-500/20 bg-rose-500/10 hover:border-rose-400/35";
+  const labelClasses = tone === "long" ? "text-emerald-300/80" : "text-rose-300/80";
+  const valueClasses = tone === "long" ? "text-emerald-300" : "text-rose-300";
+
+  return (
+    <Link
+      href={signal?.routeHref ?? "/markets"}
+      onClick={openAsset}
+      className={cn("rounded-xl border p-3 transition", toneClasses)}
+    >
+      <div className={cn("text-[9px] uppercase tracking-[0.14em]", labelClasses)}>{label}</div>
+      <div className="mt-1 font-mono text-lg font-semibold text-zinc-100">{signal?.asset ?? "—"}</div>
+      <div className={cn("mt-1 truncate font-mono text-xs", valueClasses)}>{signal?.value ?? "waiting"}</div>
     </Link>
   );
 }
@@ -170,22 +227,8 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <Link
-                href={topLong?.routeHref ?? "/markets"}
-                className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 transition hover:border-emerald-400/35"
-              >
-                <div className="text-[9px] uppercase tracking-[0.14em] text-emerald-300/80">Running</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-zinc-100">{topLong?.asset ?? "—"}</div>
-                <div className="mt-1 truncate font-mono text-xs text-emerald-300">{topLong?.value ?? "waiting"}</div>
-              </Link>
-              <Link
-                href={topShort?.routeHref ?? "/markets"}
-                className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 transition hover:border-rose-400/35"
-              >
-                <div className="text-[9px] uppercase tracking-[0.14em] text-rose-300/80">Lagging</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-zinc-100">{topShort?.asset ?? "—"}</div>
-                <div className="mt-1 truncate font-mono text-xs text-rose-300">{topShort?.value ?? "waiting"}</div>
-              </Link>
+              <RadarTopCard signal={topLong} label="Running" tone="long" />
+              <RadarTopCard signal={topShort} label="Lagging" tone="short" />
             </div>
 
             <div>

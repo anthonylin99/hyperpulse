@@ -8,6 +8,7 @@ import { FactorProvider } from "@/context/FactorContext";
 import { AppConfigProvider } from "@/context/AppConfigContext";
 import { WalletProvider } from "@/context/WalletContext";
 import { PortfolioProvider } from "@/context/PortfolioContext";
+import { ShadowBookProvider } from "@/context/ShadowBookContext";
 
 export default function Providers({ children }: { children: ReactNode }) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -17,24 +18,26 @@ export default function Providers({ children }: { children: ReactNode }) {
   const content = (
     <AppConfigProvider>
       <MarketProvider>
-        <FactorProvider>
-          <WalletProvider>
-            <PortfolioProvider>
-              {children}
-            </PortfolioProvider>
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                style: {
-                  background: "#18181b",
-                  color: "#fafafa",
-                  border: "1px solid #27272a",
-                  fontSize: "13px",
-                },
-              }}
-            />
-          </WalletProvider>
-        </FactorProvider>
+        <ShadowBookProvider>
+          <FactorProvider>
+            <WalletProvider>
+              <PortfolioProvider>
+                {children}
+              </PortfolioProvider>
+              <Toaster
+                position="bottom-right"
+                toastOptions={{
+                  style: {
+                    background: "#18181b",
+                    color: "#fafafa",
+                    border: "1px solid #27272a",
+                    fontSize: "13px",
+                  },
+                }}
+              />
+            </WalletProvider>
+          </FactorProvider>
+        </ShadowBookProvider>
       </MarketProvider>
     </AppConfigProvider>
   );

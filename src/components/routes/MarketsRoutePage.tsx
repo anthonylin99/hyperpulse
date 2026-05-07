@@ -5,7 +5,6 @@ import { MousePointerClick } from "lucide-react";
 import CohortsLitePanel from "@/components/CohortsLitePanel";
 import MarketRadarPanel from "@/components/MarketRadarPanel";
 import MarketTable from "@/components/MarketTable";
-import SentimentSlider from "@/components/SentimentSlider";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
@@ -20,7 +19,14 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
 
   useEffect(() => {
     if (!initialAsset) return;
-    setSelectedAsset(initialAsset.toUpperCase());
+    const asset = initialAsset.toUpperCase();
+    setSelectedAsset(asset);
+    window.setTimeout(() => {
+      document.getElementById(`market-asset-${asset.replace(/[^a-zA-Z0-9_-]/g, "-")}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
   }, [initialAsset, setSelectedAsset]);
 
   return (
@@ -58,10 +64,6 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
 
           <div className="space-y-4 xl:sticky xl:top-[96px]">
             <MarketRadarPanel variant="rail" />
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-3">
-              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Tape Bias</div>
-              <SentimentSlider variant="compact" />
-            </section>
             {whalesEnabled ? <CohortsLitePanel /> : null}
           </div>
         </div>

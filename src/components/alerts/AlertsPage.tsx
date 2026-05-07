@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell, Clock3, ExternalLink, Radio, RefreshCw, Send, type LucideIcon } from "lucide-react";
+import { Bell, BookOpenCheck, Clock3, ExternalLink, Radio, RefreshCw, Send, type LucideIcon } from "lucide-react";
 import { cn, formatChartPrice } from "@/lib/format";
 import { formatEasternDateTime } from "@/lib/time";
+import { useShadowBook } from "@/context/ShadowBookContext";
 import type { MomentumAlert } from "@/types";
 import { SectionEyebrow } from "@/components/trading-ui";
 
@@ -233,7 +234,9 @@ function StatCard({ label, value, helper }: { label: string; value: string; help
 }
 
 function AlertCard({ alert }: { alert: MomentumAlert }) {
+  const { openTicket } = useShadowBook();
   const positive = (alert.returnSinceAlertPct ?? 0) >= 0;
+  const direction = alert.payload?.direction === "short" ? "short" : "long";
   return (
     <article className="grid gap-4 px-4 py-4 transition hover:bg-zinc-950/40 lg:grid-cols-[220px_minmax(0,1fr)_220px]">
       <div>
@@ -270,6 +273,23 @@ function AlertCard({ alert }: { alert: MomentumAlert }) {
           <span className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-500">
             <Send className="h-3 w-3" /> {deliveryLabel(alert)}
           </span>
+          <button
+            onClick={() =>
+              openTicket({
+                asset: alert.asset,
+                side: direction,
+                entryPrice: alert.currentPrice ?? alert.alertPrice,
+                stopPrice: alert.invalidationPrice,
+                targetPrice: alert.targetPrice,
+                source: "momentum_alert",
+                sourceId: alert.id,
+              })
+            }
+            className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-200 hover:bg-emerald-500/15"
+          >
+            <BookOpenCheck className="h-3 w-3" />
+            Track paper
+          </button>
           <Link href={alert.routeHref} className="inline-flex items-center gap-1 rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15">
             Open market <ExternalLink className="h-3 w-3" />
           </Link>

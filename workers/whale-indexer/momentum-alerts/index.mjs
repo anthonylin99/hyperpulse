@@ -32,20 +32,24 @@ const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "main
 const RUN_ONCE = process.argv.includes("--once") || process.env.MOMENTUM_ALERT_ONCE === "true";
 const LOOP_INTERVAL_MS = Math.max(envNumber("MOMENTUM_ALERT_INTERVAL_MS", 5 * 60 * 1000), 60_000);
 const ASSET_LIMIT = clamp(envNumber("MOMENTUM_ALERT_ASSET_LIMIT", 45), 5, 80);
+const DYNAMIC_MOVER_LIMIT = clamp(envNumber("MOMENTUM_ALERT_DYNAMIC_MOVER_LIMIT", 20), 5, 40);
 const MIN_OI_USD = envNumber("MOMENTUM_ALERT_MIN_OI_USD", 8_000_000);
 const MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_MIN_VOLUME_USD", 20_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
-const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 8), 1, 24);
-const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 8), TELEGRAM_DAILY_CAP, 24);
-const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
+const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 10), 1, 24);
+const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 12), TELEGRAM_DAILY_CAP, 24);
+const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 3), 1, 5);
 const CANDLE_INTERVAL = process.env.MOMENTUM_ALERT_CANDLE_INTERVAL || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
 const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 72);
 const HIGH_SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_HIGH_SCORE_THRESHOLD", 82);
 const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
-const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === "true";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
+const TELEGRAM_CONFIGURED = Boolean(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID);
+const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === "false"
+  ? false
+  : process.env.TELEGRAM_ENABLED === "true" || TELEGRAM_CONFIGURED;
 const DRY_RUN_REQUESTED = process.env.MOMENTUM_ALERT_DRY_RUN === "true";
 const DRY_RUN =
   DRY_RUN_REQUESTED &&
@@ -60,12 +64,12 @@ const DEBUG = process.env.MOMENTUM_ALERT_DEBUG === "true";
 
 const PRIORITY_ASSETS = new Set([
   "BTC", "ETH", "SOL", "HYPE", "ZEC", "TAO", "TON", "AAVE", "NEAR", "LINK", "SUI", "DOGE",
-  "AVAX", "BNB", "XRP", "ENA", "PENDLE", "ONDO", "ARB", "OP", "INJ", "LTC", "BCH", "WLD", "RENDER",
+  "AVAX", "BNB", "XRP", "ENA", "PENDLE", "ONDO", "ARB", "OP", "INJ", "LTC", "BCH", "WLD", "RENDER", "VVV", "JTO",
 ]);
 const EXCLUDED_ASSETS = new Set(parseList(process.env.MOMENTUM_ALERT_EXCLUDED_ASSETS, ["PURR", "HFUN"]));
 const AI_ASSETS = new Set(["TAO", "NEAR", "RENDER", "FET", "AIXBT", "WLD", "IO"]);
 const DEFI_ASSETS = new Set(["AAVE", "UNI", "CRV", "GMX", "JUP", "PENDLE", "ONDO", "MORPHO", "ENA", "CAKE"]);
-const MEME_ASSETS = new Set(["DOGE", "WIF", "POPCAT", "FARTCOIN", "TRUMP", "kPEPE", "PENGU", "BRETT"]);
+const MEME_ASSETS = new Set(["DOGE", "WIF", "POPCAT", "FARTCOIN", "TRUMP", "kPEPE", "PENGU", "BRETT", "VVV"]);
 const MAJOR_ASSETS = new Set(["BTC", "ETH", "SOL", "HYPE"]);
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 5 });
@@ -229,6 +233,10 @@ function computeMomentumFeatures(asset, candles, currentPrice) {
   const range24h = Math.max(high24h - low24h, currentPrice * 0.005);
   const breakout = currentPrice > recentHigh * 1.001;
   const nearHigh = currentPrice >= high24h - range24h * 0.22;
+  const breakdownWindow = candles.slice(Math.max(0, candles.length - 48 - 3), -3);
+  const recentLow = Math.min(...breakdownWindow.map((candle) => candle.low));
+  const breakdown = currentPrice < recentLow * 0.999;
+  const nearLow = currentPrice <= low24h + range24h * 0.26;
   const lastHourVolume = notionalVolume(candles.slice(-12));
   const previousHourlyVolumes = [];
   const previous = candles.slice(0, -12);
@@ -248,8 +256,11 @@ function computeMomentumFeatures(asset, candles, currentPrice) {
     return4h,
     return24h,
     breakout,
+    breakdown,
     nearHigh,
+    nearLow,
     recentHigh,
+    recentLow,
     high24h,
     low24h,
     range24h,
@@ -345,6 +356,7 @@ async function loadUniverse() {
       const symbol = normalizeSymbol(entry.name);
       const ctx = ctxs[index] ?? {};
       const markPx = parseNumber(ctx.markPx);
+      const prevDayPx = parseNumber(ctx.prevDayPx);
       const dayVolumeUsd = parseNumber(ctx.dayNtlVlm);
       const openInterestCoin = parseNumber(ctx.openInterest);
       const openInterestUsd = openInterestCoin * markPx;
@@ -353,6 +365,7 @@ async function loadUniverse() {
         rawName: entry.name,
         ctx,
         markPx,
+        dayChangePct: pctChange(markPx, prevDayPx) ?? 0,
         dayVolumeUsd,
         openInterestUsd,
         fundingApr: parseNumber(ctx.funding) * 8760 * 100,
@@ -378,7 +391,13 @@ async function loadUniverse() {
     const match = assets.find((asset) => asset.asset === symbol);
     if (match) selected.set(match.asset, match);
   }
-  return [...selected.values()].sort((a, b) => b.score - a.score).slice(0, Math.max(ASSET_LIMIT, PRIORITY_ASSETS.size));
+  for (const asset of assets
+    .filter((item) => Math.abs(item.dayChangePct) >= 7.5)
+    .sort((a, b) => Math.abs(b.dayChangePct) - Math.abs(a.dayChangePct))
+    .slice(0, DYNAMIC_MOVER_LIMIT)) {
+    selected.set(asset.asset, asset);
+  }
+  return [...selected.values()].sort((a, b) => b.score - a.score);
 }
 
 async function fetchCandles(asset) {
@@ -434,67 +453,83 @@ async function loadNearestLevel(asset, kind, currentPrice) {
   }
 }
 
-function scoreCandidate(asset, features, oiChangePct) {
+function scoreCandidate(asset, features, oiChangePct, direction = "long") {
   const r1h = features.return1h ?? 0;
   const r4h = features.return4h ?? 0;
   const r24h = features.return24h ?? 0;
   const volumeVs = features.volumeVsBaseline ?? 1;
   const fundingApr = asset.fundingApr;
-  const strongMove = (r1h >= 1.2 && r4h >= 3) || (r4h >= 5) || (r24h >= 12 && r4h >= 2.5);
-  const confirmation = volumeVs >= 1.25 || (oiChangePct ?? 0) >= 2 || (r24h >= 15 && volumeVs >= 1.1);
-  const ignition = features.breakout && r4h >= 3.5 && r1h >= 0.8;
-  const continuation = r24h >= 10 && r4h >= 2.5 && features.nearHigh;
-  const broadRunner = r24h >= 15 && r4h >= 3.5 && volumeVs >= 1.1;
-  const localRunner = r4h >= 7 && r1h >= 1.0 && volumeVs >= 1.15;
+  const sign = direction === "short" ? -1 : 1;
+  const d1h = r1h * sign;
+  const d4h = r4h * sign;
+  const d24h = r24h * sign;
+  const structureBreak = direction === "short" ? features.breakdown : features.breakout;
+  const nearExtreme = direction === "short" ? features.nearLow : features.nearHigh;
+  const strongMove = (d1h >= 1.0 && d4h >= 2.6) || (d4h >= 4.6) || (d24h >= 9.5 && d4h >= 1.8);
+  const majorDayMove = d24h >= 22 && d1h >= -1.5 && volumeVs >= 0.7;
+  const confirmation = volumeVs >= 1.18 || (oiChangePct ?? 0) >= 1.5 || (d24h >= 12 && volumeVs >= 1.05) || majorDayMove;
+  const ignition = structureBreak && d4h >= 3 && d1h >= 0.6;
+  const continuation = d24h >= 8.5 && d4h >= 1.6 && nearExtreme;
+  const broadRunner = d24h >= 12 && d4h >= 2.2 && volumeVs >= 1.05;
+  const localRunner = d4h >= 5.5 && d1h >= 0.75 && volumeVs >= 1.05;
   // Catch mature trend days that have already broken out and are consolidating near highs.
   // This is the ZEC/TON case: the 24h move is obvious, but the latest 4h window may have cooled.
   const trendDayRunner =
-    r24h >= 18 &&
-    r1h >= 0.25 &&
-    volumeVs >= 1.1 &&
-    (features.nearHigh || r1h >= 1.5);
-  const qualifiesByMove = strongMove || trendDayRunner;
+    d24h >= 14 &&
+    d1h >= -1.25 &&
+    volumeVs >= 0.85 &&
+    (nearExtreme || d4h >= 1.5 || d1h >= 0.4 || d24h >= 25);
+  const qualifiesByMove = strongMove || trendDayRunner || majorDayMove;
   if (!qualifiesByMove || !confirmation || (!ignition && !continuation && !broadRunner && !localRunner && !trendDayRunner)) {
-    if (DEBUG && (r24h >= 10 || r4h >= 4 || r1h >= 2)) {
+    if (DEBUG && (d24h >= 8 || d4h >= 3 || d1h >= 1.5)) {
       console.log(
-        `[momentum-alerts] reject ${asset.asset} move=${qualifiesByMove} confirm=${confirmation} r1=${r1h.toFixed(2)} r4=${r4h.toFixed(2)} r24=${r24h.toFixed(2)} vol=${volumeVs.toFixed(2)} breakout=${features.breakout} nearHigh=${features.nearHigh}`,
+        `[momentum-alerts] reject ${asset.asset} ${direction} move=${qualifiesByMove} confirm=${confirmation} r1=${r1h.toFixed(2)} r4=${r4h.toFixed(2)} r24=${r24h.toFixed(2)} vol=${volumeVs.toFixed(2)} break=${structureBreak} nearExtreme=${nearExtreme}`,
       );
     }
     return null;
   }
 
   let score = 42;
-  score += Math.min(Math.max(r1h, 0) * 4, 14);
-  score += Math.min(Math.max(r4h, 0) * 2.8, 22);
-  score += Math.min(Math.max(r24h, 0) * 0.9, 18);
-  if (features.breakout) score += 12;
-  if (features.nearHigh) score += 7;
+  score += Math.min(Math.max(d1h, 0) * 4, 14);
+  score += Math.min(Math.max(d4h, 0) * 2.8, 22);
+  score += Math.min(Math.max(d24h, 0) * 0.9, 18);
+  if (structureBreak) score += 12;
+  if (nearExtreme) score += 7;
   if (broadRunner) score += 6;
   if (localRunner) score += 4;
   if (trendDayRunner) score += 5;
+  if (majorDayMove) score += 6;
   score += Math.min(Math.max(volumeVs - 1, 0) * 7, 14);
   if (oiChangePct != null) score += Math.min(Math.max(oiChangePct, 0) * 1.4, 10);
-  if (fundingApr > 65) score -= Math.min((fundingApr - 65) * 0.18, 10);
-  if (fundingApr < -40) score -= Math.min(Math.abs(fundingApr + 40) * 0.08, 5);
+  if (direction === "long" && fundingApr > 65) score -= Math.min((fundingApr - 65) * 0.18, 10);
+  if (direction === "long" && fundingApr < -40) score -= Math.min(Math.abs(fundingApr + 40) * 0.08, 5);
+  if (direction === "short" && fundingApr < -65) score -= Math.min((Math.abs(fundingApr) - 65) * 0.18, 10);
   score = Math.max(0, Math.min(100, score));
   if (score < SCORE_THRESHOLD) {
-    if (DEBUG && (r24h >= 10 || r4h >= 4 || r1h >= 2)) {
-      console.log(`[momentum-alerts] reject ${asset.asset} score=${score.toFixed(1)} threshold=${SCORE_THRESHOLD}`);
+    if (DEBUG && (d24h >= 8 || d4h >= 3 || d1h >= 1.5)) {
+      console.log(`[momentum-alerts] reject ${asset.asset} ${direction} score=${score.toFixed(1)} threshold=${SCORE_THRESHOLD}`);
     }
     return null;
   }
 
   return {
+    direction,
     triggerKind: ignition ? "momentum_ignition" : "momentum_continuation",
     score,
     severity: score >= HIGH_SCORE_THRESHOLD ? "high" : "medium",
   };
 }
 
-async function hasRecentAssetAlert(asset, now) {
+async function hasRecentAssetAlert(asset, direction, now) {
   const result = await pool.query(
-    `select id, score from momentum_alert_events where asset = $1 and created_at >= $2 order by created_at desc limit 1`,
-    [asset, now - PER_ASSET_COOLDOWN_MS],
+    `select id, score
+     from momentum_alert_events
+     where asset = $1
+       and coalesce(payload->>'direction', 'long') = $2
+       and created_at >= $3
+     order by created_at desc
+     limit 1`,
+    [asset, direction, now - PER_ASSET_COOLDOWN_MS],
   );
   return result.rows[0] ?? null;
 }
@@ -525,24 +560,38 @@ async function buildCandidate(asset) {
   const features = computeMomentumFeatures(asset.asset, candles, asset.markPx);
   if (!features) return null;
   const oiChangePct = await getOpenInterestChangePct(asset);
-  const score = scoreCandidate(asset, features, oiChangePct);
+  const longScore = scoreCandidate(asset, features, oiChangePct, "long");
+  const shortScore = scoreCandidate(asset, features, oiChangePct, "short");
+  const score = !shortScore || (longScore && longScore.score >= shortScore.score) ? longScore : shortScore;
   if (!score) return null;
+  const direction = score.direction;
 
   const support = await loadNearestLevel(asset.asset, "support", asset.markPx);
   const resistance = await loadNearestLevel(asset.asset, "resistance", asset.markPx);
   const atr = features.atr ?? asset.markPx * 0.015;
-  const invalidationPrice = Math.max(
+  const longInvalidation = Math.max(
     support?.zoneLow || support?.price || 0,
     Math.min(features.localPullbackLow, asset.markPx - atr * 1.25),
   );
-  const fallbackTarget = Math.max(features.high24h, asset.markPx + atr * 2.2);
-  const targetPrice = resistance?.zoneHigh && resistance.zoneHigh > asset.markPx * 1.004
+  const shortInvalidation = resistance?.zoneHigh && resistance.zoneHigh > asset.markPx
     ? resistance.zoneHigh
-    : fallbackTarget;
+    : Math.max(features.localHigh, asset.markPx + atr * 1.25);
+  const invalidationPrice = direction === "short" ? shortInvalidation : longInvalidation;
+  const longFallbackTarget = Math.max(features.high24h, asset.markPx + atr * 2.2);
+  const shortFallbackTarget = Math.min(features.low24h, asset.markPx - atr * 2.2);
+  const longTarget = resistance?.zoneHigh && resistance.zoneHigh > asset.markPx * 1.004
+    ? resistance.zoneHigh
+    : longFallbackTarget;
+  const shortTarget = support?.zoneLow && support.zoneLow < asset.markPx * 0.996
+    ? support.zoneLow
+    : shortFallbackTarget;
+  const targetPrice = direction === "short" ? shortTarget : longTarget;
   const volumeVs = features.volumeVsBaseline ?? 1;
   const oiText = oiChangePct == null ? "OI context limited" : `OI ${formatPct(oiChangePct)}`;
   const bucket = momentumBucket(asset.asset);
-  const reason = `${asset.asset} broke higher with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`;
+  const reason = direction === "short"
+    ? `${asset.asset} broke lower with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h downside momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`
+    : `${asset.asset} broke higher with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`;
 
   return {
     asset: asset.asset,
@@ -564,17 +613,20 @@ async function buildCandidate(asset) {
     targetPrice,
     routeHref: `/markets?asset=${encodeURIComponent(asset.asset)}`,
     payload: {
-      direction: "long",
+      direction,
       signalBucket: bucket,
       easternDate: easternDateKey(),
       interval: CANDLE_INTERVAL,
       breakout: features.breakout,
+      breakdown: features.breakdown,
       nearHigh: features.nearHigh,
+      nearLow: features.nearLow,
       recentHigh: features.recentHigh,
+      recentLow: features.recentLow,
       support,
       resistance,
       atr,
-      fundingPenaltyApplied: asset.fundingApr > 65,
+      fundingPenaltyApplied: direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65,
       liquidity: {
         minOiUsd: MIN_OI_USD,
         minVolumeUsd: MIN_VOLUME_USD,
@@ -586,7 +638,7 @@ async function buildCandidate(asset) {
 function eventId(candidate, now) {
   const bucket = Math.floor(now / LOOP_INTERVAL_MS) * LOOP_INTERVAL_MS;
   return createHash("sha256")
-    .update(`${candidate.asset}:${candidate.triggerKind}:${bucket}:${candidate.alertPrice.toFixed(8)}`)
+    .update(`${candidate.asset}:${candidate.payload?.direction ?? "long"}:${candidate.triggerKind}:${bucket}:${candidate.alertPrice.toFixed(8)}`)
     .digest("hex")
     .slice(0, 24);
 }
@@ -594,12 +646,14 @@ function eventId(candidate, now) {
 function buildTelegramText(alert) {
   const link = new URL(alert.routeHref, APP_URL).toString();
   const conviction = alert.severity === "high" ? "HIGH" : "MEDIUM";
+  const direction = alert.payload?.direction === "short" ? "Short" : "Long";
+  const invalidationLabel = direction === "Short" ? "invalid above" : "invalid below";
   const lines = [
     `⚡ MOMENTUM ALERT · ${conviction}`,
-    `${alert.asset} Long · ${formatPct(alert.return1hPct)} 1h · ${formatPct(alert.return4hPct)} 4h · ${formatPct(alert.return24hPct)} 24h`,
+    `${alert.asset} ${direction} · ${formatPct(alert.return1hPct)} 1h · ${formatPct(alert.return4hPct)} 4h · ${formatPct(alert.return24hPct)} 24h`,
     `ALERT PRICE: ${formatPrice(alert.alertPrice)} · OI ${formatUsd(alert.openInterestUsd)} · volume ${alert.volumeVsBaseline.toFixed(1)}x`,
     `WHY: ${alert.reason}`,
-    `WATCH: target ${formatPrice(alert.targetPrice)} · invalid below ${formatPrice(alert.invalidationPrice)}`,
+    `WATCH: target ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`,
     `TIME: ${easternTimeLabel(alert.createdAt)}`,
     link,
   ];
@@ -695,9 +749,15 @@ async function flushTelegramQueue() {
   if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || DRY_RUN) return 0;
   const result = await pool.query(
     `select id, payload, attempts from notification_queue
-     where event_type = 'momentum_alert' and channel = 'telegram' and status = 'queued'
+     where event_type = 'momentum_alert'
+       and channel = 'telegram'
+       and (
+         status = 'queued'
+         or (status in ('disabled', 'failed') and created_at >= $1 and attempts < 3)
+       )
      order by created_at asc
      limit 10`,
+    [Date.now() - 24 * 60 * 60 * 1000],
   );
   let sent = 0;
   for (const row of result.rows) {
@@ -723,7 +783,15 @@ async function flushTelegramQueue() {
 
 async function runCycle() {
   await assertTablesReady();
-  const runId = await startRun({ network: NETWORK, dryRun: DRY_RUN, storeDailyCap: STORE_DAILY_CAP, telegramDailyCap: TELEGRAM_DAILY_CAP });
+  const runId = await startRun({
+    network: NETWORK,
+    dryRun: DRY_RUN,
+    dynamicMoverLimit: DYNAMIC_MOVER_LIMIT,
+    telegramConfigured: TELEGRAM_CONFIGURED,
+    telegramEnabled: TELEGRAM_ENABLED,
+    storeDailyCap: STORE_DAILY_CAP,
+    telegramDailyCap: TELEGRAM_DAILY_CAP,
+  });
   const now = Date.now();
   const easternDate = easternDateKey(now);
   try {
@@ -733,7 +801,7 @@ async function runCycle() {
       try {
         const candidate = await buildCandidate(asset);
         if (!candidate) continue;
-        const recent = await hasRecentAssetAlert(candidate.asset, now);
+        const recent = await hasRecentAssetAlert(candidate.asset, candidate.payload?.direction ?? "long", now);
         if (recent) continue;
         candidates.push(candidate);
       } catch (error) {
@@ -749,7 +817,7 @@ async function runCycle() {
     const bucketCounts = new Map();
     for (const candidate of candidates) {
       if (remaining <= 0) break;
-      const bucket = candidate.payload?.signalBucket ?? momentumBucket(candidate.asset);
+      const bucket = `${candidate.payload?.direction ?? "long"}:${candidate.payload?.signalBucket ?? momentumBucket(candidate.asset)}`;
       const bucketCount = bucketCounts.get(bucket) ?? 0;
       if (bucketCount >= MAX_PER_SIGNAL_BUCKET) continue;
       const result = await persistAlert({
@@ -782,7 +850,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT}`}`);
+  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + movers`}`);
   await runCycle();
   if (RUN_ONCE) {
     await pool.end();

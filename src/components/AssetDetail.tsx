@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { X } from "lucide-react";
+import { BookOpenCheck, X } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -16,6 +16,7 @@ import { cn, formatCompactUsd, formatUSD, formatPct, formatFundingRate, formatFu
 import { getFundingRegime } from "@/lib/fundingRegime";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick } from "@/lib/time";
+import { useShadowBook } from "@/context/ShadowBookContext";
 import {
   computePositioningContext,
   formatPositioningDepth,
@@ -57,6 +58,7 @@ export default function AssetDetail({
   const [orderbookError, setOrderbookError] = useState<string | null>(null);
   const [tab, setTab] = useState<"price" | "liquidity" | "funding" | "leverage">("price");
   const [fundingView, setFundingView] = useState<"apr" | "hourly">("apr");
+  const { openTicket } = useShadowBook();
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const priceColor =
@@ -219,11 +221,26 @@ export default function AssetDetail({
       </div>
 
       {/* Tab selector */}
-      <div className="flex items-center gap-1 px-4 pb-2">
+      <div className="flex flex-wrap items-center gap-1 px-4 pb-2">
         <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
         <FilterChip label="Liquidity map" active={tab === "liquidity"} onClick={() => setTab("liquidity")} className="py-1.5 text-xs" />
         <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
         <FilterChip label="Positioning" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
+        <div className="ml-auto flex flex-wrap items-center gap-1">
+          <button
+            onClick={() => openTicket({ asset: asset.coin, side: "long", entryPrice: asset.markPx, source: "market_setup" })}
+            className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-200 transition hover:bg-emerald-500/15"
+          >
+            <BookOpenCheck className="h-3 w-3" />
+            Track long
+          </button>
+          <button
+            onClick={() => openTicket({ asset: asset.coin, side: "short", entryPrice: asset.markPx, source: "market_setup" })}
+            className="inline-flex items-center gap-1 rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-medium text-rose-200 transition hover:bg-rose-500/15"
+          >
+            Track short
+          </button>
+        </div>
       </div>
 
       {/* Chart area */}
