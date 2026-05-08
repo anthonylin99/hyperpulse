@@ -20,11 +20,16 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DATABASE_URL =
+  process.env.NEON_DATABASE_URL ??
+  process.env.DATABASE_URL ??
+  process.env.POSTGRES_URL ??
+  process.env.NEON_DATABASE_URL_POOLING ??
+  "";
 const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR ?? "migrations";
 
 if (!DATABASE_URL) {
-  console.error("[migrate] DATABASE_URL or POSTGRES_URL is required.");
+  console.error("[migrate] NEON_DATABASE_URL, DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL_POOLING is required.");
   process.exit(1);
 }
 

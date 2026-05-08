@@ -1,7 +1,8 @@
 import { Pool } from "pg";
+import { getPooledDatabaseUrl } from "@/lib/databaseEnv";
 import type { MomentumAlert, NotificationDeliveryStatus } from "@/types";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DATABASE_URL = getPooledDatabaseUrl();
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
 const WORKER_STALE_MS = 15 * 60 * 1000;
 

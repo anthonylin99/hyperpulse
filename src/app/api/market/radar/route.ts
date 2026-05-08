@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { Pool } from "pg";
 import { MIN_OI_USD } from "@/lib/constants";
+import { getPooledDatabaseUrl } from "@/lib/databaseEnv";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { enforceRateLimit, jsonError, jsonSuccess, logServerError } from "@/lib/security";
 import { computeMomentumEdges, selectMomentumEdges, type MomentumEdgeAsset, type RadarBetaInfo } from "@/lib/marketRadarScoring";
@@ -22,7 +23,7 @@ const RADAR_MAX_PER_BUCKET = 3;
 const RADAR_MIN_VOLUME_USD = 20_000_000;
 const RADAR_SCORE_THRESHOLD = 0.75;
 const RADAR_WEAK_SCORE_THRESHOLD = 0.35;
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DATABASE_URL = getPooledDatabaseUrl();
 const BETA_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const BETA_MIN_SAMPLES = 72;
 

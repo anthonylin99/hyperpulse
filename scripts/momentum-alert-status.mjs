@@ -18,9 +18,15 @@ function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^["']|["']$/g, "");
 }
 
-const url = cleanEnv(process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "");
+const url = cleanEnv(
+  process.env.NEON_DATABASE_URL_POOLING ??
+    process.env.NEON_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_URL ??
+    "",
+);
 if (!url) {
-  console.error("DATABASE_URL or POSTGRES_URL is required.");
+  console.error("NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required.");
   process.exit(1);
 }
 

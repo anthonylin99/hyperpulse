@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { getPooledDatabaseUrl } from "@/lib/databaseEnv";
 import {
   buildReactionLevels,
   type ReactionBookBucket,
@@ -11,7 +12,7 @@ import {
   type ReactionTradeBucket,
 } from "@/lib/reactionLevels";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DATABASE_URL = getPooledDatabaseUrl();
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
 
 let pool: Pool | null = null;

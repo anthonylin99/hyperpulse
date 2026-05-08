@@ -21,6 +21,8 @@ services:
       dockerfile: workers/market-collector/Dockerfile
     command: ["npm", "run", "db:migrate"]
     environment:
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
       DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
     depends_on:
       db:
@@ -33,6 +35,8 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
     environment:
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
       DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       ENABLE_TRADING: "false"
@@ -48,6 +52,8 @@ services:
       context: .
       dockerfile: workers/market-collector/Dockerfile
     environment:
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
       DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
       MARKET_COLLECTOR_ASSET_LIMIT: ${MARKET_COLLECTOR_ASSET_LIMIT:-15}
       MARKET_COLLECTOR_INTERVAL_MS: ${MARKET_COLLECTOR_INTERVAL_MS:-300000}
@@ -63,6 +69,8 @@ services:
       context: .
       dockerfile: workers/momentum-alerts/Dockerfile
     environment:
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
       DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
       MOMENTUM_ALERT_INTERVAL_MS: ${MOMENTUM_ALERT_INTERVAL_MS:-300000}
       MOMENTUM_ALERT_ASSET_LIMIT: ${MOMENTUM_ALERT_ASSET_LIMIT:-45}
@@ -83,6 +91,8 @@ services:
       context: .
       dockerfile: workers/reaction-map/Dockerfile
     environment:
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
       DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
       REACTION_MAP_ASSETS: ${REACTION_MAP_ASSETS:-BTC,ETH,SOL}
       REACTION_MAP_BUCKET_MS: ${REACTION_MAP_BUCKET_MS:-60000}

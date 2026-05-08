@@ -235,3 +235,24 @@
 - Attempted: sampled the SOL reaction-level API repeatedly, inspected current Neon exposure-zone rows through the web container, and traced the flip to side assignment using the zone midpoint versus current mark price.
 - Decision: classify OI Holding side from inferred buy-vs-sell flow instead of current-price location, keep chart support/resistance placement separate, and rename user-facing labels to Long OI / Short OI so the holder side is not confused with a directional area call.
 - Result: rebuilt web and reaction-map containers. The SOL 87.75-88.25 band sampled consistently as Long OI across repeated API checks, and Browser Use verified the chart shows `87.75-88.25 Pivot Long OI holding zone`, `#1 long OI`, and tooltip flow details.
+
+## 2026-05-08
+
+- Request: investigate whether a real Neon Postgres URL was hardcoded into the repo.
+- Attempted: fetched/pulled the current branch, searched tracked files for Neon/Postgres URL patterns, checked the worker-only Compose and deploy docs, and looked for `.env` files without exposing secret values.
+- Decision: keep `docker-compose.reaction-map.yml` requiring `DATABASE_URL` from the environment; the full local Compose file may keep its local `db` fallback for local development.
+- Result: no committed real Neon URL was found. The only tracked concrete Postgres URL is the local Docker fallback `postgres://hyperpulse:hyperpulse@db:5432/hyperpulse`; docs and examples use placeholders.
+
+## 2026-05-08
+
+- Request: support the existing `.env` names `NEON_DATABASE_URL` and `NEON_DATABASE_URL_POOLING`.
+- Attempted: updated Next server stores, workers, scripts, Compose files, and worker docs/examples to accept the Neon env names while keeping `DATABASE_URL` and `POSTGRES_URL` as fallbacks.
+- Decision: prefer `NEON_DATABASE_URL_POOLING` for app/workers and prefer `NEON_DATABASE_URL` for migrations, with pooled URL as a final migration fallback if it is the only configured value.
+- Result: `.env` is now ignored by Git and Docker build context, the Docker production web build passed, web restarted on port `3004` because `3000` is owned by another container, and the Reaction Map worker rebuilt/restarted using `NEON_DATABASE_URL_POOLING`.
+
+## 2026-05-08
+
+- Request: make the Linux Reaction Map worker deploy path ingest OI flows so the frontend picks up fresh top OI Holding levels.
+- Attempted: made `docker-compose.reaction-map.yml` fail fast unless both Neon direct and pooled URLs are set, added a Linux deploy/smoke script, and expanded the deploy doc with the worker-to-frontend runtime contract.
+- Decision: keep migrations outside the worker-only host; use `NEON_DATABASE_URL` from the app/deploy pipeline for schema changes, then run only the worker on Linux with `NEON_DATABASE_URL_POOLING`.
+- Result: the worker-only Compose file still resolves to just `reaction-map`, the worker is flushing BTC/ETH/SOL rows, and the local frontend API reads OI Holding rows for BTC, ETH, and SOL from the same Neon-backed store.

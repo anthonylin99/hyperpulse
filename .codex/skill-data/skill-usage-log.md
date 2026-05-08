@@ -277,3 +277,27 @@
 - What helped: comparing repeated API samples, worker classification code, and Browser Use DOM made it clear that current-price-relative side assignment was causing identity churn around spot.
 - Friction or missing capability: the worker still uses bull/bear as the DB enum, so the UI needed copy translation to Long OI / Short OI rather than a schema rename.
 - Recommendation: add a regression seam for OI Holding side classification and chart placement so holder side and support/resistance location stay decoupled.
+
+## 2026-05-08
+
+- Request summary: investigate whether a real Neon Postgres URL was hardcoded into the repo.
+- Skills used: `verification-gate`, `repo-execution`.
+- What helped: tracked-only `git grep` separated committed placeholders/local Compose defaults from runtime environment secrets.
+- Friction or missing capability: broad recursive `.env` discovery can hit ignored dependency trees, so targeted env-file checks were faster and safer.
+- Recommendation: keep real Neon URLs in deployment secrets or a local ignored `.env`, and avoid adding concrete hostnames to docs or Compose files.
+
+## 2026-05-08
+
+- Request summary: support the user's current `.env` names `NEON_DATABASE_URL` and `NEON_DATABASE_URL_POOLING`.
+- Skills used: `verification-gate`, `repo-execution`, `coding-discipline`.
+- What helped: checking container env presence without printing values proved Compose was passing the Neon aliases and the code was choosing the pooled URL.
+- Friction or missing capability: the default web port `3000` was already held by another container, so the rebuilt web service had to start on `3004`.
+- Recommendation: keep Neon direct and pooled env names as first-class config names instead of requiring ad hoc aliasing to `DATABASE_URL`.
+
+## 2026-05-08
+
+- Request summary: make the Linux Reaction Map worker deploy path ingest OI flows for frontend OI Holding pickup.
+- Skills used: `verification-gate`, `coding-discipline`, `repo-execution`.
+- What helped: keeping worker-only Compose separate from the full local stack preserved the no-local-db deploy path while direct API checks proved frontend pickup.
+- Friction or missing capability: the Linux Bash deploy wrapper syntax checks locally, but Git-Bash/Docker capture on Windows hung, so validation used the underlying Compose and API commands directly.
+- Recommendation: run `scripts/deploy-reaction-map-worker.sh` on the actual Linux host after pulling this branch, then verify frontend `/api/market/reaction-levels` against the same Neon branch.
