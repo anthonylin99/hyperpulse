@@ -14,6 +14,7 @@ import {
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick, formatEasternDateTime } from "@/lib/time";
 import {
+  isDefaultReactionAsset,
   reactionLevelsToSupportResistanceLevels,
   type ReactionLevelsPayload,
   type ReactionOverlayMode,
@@ -362,7 +363,7 @@ export default function PriceChart({
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
-  const reactionSupported = marketType === "perp";
+  const reactionSupported = marketType === "perp" && isDefaultReactionAsset(coin);
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
   const levels = useMemo(
     () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, overlayMode) : []),
@@ -687,7 +688,7 @@ export default function PriceChart({
       ? "Order Book levels need a few clean depth samples before they appear."
     : reactionSupported
       ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
-      : "Reaction Map is available for Hyperliquid perps.";
+      : "Reaction Map is limited to major liquid perps so smaller names do not show noisy pressure bands.";
   const hasActionablePlan = tradePlan.bias !== "wait";
 
   return (

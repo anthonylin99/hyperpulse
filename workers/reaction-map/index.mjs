@@ -33,7 +33,7 @@ if (!DATABASE_URL) {
 }
 
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
-const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, ["BTC", "ETH", "SOL"]).map((asset) =>
+const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, ["BTC", "ETH", "SOL", "HYPE", "XRP", "DOGE", "ZEC", "AAVE"]).map((asset) =>
   asset.toUpperCase(),
 );
 const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["5m", "15m", "1h"])

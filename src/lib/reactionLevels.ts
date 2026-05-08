@@ -16,7 +16,18 @@ export type ReactionPrimarySource = "book" | "positioning" | "stress" | "mixed";
 export type ReactionOverlayMode = "all" | "book" | "oi_holding" | "stress";
 export type ReactionExposureSide = "bull" | "bear";
 
-const DEFAULT_REACTION_ASSETS = new Set(["BTC", "ETH", "SOL", "HYPE"]);
+export const REACTION_MAP_ASSETS = [
+  "BTC",
+  "ETH",
+  "SOL",
+  "HYPE",
+  "XRP",
+  "DOGE",
+  "ZEC",
+  "AAVE",
+] as const;
+
+const DEFAULT_REACTION_ASSETS = new Set<string>(REACTION_MAP_ASSETS);
 
 export interface ReactionBookBucket {
   price: number;

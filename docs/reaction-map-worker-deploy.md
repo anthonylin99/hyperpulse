@@ -19,7 +19,7 @@ Create a droplet `.env` next to the compose file, or set these values in the Lin
 ```bash
 NEON_DATABASE_URL="postgresql://...?sslmode=verify-full"
 NEON_DATABASE_URL_POOLING="postgresql://...?sslmode=verify-full"
-REACTION_MAP_ASSETS=BTC,ETH,SOL
+REACTION_MAP_ASSETS=BTC,ETH,SOL,HYPE,XRP,DOGE,ZEC,AAVE
 REACTION_MAP_BUCKET_MS=60000
 REACTION_MAP_FLUSH_MS=15000
 REACTION_MAP_BOOK_LEVEL_LIMIT=40
@@ -68,7 +68,7 @@ reaction-map
 Healthy logs look like:
 
 ```text
-[reaction-map] starting network=mainnet assets=BTC,ETH,SOL bucketMs=60000
+[reaction-map] starting network=mainnet assets=BTC,ETH,SOL,HYPE,XRP,DOGE,ZEC,AAVE bucketMs=60000
 [reaction-map] subscribed BTC wideBooks=3,2
 [reaction-map] subscribed ETH wideBooks=3,2
 [reaction-map] subscribed SOL wideBooks=3,2
@@ -101,4 +101,4 @@ After the worker flushes rows, check the frontend against the same Neon project:
 curl -fsS "https://hyperpulsehl.com/api/market/reaction-levels?coin=BTC&window=15m" | head -c 500
 ```
 
-The response should include `levels` and OI Holding overlay entries once the worker has flushed fresh BTC/ETH/SOL buckets. If the Linux worker is healthy but the frontend stays stale, check the frontend deploy env first: it needs `NEON_DATABASE_URL_POOLING` for runtime reads.
+The response should include `levels` and OI Holding overlay entries once the worker has flushed fresh buckets for the configured major assets. If the Linux worker is healthy but the frontend stays stale, check the frontend deploy env first: it needs `NEON_DATABASE_URL_POOLING` for runtime reads.
