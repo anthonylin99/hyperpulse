@@ -1,5 +1,4 @@
 export const ENABLE_TRADING_DEFAULT = false;
-export const ENABLE_WHALES_DEFAULT = false;
 export const ENABLE_FACTORS_DEFAULT = false;
 export const ENABLE_FACTORS_PROD_DEFAULT = false;
 
@@ -29,15 +28,6 @@ export function isTradingEnabled() {
       readEnvFlag(process.env.ENABLE_TRADING),
       readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_TRADING),
     ) ?? ENABLE_TRADING_DEFAULT
-  );
-}
-
-export function isWhalesEnabled() {
-  return (
-    resolveFlag(
-      readEnvFlag(process.env.ENABLE_WHALES),
-      readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_WHALES),
-    ) ?? ENABLE_WHALES_DEFAULT
   );
 }
 

@@ -10,26 +10,9 @@ function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^["']|["']$/g, "");
 }
 
-function envFlag(name, fallback = false) {
-  const value = cleanEnv(process.env[name]).toLowerCase();
-  if (!value) return fallback;
-  return value === "true" || value === "1" || value === "yes";
-}
-
-const momentumOnly = envFlag("MOMENTUM_ONLY");
-const whaleEnabled = !momentumOnly && cleanEnv(process.env.WHALE_INDEXER_ENABLED).toLowerCase() !== "false";
 const momentumEnabled = cleanEnv(process.env.MOMENTUM_ALERTS_ENABLED).toLowerCase() !== "false";
 
 const workers = [
-  ...(whaleEnabled
-    ? [
-        {
-          name: "whale-indexer",
-          command: "node",
-          args: ["workers/whale-indexer/index.mjs"],
-        },
-      ]
-    : []),
   ...(momentumEnabled
     ? [
         {
@@ -48,7 +31,7 @@ console.log(
 );
 
 if (!workers.length) {
-  console.error("[supervisor] no workers enabled; set MOMENTUM_ALERTS_ENABLED=true or WHALE_INDEXER_ENABLED=true");
+  console.error("[supervisor] no workers enabled; set MOMENTUM_ALERTS_ENABLED=true");
   process.exit(1);
 }
 

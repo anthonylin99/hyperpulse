@@ -68,8 +68,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const shouldFetchMarketEnrichment =
     pathname === "/" ||
     pathname === "/markets" ||
-    pathname.startsWith("/markets/") ||
-    pathname.startsWith("/whales");
+    pathname.startsWith("/markets/");
 
   const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
     const signature = `${entry.type}|${entry.coin}|${entry.message}`;

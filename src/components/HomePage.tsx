@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -11,11 +10,9 @@ import {
   LockKeyhole,
   ScanLine,
   ShieldCheck,
-  Waves,
 } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
-import { useAppConfig } from "@/context/AppConfigContext";
 import LandingProductPreview from "@/components/app/LandingProductPreview";
 
 const CAPABILITIES = [
@@ -26,10 +23,10 @@ const CAPABILITIES = [
     icon: BarChart3,
   },
   {
-    title: "Smart Money Tracking",
-    description: "Monitor whale flow, conviction adds, and tracked trader pressure in real time.",
-    href: "/whales",
-    icon: Waves,
+    title: "Momentum Alerts",
+    description: "Review saved momentum flags with alert price, timestamp, invalidation, and current return.",
+    href: "/alerts",
+    icon: ScanLine,
   },
   {
     title: "Portfolio Review",
@@ -47,17 +44,9 @@ const CAPABILITIES = [
 
 export default function HomePage() {
   const { isConnected } = useWallet();
-  const { whalesEnabled } = useAppConfig();
   const { assets } = useMarket();
-  const workspaceCount = 3 + (whalesEnabled ? 1 : 0);
-  const capabilities = useMemo(
-    () =>
-      CAPABILITIES.filter((item) => {
-        if (!whalesEnabled && item.title === "Smart Money Tracking") return false;
-        return true;
-      }),
-    [whalesEnabled],
-  );
+  const workspaceCount = 4;
+  const capabilities = CAPABILITIES;
 
   const primaryHref = isConnected ? "/portfolio" : "/markets";
 

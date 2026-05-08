@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   CandlestickSeries,
   ColorType,
@@ -163,12 +162,6 @@ function formatTimeMs(timeMs: number | null | undefined): string {
   return formatEasternDateTime(timeMs);
 }
 
-function confidenceClass(confidence: "low" | "medium" | "high" | undefined): string {
-  if (confidence === "high") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
-  if (confidence === "medium") return "border-amber-500/30 bg-amber-500/10 text-amber-300";
-  return "border-zinc-700 bg-zinc-900 text-zinc-400";
-}
-
 type LevelRead = {
   label: "Rejection" | "Break" | "Pivot" | "Stress";
   summary: string;
@@ -284,89 +277,6 @@ function formatCompactUsd(value: number | null | undefined): string {
   return `$${value.toFixed(0)}`;
 }
 
-function riskCopy(level: SupportResistanceLevel): string {
-  return level.flowSide === "forced_sell" ? "sell-risk" : "buy-risk";
-}
-
-function sideLabel(level: SupportResistanceLevel): string {
-  if (level.exposureSide === "bull") return "long OI";
-  if (level.exposureSide === "bear") return "short OI";
-  return level.flowSide === "forced_sell" ? "likely long holding" : "likely short holding";
-}
-
-function flowSummary(level: SupportResistanceLevel): string {
-  if (isStressZone(level)) {
-    return `Tracked/inferred stress / ${formatCompactUsd(level.notionalUsd)} ${level.flowSide === "forced_sell" ? "sell-stress" : "buy-stress"} / Score ${
-      level.lfxScore ?? level.pressureScore ?? "n/a"
-    }`;
-  }
-  if (level.leverageBucket === "positioning") {
-    return `Top #${level.flowRank ?? "?"} OI zone / ${formatCompactUsd(level.notionalUsd)} flow / ${sideLabel(level)} / Score ${
-      level.lfxScore ?? level.pressureScore ?? "n/a"
-    }`;
-  }
-
-  const rank =
-    level.flowRank != null && level.flowRank <= 2
-      ? `Top #${level.flowRank}`
-      : (level.flowRelative ?? 0) >= 1.15
-        ? "Above avg"
-        : "Market flow";
-  return `${rank} / ${formatCompactUsd(level.notionalUsd)} ${riskCopy(level)} / Score ${level.lfxScore ?? level.pressureScore ?? "n/a"}`;
-}
-
-function nearestLower(levels: SupportResistanceLevel[], price: number): SupportResistanceLevel | null {
-  return levels.filter((level) => level.price < price).sort((a, b) => b.price - a.price)[0] ?? null;
-}
-
-function nearestHigher(levels: SupportResistanceLevel[], price: number): SupportResistanceLevel | null {
-  return levels.filter((level) => level.price > price).sort((a, b) => a.price - b.price)[0] ?? null;
-}
-
-function describeFlowPath(
-  level: SupportResistanceLevel,
-  sameSideLevels: SupportResistanceLevel[],
-  oppositeLevels: SupportResistanceLevel[],
-): string {
-  if (level.kind === "support") {
-    const holdTarget = nearestHigher(oppositeLevels, level.price);
-    const failTarget = nearestLower(sameSideLevels, level.price);
-    return `Reject -> ${holdTarget ? formatLevelRange(holdTarget) : "next upside flow"}; break -> ${
-      failTarget ? formatLevelRange(failTarget) : "lower flow"
-    }`;
-  }
-
-  const clearTarget = nearestHigher(sameSideLevels, level.price);
-  const rejectTarget = nearestLower(oppositeLevels, level.price);
-  return `Break -> ${clearTarget ? formatLevelRange(clearTarget) : "higher flow"}; reject -> ${
-    rejectTarget ? formatLevelRange(rejectTarget) : "nearest downside flow"
-  }`;
-}
-
-function evidenceToneClass(text: string): string {
-  const normalized = text.toLowerCase();
-  if (normalized.includes("stress") || normalized.includes("tracked")) {
-    return "border-zinc-700 bg-zinc-900 text-zinc-300";
-  }
-  if (normalized.includes("thin") || normalized.includes("sell-risk") || normalized.includes("buy-risk")) {
-    return "border-amber-500/25 bg-amber-500/10 text-amber-200";
-  }
-  if (
-    normalized.includes("top #") ||
-    normalized.includes("above-average") ||
-    normalized.includes("high leverage") ||
-    normalized.includes("near current") ||
-    normalized.includes("projected") ||
-    normalized.includes("inferred")
-  ) {
-    return "border-sky-500/25 bg-sky-500/10 text-sky-200";
-  }
-  if (normalized.includes("high reach") || normalized.includes("deep")) {
-    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
-  }
-  return "border-zinc-800 bg-zinc-950 text-zinc-500";
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -398,15 +308,6 @@ function levelAlpha(level: SupportResistanceLevel, index: number): number {
   return Number(clamp(0.2 + strength * 0.72, 0.28, 0.96).toFixed(3));
 }
 
-function chartTagForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): string {
-  if (isStressZone(level)) return `${side === "downside" ? "sell" : "buy"} stress`;
-  if (level.leverageBucket === "book") return `${side === "downside" ? "bid" : "ask"} book`;
-  if (level.leverageBucket === "positioning") return `#${level.flowRank ?? "?"} ${level.exposureSide === "bear" ? "short" : "long"} OI`;
-  if (level.leverageBucket === "mixed") return "mixed level";
-  if (level.flowRank != null) return `#${level.flowRank} ${side === "downside" ? "sell" : "buy"} flow`;
-  return level.label;
-}
-
 function reactionDisplayPriority(level: SupportResistanceLevel): number {
   const score = level.lfxScore ?? level.pressureScore ?? level.strength;
   const distance = Math.abs(level.distancePct ?? 0);
@@ -436,10 +337,6 @@ type ChartZoneBand = {
   top: number;
   height: number;
   centerY: number;
-  arrowTop: number | null;
-  arrowHeight: number | null;
-  arrowDirection: "up" | "down" | null;
-  arrowRight: number;
   alpha: number;
 };
 
@@ -453,7 +350,6 @@ export default function PriceChart({
   const chartFrameRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const pageScrollLockRef = useRef<{ htmlOverflow: string; bodyOverflow: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
@@ -464,6 +360,7 @@ export default function PriceChart({
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
   const reactionSupported = marketType === "perp";
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
@@ -506,23 +403,17 @@ export default function PriceChart({
       ),
     [currentPrice, levels, overlayMode],
   );
+  const activeZoneId = hoveredZoneId ?? selectedZoneId;
+  const activeZoneBand = useMemo(
+    () => zoneBands.find((band) => band.id === activeZoneId) ?? zoneBands[0] ?? null,
+    [activeZoneId, zoneBands],
+  );
 
-  const lockPageScrollInChart = () => {
-    if (typeof document === "undefined" || pageScrollLockRef.current) return;
-    pageScrollLockRef.current = {
-      htmlOverflow: document.documentElement.style.overflow,
-      bodyOverflow: document.body.style.overflow,
-    };
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-  };
-
-  const unlockPageScrollInChart = () => {
-    if (typeof document === "undefined" || !pageScrollLockRef.current) return;
-    document.documentElement.style.overflow = pageScrollLockRef.current.htmlOverflow;
-    document.body.style.overflow = pageScrollLockRef.current.bodyOverflow;
-    pageScrollLockRef.current = null;
-  };
+  useEffect(() => {
+    if (selectedZoneId && !zoneBands.some((band) => band.id === selectedZoneId)) {
+      setSelectedZoneId(null);
+    }
+  }, [selectedZoneId, zoneBands]);
 
   useEffect(() => {
     let cancelled = false;
@@ -611,22 +502,6 @@ export default function PriceChart({
       cancelled = true;
     };
   }, [coin, interval, reactionSupported]);
-
-  useEffect(() => {
-    const frame = chartFrameRef.current;
-    if (!frame) return;
-
-    const stopPageScroll = (event: WheelEvent) => {
-      event.preventDefault();
-    };
-
-    frame.addEventListener("wheel", stopPageScroll, { passive: false });
-    return () => {
-      frame.removeEventListener("wheel", stopPageScroll);
-    };
-  }, []);
-
-  useEffect(() => () => unlockPageScrollInChart(), []);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -722,7 +597,6 @@ export default function PriceChart({
     };
     let zoneFrame: number | null = null;
     const renderZoneBands = () => {
-      const currentY = currentPrice != null ? candleSeries.priceToCoordinate(currentPrice) : null;
       const nextBands: ChartZoneBand[] = [];
 
       [
@@ -739,9 +613,6 @@ export default function PriceChart({
         const alpha = levelAlpha(level, index);
         const top = Math.min(yLow, yHigh);
         const height = Math.max(4, Math.abs(yLow - yHigh));
-        const arrowHeight = currentY == null ? null : Math.max(18, Math.abs(yCenter - currentY));
-        const arrowTop = currentY == null ? null : Math.min(yCenter, currentY);
-        const arrowDirection = currentY == null ? null : yCenter < currentY ? "up" : "down";
 
         nextBands.push({
           id: level.id,
@@ -750,10 +621,6 @@ export default function PriceChart({
           top,
           height,
           centerY: yCenter,
-          arrowTop,
-          arrowHeight,
-          arrowDirection,
-          arrowRight: side === "upside" ? 172 + index * 18 : 104 + index * 18,
           alpha,
         });
       });
@@ -836,7 +703,7 @@ export default function PriceChart({
               </div>
               {marketType === "perp" ? (
                 <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
-                  {REACTION_WINDOW[interval]} reaction window
+                  {REACTION_WINDOW[interval]} zones
                 </div>
               ) : null}
               {currentPrice != null && (
@@ -845,9 +712,7 @@ export default function PriceChart({
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Order Book shows visible shelves. OI Holding shows inferred long and short holding zones from current ingested flow.
-            </div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Thin bands mark nearby pressure zones. Details stay below the chart so candles remain readable.</div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
@@ -884,22 +749,6 @@ export default function PriceChart({
                 </button>
               ))}
             </div>
-            {marketType === "perp" ? (
-              <>
-                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-300">
-                  Downside reaction
-                </span>
-                <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-rose-300">
-                  Upside reaction
-                </span>
-                <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-                  Inferred
-                </span>
-                <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1">
-                  Not exact positions
-                </span>
-              </>
-            ) : null}
           </div>
         </div>
       </div>
@@ -908,9 +757,6 @@ export default function PriceChart({
         <div
           ref={chartFrameRef}
           className="relative h-[360px] overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
-          onPointerEnter={lockPageScrollInChart}
-          onPointerLeave={unlockPageScrollInChart}
-          onBlur={unlockPageScrollInChart}
         >
           {loading ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
@@ -925,15 +771,21 @@ export default function PriceChart({
               <div ref={chartContainerRef} className="absolute inset-0" />
               <FlowZoneOverlay
                 bands={zoneBands}
-                hoveredZoneId={hoveredZoneId}
+                activeZoneId={activeZoneId}
                 onHover={setHoveredZoneId}
-                downsideLevels={visibleDownsideFlows}
-                upsideLevels={visibleUpsideFlows}
+                onSelect={setSelectedZoneId}
               />
             </>
           )}
         </div>
         <div className="mt-2 text-[11px] leading-5 text-zinc-500">{levelSourceNote}</div>
+        <ZoneDetailPanel
+          bands={zoneBands}
+          activeBand={activeZoneBand}
+          currentPrice={currentPrice}
+          onHover={setHoveredZoneId}
+          onSelect={setSelectedZoneId}
+        />
         {showReactionProgress ? (
           <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">
             <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-sky-400/70" />
@@ -1005,237 +857,186 @@ export default function PriceChart({
   );
 }
 
-function FlowZoneOverlay({
+function ZoneDetailPanel({
   bands,
-  hoveredZoneId,
+  activeBand,
+  currentPrice,
   onHover,
-  downsideLevels,
-  upsideLevels,
+  onSelect,
 }: {
   bands: ChartZoneBand[];
-  hoveredZoneId: string | null;
+  activeBand: ChartZoneBand | null;
+  currentPrice: number | null;
   onHover: (id: string | null) => void;
-  downsideLevels: SupportResistanceLevel[];
-  upsideLevels: SupportResistanceLevel[];
+  onSelect: (id: string) => void;
 }) {
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-  const hoveredBand = bands.find((band) => band.id === hoveredZoneId) ?? null;
+  const rows = [...bands].sort((a, b) => Math.abs(a.level.distancePct ?? 0) - Math.abs(b.level.distancePct ?? 0)).slice(0, 6);
+
+  if (rows.length === 0) {
+    return (
+      <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-3 text-xs text-zinc-500">
+        Reaction zones are still warming up for this asset.
+      </div>
+    );
+  }
+
+  const selected = activeBand ?? rows[0];
+  const flowSize = selected.level.zoneTooltip?.inferredOiUsd ?? selected.level.zoneTooltip?.totalRecentFlowUsd ?? selected.level.notionalUsd;
 
   return (
-    <div ref={overlayRef} className="pointer-events-none absolute inset-0 z-20">
+    <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/65 p-3">
+      <div className="grid gap-2 text-xs md:grid-cols-[1fr_1fr_0.75fr_0.75fr_1.5fr]">
+        <ZoneMetric label="Role" value={zoneRoleLabel(selected)} tone={selected.side === "downside" ? "success" : "danger"} />
+        <ZoneMetric label="Range" value={formatLevelRange(selected.level)} />
+        <ZoneMetric label="Distance" value={formatSignedPct(selected.level.distancePct ?? distanceFromCurrent(selected.level.price, currentPrice))} />
+        <ZoneMetric label="Flow/OI" value={formatCompactUsd(flowSize)} />
+        <ZoneMetric label="Trader read" value={shortTraderRead(selected.level, selected.side)} />
+      </div>
+
+      <div className="mt-3 overflow-x-auto">
+        <table className="min-w-full text-left text-[11px]">
+          <thead className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
+            <tr>
+              <th className="px-2 py-2 font-medium">Role</th>
+              <th className="px-2 py-2 font-medium">Range</th>
+              <th className="px-2 py-2 font-medium">Distance</th>
+              <th className="px-2 py-2 font-medium">Size</th>
+              <th className="px-2 py-2 font-medium">Read</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-900">
+            {rows.map((band) => {
+              const active = band.id === selected.id;
+              const rowRead = levelReadFor(band.level, band.side);
+              const size = band.level.zoneTooltip?.inferredOiUsd ?? band.level.zoneTooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
+              return (
+                <tr
+                  key={band.id}
+                  className={`cursor-pointer transition ${active ? "bg-zinc-900/80 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200"}`}
+                  onMouseEnter={() => onHover(band.id)}
+                  onMouseLeave={() => onHover(null)}
+                  onClick={() => onSelect(band.id)}
+                >
+                  <td className={`whitespace-nowrap px-2 py-2 font-medium ${band.side === "downside" ? "text-teal-300" : "text-rose-300"}`}>{zoneRoleLabel(band)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatLevelRange(band.level)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatSignedPct(band.level.distancePct ?? distanceFromCurrent(band.level.price, currentPrice))}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatCompactUsd(size)}</td>
+                  <td className="min-w-[220px] px-2 py-2 text-zinc-400">{shortTraderRead(band.level, band.side) || rowRead.label}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-2 text-[10px] leading-4 text-zinc-600">Click a zone row to pin it. Hovering highlights the matching band on the chart.</div>
+    </div>
+  );
+}
+
+function ZoneMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "success" | "danger" }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">{label}</div>
+      <div className={`mt-1 truncate font-mono text-xs ${tone === "success" ? "text-teal-300" : tone === "danger" ? "text-rose-300" : "text-zinc-200"}`}>{value}</div>
+    </div>
+  );
+}
+
+function zoneRoleLabel(band: ChartZoneBand): string {
+  if (band.side === "downside") return "Downside support";
+  return "Upside resistance";
+}
+
+function distanceFromCurrent(price: number, currentPrice: number | null): number | null {
+  if (currentPrice == null || currentPrice <= 0 || price <= 0) return null;
+  return ((price - currentPrice) / currentPrice) * 100;
+}
+
+function formatSignedPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const abs = Math.abs(value);
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${abs.toFixed(abs < 1 ? 2 : 1)}%`;
+}
+
+function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upside"): string {
+  if (side === "downside") {
+    if (level.exposureSide === "bull") return "Support/long-risk zone; reclaim can fuel bounce.";
+    return "Downside liquidity; fail below can extend lower.";
+  }
+  if (level.exposureSide === "bear") return "Resistance/short-risk zone; clean hold can squeeze.";
+  return "Upside liquidity; rejection can mark take-profit.";
+}
+
+function FlowZoneOverlay({
+  bands,
+  activeZoneId,
+  onHover,
+  onSelect,
+}: {
+  bands: ChartZoneBand[];
+  activeZoneId: string | null;
+  onHover: (id: string | null) => void;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20">
       {bands.map((band) => {
         const isDownside = band.side === "downside";
         const read = levelReadFor(band.level, band.side);
         const color = isDownside ? "20, 184, 166" : "244, 63, 94";
         const textColor = isDownside ? "text-teal-200" : "text-rose-200";
         const borderColor = isDownside ? "border-teal-400/35" : "border-rose-400/35";
-        const idleBandAlpha = band.alpha * 0.06;
-        const idleBorderAlpha = band.alpha * 0.3;
-        const active = hoveredZoneId === band.id;
+        const idleBandAlpha = band.alpha * 0.045;
+        const idleBorderAlpha = band.alpha * 0.24;
+        const active = activeZoneId === band.id;
 
         return (
           <div key={band.id}>
             <button
               type="button"
-              className={`pointer-events-auto absolute left-0 right-[58px] cursor-help border-y border-transparent bg-transparent transition focus:outline-none focus:ring-1 focus:ring-white/40 ${
-                active ? "shadow-[0_0_28px_rgba(255,255,255,0.12)]" : ""
+              className={`pointer-events-auto absolute left-0 right-[58px] cursor-crosshair border-y border-transparent bg-transparent transition focus:outline-none focus:ring-1 focus:ring-white/40 ${
+                active ? "shadow-[0_0_22px_rgba(255,255,255,0.10)]" : ""
               }`}
               style={{
                 top: band.top,
                 height: band.height,
                 backgroundColor: active
-                  ? `rgba(${color}, ${Math.max(0.11, band.alpha * 0.14)})`
+                  ? `rgba(${color}, ${Math.max(0.09, band.alpha * 0.10)})`
                   : `rgba(${color}, ${idleBandAlpha})`,
-                borderTopColor: active ? `rgba(${color}, 0.72)` : `rgba(${color}, ${idleBorderAlpha})`,
-                borderBottomColor: active ? `rgba(${color}, 0.72)` : `rgba(${color}, ${idleBorderAlpha})`,
+                borderTopColor: active ? `rgba(${color}, 0.62)` : `rgba(${color}, ${idleBorderAlpha})`,
+                borderBottomColor: active ? `rgba(${color}, 0.62)` : `rgba(${color}, ${idleBorderAlpha})`,
               }}
               aria-label={`${formatLevelRange(band.level)} ${read.label} ${band.level.label}`}
-              onClick={() => onHover(band.id)}
+              onClick={() => onSelect(band.id)}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
               onBlur={() => onHover(null)}
             />
 
-            {band.arrowTop != null && band.arrowHeight != null && band.arrowDirection != null ? (
-              <div
-                className="pointer-events-auto absolute"
-                style={{ right: band.arrowRight, top: band.arrowTop, height: band.arrowHeight }}
-                onMouseEnter={() => onHover(band.id)}
-                onMouseLeave={() => onHover(null)}
-              >
-                <div
-                  className="h-full border-l border-dashed"
-                  style={{ borderColor: `rgba(${color}, ${active ? 0.9 : Math.max(0.28, band.alpha * 0.52)})` }}
-                />
-                <div
-                  className="absolute left-[-4px]"
-                  style={{
-                    ...(band.arrowDirection === "up"
-                      ? {
-                          top: -3,
-                          borderLeft: "4px solid transparent",
-                          borderRight: "4px solid transparent",
-                          borderBottom: `7px solid rgba(${color}, ${active ? 0.95 : 0.62})`,
-                        }
-                      : {
-                          bottom: -3,
-                          borderLeft: "4px solid transparent",
-                          borderRight: "4px solid transparent",
-                          borderTop: `7px solid rgba(${color}, ${active ? 0.95 : 0.62})`,
-                        }),
-                  }}
-                />
-              </div>
-            ) : null}
-
             <button
               type="button"
-              className={`pointer-events-auto absolute right-2 max-w-[calc(100%_-_1rem)] cursor-help truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-16 sm:max-w-[124px] ${borderColor} ${textColor}`}
+              className={`pointer-events-auto absolute right-2 max-w-[calc(100%_-_1rem)] cursor-crosshair truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-16 sm:max-w-[112px] ${borderColor} ${textColor}`}
               style={{
                 top: Math.max(8, band.centerY - 10),
                 backgroundColor: `rgba(9, 9, 11, ${Math.max(0.74, 0.94 - band.alpha * 0.14)})`,
-                borderColor: `rgba(${color}, ${Math.max(0.28, band.alpha * 0.72)})`,
-                boxShadow: band.alpha >= 0.72 ? `0 0 ${Math.round(10 + band.alpha * 16)}px rgba(${color}, ${band.alpha * 0.18})` : "none",
-                opacity: Math.max(0.62, band.alpha),
+                borderColor: `rgba(${color}, ${Math.max(0.24, band.alpha * 0.58)})`,
+                boxShadow: active ? `0 0 ${Math.round(10 + band.alpha * 14)}px rgba(${color}, ${band.alpha * 0.14})` : "none",
+                opacity: active ? 1 : Math.max(0.5, band.alpha * 0.86),
               }}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
               onBlur={() => onHover(null)}
-              onClick={() => onHover(band.id)}
+              onClick={() => onSelect(band.id)}
             >
-              {chartTagForLevel(band.level, band.side)}
+              {formatLevelPrice(band.level.price)}
             </button>
           </div>
         );
       })}
-
-      {hoveredBand ? (
-        <LevelHoverCard
-          band={hoveredBand}
-          downsideLevels={downsideLevels}
-          upsideLevels={upsideLevels}
-          overlayRef={overlayRef}
-        />
-      ) : null}
     </div>
-  );
-}
-
-function LevelHoverCard({
-  band,
-  downsideLevels,
-  upsideLevels,
-  overlayRef,
-}: {
-  band: ChartZoneBand;
-  downsideLevels: SupportResistanceLevel[];
-  upsideLevels: SupportResistanceLevel[];
-  overlayRef: { current: HTMLDivElement | null };
-}) {
-  const sameSideLevels = band.side === "downside" ? downsideLevels : upsideLevels;
-  const oppositeLevels = band.side === "downside" ? upsideLevels : downsideLevels;
-  const path = describeFlowPath(band.level, sameSideLevels, oppositeLevels);
-  const isDownside = band.side === "downside";
-  const read = levelReadFor(band.level, band.side);
-  const showPath = !isStressZone(band.level);
-  const [placement, setPlacement] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    maxHeight: number;
-  } | null>(null);
-
-  useEffect(() => {
-    function updatePlacement() {
-      const rect = overlayRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const gutter = 12;
-      const width = Math.min(340, Math.max(240, window.innerWidth - gutter * 2));
-      const maxHeight = Math.min(360, Math.max(180, window.innerHeight - gutter * 2));
-      const left = Math.min(
-        Math.max(gutter, rect.right - 64 - width),
-        Math.max(gutter, window.innerWidth - gutter - width),
-      );
-      const preferredTop = rect.top + band.centerY - 88;
-      const top = Math.min(
-        Math.max(gutter, preferredTop),
-        Math.max(gutter, window.innerHeight - gutter - maxHeight),
-      );
-
-      setPlacement({ left, top, width, maxHeight });
-    }
-
-    updatePlacement();
-    window.addEventListener("resize", updatePlacement);
-    window.addEventListener("scroll", updatePlacement, true);
-    return () => {
-      window.removeEventListener("resize", updatePlacement);
-      window.removeEventListener("scroll", updatePlacement, true);
-    };
-  }, [band.centerY, overlayRef]);
-
-  if (!placement) return null;
-
-  return createPortal(
-    <div
-      className={`pointer-events-none fixed z-[1000] overflow-y-auto rounded-xl border bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-md ${
-        isDownside ? "border-teal-400/30" : "border-rose-400/30"
-      }`}
-      style={{
-        left: placement.left,
-        top: placement.top,
-        width: placement.width,
-        maxHeight: placement.maxHeight,
-      }}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-xs text-zinc-100">{formatLevelRange(band.level)}</span>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${read.className}`}>
-          {read.label}
-        </span>
-        <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.12em] ${confidenceClass(band.level.confidence)}`}>
-          {band.level.confidence ?? "low"}
-        </span>
-      </div>
-      <div className={isDownside ? "mt-1 text-[10px] text-teal-300" : "mt-1 text-[10px] text-rose-300"}>
-        {band.level.label}
-      </div>
-      <div className="mt-2 text-[12px] leading-5 text-zinc-100">
-        {read.summary}
-      </div>
-      <div className="mt-1 text-[11px] leading-5 text-zinc-400">{read.reason}</div>
-      <div className="mt-2 text-[10px] leading-4 text-zinc-500">{flowSummary(band.level)}</div>
-      {band.level.zoneTooltip ? (
-        <div className="mt-2 grid grid-cols-2 gap-1.5 text-[10px] leading-4 text-zinc-500">
-          <span>Rank #{band.level.zoneTooltip.rank ?? band.level.flowRank ?? "?"}</span>
-          <span>{band.level.zoneTooltip.side === "bear" ? "Short OI" : "Long OI"}</span>
-          <span>Flow {formatCompactUsd(band.level.zoneTooltip.totalRecentFlowUsd)}</span>
-          <span>OI {formatCompactUsd(band.level.zoneTooltip.inferredOiUsd)}</span>
-          <span>Buy {formatCompactUsd(band.level.zoneTooltip.buyNotionalUsd)}</span>
-          <span>Sell {formatCompactUsd(band.level.zoneTooltip.sellNotionalUsd)}</span>
-        </div>
-      ) : null}
-      {band.level.zoneTooltip?.reasonSelected ? (
-        <div className="mt-1 text-[10px] leading-4 text-zinc-500">{band.level.zoneTooltip.reasonSelected}</div>
-      ) : null}
-      {showPath ? <div className="mt-1 text-[10px] leading-4 text-zinc-500">Next: {path}</div> : null}
-      {band.level.evidence && band.level.evidence.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {band.level.evidence.slice(0, 6).map((item) => (
-            <span
-              key={item}
-              className={`rounded-full border px-2 py-0.5 text-[10px] leading-4 ${evidenceToneClass(item)}`}
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>,
-    document.body,
   );
 }
 

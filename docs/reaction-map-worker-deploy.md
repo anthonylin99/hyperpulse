@@ -71,6 +71,6 @@ docker compose -f docker-compose.reaction-map.yml down
 
 ## Avoid the full local stack on DigitalOcean
 
-The root `docker-compose.yml` is for local full-stack development and includes `db`, `migrate`, `web`, `market-collector`, `reaction-map`, and `whale-indexer`.
+The root `docker-compose.yml` is for local full-stack development and includes `db`, `migrate`, `web`, `market-collector`, and `reaction-map`.
 
 For a worker-only droplet, prefer `docker-compose.reaction-map.yml`. If you intentionally use the root compose file for a one-off smoke, run `docker compose run -d --no-deps reaction-map`; otherwise Compose may try to resolve the local `db` service.

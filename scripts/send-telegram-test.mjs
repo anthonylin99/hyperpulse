@@ -19,7 +19,6 @@ function loadEnv(file) {
 loadEnv(".env.local");
 loadEnv(".env");
 loadEnv("workers/momentum-alerts/.env");
-loadEnv("workers/whale-indexer/.env");
 
 function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^["']|["']$/g, "");

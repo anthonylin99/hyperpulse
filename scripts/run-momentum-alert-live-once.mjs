@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
 
-for (const file of [".env.local", ".env", "workers/momentum-alerts/.env", "workers/whale-indexer/.env"]) {
+for (const file of [".env.local", ".env", "workers/momentum-alerts/.env"]) {
   if (!existsSync(file)) continue;
   const contents = readFileSync(file, "utf8");
   for (const line of contents.split(/\r?\n/)) {

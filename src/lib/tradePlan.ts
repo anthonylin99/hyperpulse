@@ -13,7 +13,15 @@ export interface TradePlan {
 }
 
 export interface MarketSetupSignal {
-  type: "support-reclaim" | "resistance-break" | "support-break" | "near-resistance" | "near-support" | "none";
+  type:
+    | "support-reclaim"
+    | "resistance-break"
+    | "support-break"
+    | "near-resistance"
+    | "near-support"
+    | "momentum-long"
+    | "momentum-short"
+    | "none";
   label: string;
   detail: string;
   tone: "green" | "red" | "amber" | "neutral";

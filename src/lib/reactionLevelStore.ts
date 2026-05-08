@@ -10,11 +10,9 @@ import {
   type ReactionTrackedLiquidationBucket,
   type ReactionTradeBucket,
 } from "@/lib/reactionLevels";
-import { listTrackedLiquidationBuckets } from "@/lib/whaleStore";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
-const TRACKED_LIQ_MAX_AGE_MS = 45 * 60 * 1000;
 
 let pool: Pool | null = null;
 let disabledUntil = 0;
@@ -93,24 +91,6 @@ function normalizeTradeBucket(row: Record<string, unknown>): ReactionTradeBucket
     sellNotionalUsd: Math.max(asNumber(row.sell_notional_usd) ?? 0, 0),
     tradeCount: Math.max(Math.round(asNumber(row.trade_count) ?? 0), 0),
     uniqueTraderCount: Math.max(Math.round(asNumber(row.unique_trader_count) ?? 0), 0),
-  };
-}
-
-function normalizeTrackedLiquidation(bucket: {
-  price: number;
-  side: "long_liq" | "short_liq";
-  totalNotionalUsd: number;
-  walletCount: number;
-  positionCount: number;
-  weightedAvgLeverage: number | null;
-}): ReactionTrackedLiquidationBucket {
-  return {
-    price: bucket.price,
-    side: bucket.side,
-    notionalUsd: bucket.totalNotionalUsd,
-    walletCount: bucket.walletCount,
-    positionCount: bucket.positionCount,
-    weightedAvgLeverage: bucket.weightedAvgLeverage,
   };
 }
 
@@ -332,7 +312,7 @@ export async function getReactionLevelMap(args: {
     const currentPrice = asNumber(latestContext?.mark_px) ?? asNumber(latestContext?.mid_px) ?? asNumber(latestContext?.oracle_px);
     if (currentPrice == null || currentPrice <= 0) return currentZones ?? emptyPayload(asset, args.windowMs);
 
-    const [earliestContextResult, oiDeltaResult, bookResult, tradeResult, trackedBuckets] = await Promise.all([
+    const [earliestContextResult, oiDeltaResult, bookResult, tradeResult] = await Promise.all([
       client.query(
         `
         select open_interest_usd
@@ -396,10 +376,6 @@ export async function getReactionLevelMap(args: {
         `,
         [asset, cutoff, currentPrice * 0.8, currentPrice * 1.2],
       ),
-      listTrackedLiquidationBuckets(asset, 180, TRACKED_LIQ_MAX_AGE_MS).catch((error: unknown) => {
-        console.warn("[reaction-level-store] tracked liquidation sample unavailable", error);
-        return [];
-      }),
     ]);
 
     const earliestOpenInterestUsd = asNumber(earliestContextResult.rows[0]?.open_interest_usd);
@@ -420,9 +396,7 @@ export async function getReactionLevelMap(args: {
     const tradeBuckets = tradeResult.rows
       .map((row) => normalizeTradeBucket(row as Record<string, unknown>))
       .filter((bucket): bucket is ReactionTradeBucket => bucket != null);
-    const trackedLiquidations = trackedBuckets
-      .filter((bucket) => bucket.price > currentPrice * 0.75 && bucket.price < currentPrice * 1.25)
-      .map(normalizeTrackedLiquidation);
+    const trackedLiquidations: ReactionTrackedLiquidationBucket[] = [];
     const payload = buildReactionLevels({
       coin: asset,
       currentPrice,

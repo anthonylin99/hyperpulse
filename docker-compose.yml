@@ -37,10 +37,8 @@ services:
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       ENABLE_TRADING: "false"
       ENABLE_FACTORS: "false"
-      ENABLE_WHALES: "false"
       NEXT_PUBLIC_ENABLE_TRADING: "false"
       NEXT_PUBLIC_ENABLE_FACTORS: "false"
-      NEXT_PUBLIC_ENABLE_WHALES: "false"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -97,20 +95,6 @@ services:
       REACTION_MAP_CLEANUP_RANGE_MIN_PCT: ${REACTION_MAP_CLEANUP_RANGE_MIN_PCT:-2}
       REACTION_MAP_CLEANUP_RANGE_MAX_PCT: ${REACTION_MAP_CLEANUP_RANGE_MAX_PCT:-35}
       REACTION_MAP_RETENTION_MS: ${REACTION_MAP_RETENTION_MS:-86400000}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  whale-indexer:
-    build:
-      context: ./workers/whale-indexer
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
-      TELEGRAM_ENABLED: "false"
-      GOOGLE_SHEETS_ENABLED: "false"
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     depends_on:
       migrate:
         condition: service_completed_successfully

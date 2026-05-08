@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { MousePointerClick } from "lucide-react";
-import CohortsLitePanel from "@/components/CohortsLitePanel";
 import MarketRadarPanel from "@/components/MarketRadarPanel";
 import MarketTable from "@/components/MarketTable";
 import TradeDrawer from "@/components/TradeDrawer";
@@ -10,7 +9,7 @@ import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
 
 export default function MarketsRoutePage({ initialAsset = null }: { initialAsset?: string | null }) {
-  const { tradingEnabled, whalesEnabled } = useAppConfig();
+  const { tradingEnabled } = useAppConfig();
   const { selectedAsset, setSelectedAsset, error: marketError } = useMarket();
   const [tradeDrawer, setTradeDrawer] = useState<{
     coin: string;
@@ -64,7 +63,6 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
 
           <div className="space-y-4 xl:sticky xl:top-[96px]">
             <MarketRadarPanel variant="rail" />
-            {whalesEnabled ? <CohortsLitePanel /> : null}
           </div>
         </div>
       </div>

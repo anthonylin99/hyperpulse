@@ -16,9 +16,9 @@ The public production deployment exposes:
 Hidden in the public demo by default:
 
 - `Trading`
-- `Whales`
+- `Factors`
 
-Those surfaces can still exist in non-public environments, but they are not part of the shareable public demo posture.
+Whale tracking has been retired from the active product/runtime. Historical database tables may remain for audit purposes, but the live app redirects old whale routes back to Markets.
 
 ## Product Surfaces
 
@@ -32,7 +32,7 @@ Those surfaces can still exist in non-public environments, but they are not part
 - **Frontend**: Next.js App Router
 - **Primary deployment target**: Vercel
 - **Market data**: Hyperliquid-native APIs
-- **Ingestion workers**: DigitalOcean Docker droplet for always-on Reaction Map and whale-performance ingestion
+- **Ingestion workers**: DigitalOcean Docker droplet or Railway service for always-on Reaction Map and Momentum alerts
 - **Database**: Neon Postgres for worker-backed analytics where enabled
 
 ## Feature Flags
@@ -40,14 +40,14 @@ Those surfaces can still exist in non-public environments, but they are not part
 Runtime flags are resolved from environment variables:
 
 - `ENABLE_TRADING`
-- `ENABLE_WHALES`
+- `ENABLE_FACTORS`
 - `NEXT_PUBLIC_ENABLE_TRADING`
-- `NEXT_PUBLIC_ENABLE_WHALES`
+- `NEXT_PUBLIC_ENABLE_FACTORS`
 
 Public production defaults:
 
 - `ENABLE_TRADING=false`
-- `ENABLE_WHALES=false`
+- `ENABLE_FACTORS=false`
 
 Optional site/runtime variables:
 

@@ -8,7 +8,6 @@ import {
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { calculateSupportResistanceLevels, type ChartInterval } from "@/lib/supportResistance";
-import { listTrackedWhaleProfiles } from "@/lib/whaleStore";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +23,8 @@ const DEFAULT_INTERVAL_BY_RANGE: Record<string, "5m" | "30m" | "1h"> = {
   "7d": "1h",
 };
 const MAX_DISTANCE_PCT = 18;
-const TRACKED_BUCKET_STEP_PCT = 0.25;
 const BOOK_BUCKET_STEP_PCT = 0.1;
 const MIN_BOOK_DISTANCE_PCT = 0.25;
-const TRACKED_PROFILE_LIMIT = 750;
-const TRACKED_PNL_FLOOR_USD = 200_000;
 const BOOK_BAND_LIMIT_PER_SIDE = 80;
 const STRUCTURE_LEVEL_LIMIT_PER_SIDE = 4;
 
@@ -93,12 +89,6 @@ function addBand(map: Map<string, LiquidityBand>, band: LiquidityBand) {
   existing.highPrice = Math.max(existing.highPrice, band.highPrice);
 }
 
-function confidenceForTracked(notionalUsd: number) {
-  if (notionalUsd >= 2_000_000) return "high" as const;
-  if (notionalUsd >= 500_000) return "medium" as const;
-  return "low" as const;
-}
-
 function confidenceForBook(notionalUsd: number) {
   if (notionalUsd >= 5_000_000) return "medium" as const;
   return "low" as const;
@@ -133,10 +123,9 @@ export async function GET(request: Request) {
     const endTime = Date.now();
     const startTime = endTime - RANGE_MS[range];
 
-    const [candlesRaw, book, profiles] = await Promise.all([
+    const [candlesRaw, book] = await Promise.all([
       info.candleSnapshot({ coin, interval, startTime, endTime }),
       info.l2Book({ coin, nSigFigs: 5 }).catch(() => null),
-      listTrackedWhaleProfiles(TRACKED_PROFILE_LIMIT).catch(() => []),
     ]);
 
     const candles = candlesRaw
@@ -170,33 +159,6 @@ export async function GET(request: Request) {
     }
 
     const bandsByKey = new Map<string, LiquidityBand>();
-    const qualifyingProfiles = profiles.filter((profile) => profile.realizedPnl30d >= TRACKED_PNL_FLOOR_USD);
-
-    for (const profile of qualifyingProfiles) {
-      for (const position of profile.positions ?? []) {
-        if (position.marketType !== "crypto_perp" || position.coin !== coin) continue;
-        if (position.notionalUsd <= 0 || position.liquidationPx == null) continue;
-        const liquidationPx = finiteNumber(position.liquidationPx);
-        if (liquidationPx == null || liquidationPx <= 0) continue;
-        const rawDistancePct = ((liquidationPx - currentPrice) / currentPrice) * 100;
-        if (!Number.isFinite(rawDistancePct) || Math.abs(rawDistancePct) > MAX_DISTANCE_PCT) continue;
-        const isShort = position.side === "short";
-        if (isShort && rawDistancePct <= 0) continue;
-        if (!isShort && rawDistancePct >= 0) continue;
-        const distancePct = quantizeDistance(rawDistancePct, TRACKED_BUCKET_STEP_PCT);
-        const prices = buildBandPrices(currentPrice, distancePct, TRACKED_BUCKET_STEP_PCT);
-        addBand(bandsByKey, {
-          ...prices,
-          notionalUsd: position.notionalUsd,
-          walletCount: 1,
-          orderCount: 0,
-          distancePct,
-          side: isShort ? "short_liq" : "long_liq",
-          source: "tracked_liquidation",
-          confidence: confidenceForTracked(position.notionalUsd),
-        });
-      }
-    }
 
     if (book) {
       const [bids, asks] = book.levels;
@@ -320,7 +282,7 @@ export async function GET(request: Request) {
         caveat,
         summary: {
           ...summary,
-          trackedWallets: qualifyingProfiles.length,
+          trackedWallets: 0,
           currentPrice,
         },
       },

@@ -18,9 +18,7 @@ type RadarResponse = {
 };
 
 function sourceLabel(source: string | undefined) {
-  if (source === "quant-radar-plus-tracked-flow") return "Quant edge + tracked flow";
   if (source === "quant-radar") return "Quant relative-strength scan";
-  if (source === "market-plus-tracked-flow") return "Market + tracked flow";
   return "Market-only scan";
 }
 

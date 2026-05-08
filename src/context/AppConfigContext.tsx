@@ -15,7 +15,6 @@ import { ENABLE_FACTORS_DEFAULT, ENABLE_TRADING_DEFAULT } from "@/lib/appConfig"
 
 type PublicAppConfig = {
   tradingEnabled: boolean;
-  whalesEnabled: boolean;
   factorsEnabled: boolean;
   deploymentMode: "trading" | "read-only";
 };
@@ -36,7 +35,6 @@ const fallbackFactorsEnabled =
 
 const fallbackConfig: PublicAppConfig = {
   tradingEnabled: fallbackTradingEnabled,
-  whalesEnabled: process.env.NEXT_PUBLIC_ENABLE_WHALES === "true",
   factorsEnabled: fallbackFactorsEnabled,
   deploymentMode: fallbackTradingEnabled ? "trading" : "read-only",
 };

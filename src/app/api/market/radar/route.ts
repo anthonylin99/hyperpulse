@@ -1,11 +1,9 @@
 import { NextRequest } from "next/server";
 import { Pool } from "pg";
 import { MIN_OI_USD } from "@/lib/constants";
-import { isWhalesEnabled } from "@/lib/appConfig";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { enforceRateLimit, jsonError, jsonSuccess, logServerError } from "@/lib/security";
 import { computeMomentumEdges, selectMomentumEdges, type MomentumEdgeAsset, type RadarBetaInfo } from "@/lib/marketRadarScoring";
-import { listPositioningAlerts } from "@/lib/whaleStore";
 import type { MarketRadarSignal, WhaleSeverity } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -269,42 +267,10 @@ export async function GET(req: NextRequest) {
     if (crowdedLong) signals.push(buildCrowdingSignal("crowded_long", crowdedLong, "Most expensive long crowd", timestamp));
     if (crowdedShort) signals.push(buildCrowdingSignal("crowded_short", crowdedShort, "Most paid short crowd", timestamp));
 
-    if (isWhalesEnabled()) {
-      const alerts = await listPositioningAlerts({ timeframeMs: 24 * 60 * 60 * 1000, limit: 40 });
-      const whale = alerts.find((alert) => alert.alertType === "high_conviction_whale");
-      const liquidation = alerts.find((alert) => alert.alertType === "liquidation_pressure");
-      if (whale) {
-        signals.push({
-          id: `whale_flow:${whale.id}`,
-          kind: "whale_flow",
-          asset: whale.asset,
-          label: "Tracked whale flow",
-          value: whale.severity.toUpperCase(),
-          severity: whale.severity,
-          timestamp: whale.timestamp,
-          evidence: [whale.whyItMatters, whale.walletLabel ?? "tracked wallet"].filter(Boolean),
-          routeHref: whale.walletAddress ? `/whales/${whale.walletAddress}?alert=${whale.id}` : `/markets?asset=${whale.asset}`,
-        });
-      }
-      if (liquidation) {
-        signals.push({
-          id: `liquidation_pressure:${liquidation.id}`,
-          kind: "liquidation_pressure",
-          asset: liquidation.asset,
-          label: "Nearby liquidation pressure",
-          value: liquidation.severity.toUpperCase(),
-          severity: liquidation.severity,
-          timestamp: liquidation.timestamp,
-          evidence: [liquidation.whyItMatters],
-          routeHref: `/markets?asset=${liquidation.asset}`,
-        });
-      }
-    }
-
     return jsonSuccess({
       signals,
       generatedAt: timestamp,
-      source: isWhalesEnabled() ? "quant-radar-plus-tracked-flow" : "quant-radar",
+      source: "quant-radar",
       factorsIncluded: false,
     });
   } catch (error) {

@@ -17,7 +17,6 @@ import {
   strongestPressureLevel,
   type LfxBookDepth,
 } from "@/lib/pressureLevels";
-import { listTrackedLiquidationBuckets } from "@/lib/whaleStore";
 import type { PressureBatchPayload, PressureLevel, PressurePayload, TrackedLiquidationBucket } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -234,10 +233,7 @@ async function buildPressurePayload({
     atrPct,
     book: normalizeBook(bookData),
   });
-  const trackedBuckets = await listTrackedLiquidationBuckets(coin).catch((error: unknown) => {
-    logServerError("api/market/pressure.tracked-buckets", error);
-    return [] as TrackedLiquidationBucket[];
-  });
+  const trackedBuckets: TrackedLiquidationBucket[] = [];
   const trackedLevels = trackedBucketsToPressureLevels(trackedBuckets);
   const levels = [...trackedLevels, ...marketLevels];
   const longLiquidationNotionalUsd = levels

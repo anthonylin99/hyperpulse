@@ -24,7 +24,7 @@ Read-only Neon audit from the worker container on 2026-05-04:
 | --- | --- | --- |
 | Reaction serving path | `reaction_context_snapshots`, `reaction_trade_buckets`, `reaction_orderbook_buckets`, `reaction_exposure_zones_current`, `reaction_exposure_zone_events` | Keep. |
 | Reaction legacy | `reaction_level_snapshots` | Not used by current API path; safe candidate after verification. |
-| Whale/feed legacy | `whale_alerts`, `whale_profiles_current`, `whale_trade_episodes`, `whale_telegram_queue`, `whale_worker_status`, `wallet_timing_scores`, `whale_alert_events`, `whale_wallets_current`, `whale_wallet_asset_stats`, `whale_positioning_current`, `whale_watchlist` | Not needed for Reaction Map-only worker. Some `/api/whales/*` routes still reference these if the whale UI remains enabled. |
+| Whale/feed legacy | `whale_alerts`, `whale_profiles_current`, `whale_trade_episodes`, `whale_telegram_queue`, `whale_worker_status`, `wallet_timing_scores`, `whale_alert_events`, `whale_wallets_current`, `whale_wallet_asset_stats`, `whale_positioning_current`, `whale_watchlist` | Historical only. The active app redirects whale routes and no longer runs the whale indexer. |
 | Positioning/telegram legacy | `positioning_alerts`, `positioning_market_snapshots`, `positioning_digest_runs`, `tracked_position_snapshots`, `liq_heatmap_buckets` | Not needed for Reaction Map-only worker. Some legacy routes/scripts still reference them if those surfaces remain enabled. |
 
 Active 15m current-zone rows during the audit:
@@ -72,7 +72,7 @@ On 2026-05-05, the legacy drop list above was applied to the current Neon databa
 
 The first cleanup revealed two code paths that could keep the DB from staying clean:
 
-- `whaleStore` opened the DB and recreated whale/positioning tables even when whales were disabled. It is now gated behind `ENABLE_WHALES`.
+- The retired whale store used to open the DB and recreate whale/positioning tables. It is no longer imported by the active web/runtime path.
 - The reaction worker retention sweep still deleted from legacy `reaction_level_snapshots`. That sweep dependency was removed.
 
 Remaining user tables after cleanup:
