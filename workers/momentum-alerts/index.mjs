@@ -58,8 +58,10 @@ const EXCEPTIONAL_MIN_OI_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_OI_USD"
 const EXCEPTIONAL_MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_VOLUME_USD", 8_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
 const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 6), 1, 24);
+const TELEGRAM_HOURLY_CAP = clamp(envNumber("MOMENTUM_ALERT_HOURLY_CAP", 2), 1, 6);
 const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 10), TELEGRAM_DAILY_CAP, 24);
 const MAX_ALERTS_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_CYCLE", 3), 1, 8);
+const MAX_TELEGRAM_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_TELEGRAM_PER_CYCLE", 1), 1, 3);
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
@@ -588,6 +590,58 @@ async function countQueuedOrSentToday(easternDate) {
   return Number(result.rows[0]?.count ?? 0);
 }
 
+async function countQueuedOrSentSince(cutoffMs) {
+  const result = await pool.query(
+    `select count(*)::int as count
+     from notification_queue
+     where event_type = 'momentum_alert'
+       and channel = 'telegram'
+       and status in ('queued', 'sent')
+       and created_at >= $1`,
+    [cutoffMs],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+async function countSentSince(cutoffMs) {
+  const result = await pool.query(
+    `select count(*)::int as count
+     from notification_queue
+     where event_type = 'momentum_alert'
+       and channel = 'telegram'
+       and status = 'sent'
+       and sent_at >= $1`,
+    [cutoffMs],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+function directionalReturn(direction, value) {
+  if (!Number.isFinite(value)) return 0;
+  return direction === "short" ? -value : value;
+}
+
+function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direction, volumeVs }) {
+  const d1h = directionalReturn(direction, features.return1h);
+  const d4h = directionalReturn(direction, features.return4h);
+  const d24h = directionalReturn(direction, features.return24h);
+  const structureBreak = direction === "short" ? features.breakdown : features.breakout;
+  const nearExtreme = direction === "short" ? features.nearLow : features.nearHigh;
+  const volumeConfirmed = volumeVs >= 1.25;
+  const oiConfirmed = oiChangePct != null && oiChangePct >= 1.2;
+  const liquidityOk = asset.liquidityQualified || isLargeCapLike(asset);
+  const highQualityScore = score.score >= HIGH_SCORE_THRESHOLD;
+  const strongIntraday = d1h >= 0.8 && d4h >= 3.2;
+  const continuation = d4h >= 5.0 && d1h >= 0.4 && nearExtreme;
+  const exceptionalFollowThrough = d24h >= EXCEPTIONAL_MOVE_PCT && d4h >= 1.5 && d1h >= -0.5 && nearExtreme;
+  const confirmedMove = structureBreak || strongIntraday || continuation || exceptionalFollowThrough;
+  const confirmedParticipation = volumeConfirmed || oiConfirmed || exceptionalFollowThrough;
+  const fundingPenalty = direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65;
+  const fundingOk = !fundingPenalty || score.score >= HIGH_SCORE_THRESHOLD + 8;
+
+  return liquidityOk && highQualityScore && confirmedMove && confirmedParticipation && fundingOk;
+}
+
 async function buildCandidate(asset) {
   const candles = await fetchCandles(asset);
   const features = computeMomentumFeatures(asset.asset, candles, asset.markPx);
@@ -622,10 +676,14 @@ async function buildCandidate(asset) {
   const volumeVs = features.volumeVsBaseline ?? 1;
   const oiText = oiChangePct == null ? "OI context limited" : `OI ${formatPct(oiChangePct)}`;
   const bucket = momentumBucket(asset.asset);
-  const telegramEligible =
-    asset.liquidityQualified ||
-    isLargeCapLike(asset) ||
-    score.score >= HIGH_SCORE_THRESHOLD + 5;
+  const telegramEligible = isTelegramQualityCandidate({
+    asset,
+    features,
+    oiChangePct,
+    score,
+    direction,
+    volumeVs,
+  });
   const reason = direction === "short"
     ? `${asset.asset} broke lower with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h downside momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`
     : `${asset.asset} broke higher with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`;
@@ -742,7 +800,7 @@ function buildTelegramText(alert) {
   return lines.join("\n");
 }
 
-async function persistAlert(candidate, now) {
+async function persistAlert(candidate, now, options = {}) {
   const id = eventId(candidate, now);
   const alert = { ...candidate, id, createdAt: now };
   if (DRY_RUN) {
@@ -787,16 +845,31 @@ async function persistAlert(candidate, now) {
 
   const easternDate = alert.payload.easternDate;
   const telegramCount = await countQueuedOrSentToday(easternDate);
+  const telegramHourCount = await countQueuedOrSentSince(now - 60 * 60 * 1000);
   const telegramQualityEligible = alert.payload?.telegramEligible !== false;
-  const canSendTelegram = telegramQualityEligible && TELEGRAM_ENABLED && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID && telegramCount < TELEGRAM_DAILY_CAP;
+  const telegramCycleAllowed = options.allowTelegram !== false;
+  const canSendTelegram =
+    telegramCycleAllowed &&
+    telegramQualityEligible &&
+    TELEGRAM_ENABLED &&
+    TELEGRAM_BOT_TOKEN &&
+    TELEGRAM_CHAT_ID &&
+    telegramCount < TELEGRAM_DAILY_CAP &&
+    telegramHourCount < TELEGRAM_HOURLY_CAP;
   const message = buildTelegramText(alert);
   const queueStatus = canSendTelegram ? "queued" : "disabled";
   const lastError = canSendTelegram
     ? null
-    : !telegramQualityEligible
+    : !telegramCycleAllowed
+      ? "Stored only: Telegram per-cycle pacing."
+      : !telegramQualityEligible
       ? "Stored only: below Telegram quality gate."
+      : TELEGRAM_ENABLED && telegramHourCount >= TELEGRAM_HOURLY_CAP
+      ? "Telegram hourly cap reached."
+      : TELEGRAM_ENABLED && telegramCount >= TELEGRAM_DAILY_CAP
+      ? "Telegram daily cap reached."
       : TELEGRAM_ENABLED
-      ? "Telegram daily cap reached or credentials missing."
+      ? "Telegram credentials missing."
       : "Telegram disabled.";
 
   await pool.query(
@@ -832,6 +905,9 @@ async function sendTelegramMessage(text) {
 
 async function flushTelegramQueue() {
   if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || DRY_RUN) return 0;
+  let hourlySent = await countSentSince(Date.now() - 60 * 60 * 1000);
+  if (hourlySent >= TELEGRAM_HOURLY_CAP) return 0;
+
   const result = await pool.query(
     `select id, payload, attempts from notification_queue
      where event_type = 'momentum_alert'
@@ -846,6 +922,8 @@ async function flushTelegramQueue() {
   );
   let sent = 0;
   for (const row of result.rows) {
+    if (sent >= MAX_TELEGRAM_PER_CYCLE || hourlySent >= TELEGRAM_HOURLY_CAP) break;
+
     try {
       const text = row.payload?.text;
       if (!text) throw new Error("Notification payload missing text.");
@@ -855,6 +933,7 @@ async function flushTelegramQueue() {
         [row.id, Date.now()],
       );
       sent += 1;
+      hourlySent += 1;
     } catch (error) {
       await pool.query(
         `update notification_queue set status = 'failed', attempts = attempts + 1, last_error = $2 where id = $1`,
@@ -878,6 +957,8 @@ async function runCycle() {
     telegramEnabled: TELEGRAM_ENABLED,
     storeDailyCap: STORE_DAILY_CAP,
     telegramDailyCap: TELEGRAM_DAILY_CAP,
+    telegramHourlyCap: TELEGRAM_HOURLY_CAP,
+    maxTelegramPerCycle: MAX_TELEGRAM_PER_CYCLE,
   });
   const now = Date.now();
   const easternDate = easternDateKey(now);
@@ -914,7 +995,9 @@ async function runCycle() {
       const result = await persistAlert({
         ...candidate,
         payload: { ...candidate.payload, easternDate },
-      }, now);
+      }, now, {
+        allowTelegram: queued < MAX_TELEGRAM_PER_CYCLE,
+      });
       if (!result.inserted) continue;
       inserted += 1;
       queued += result.queued ? 1 : 0;
@@ -941,7 +1024,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day maxCycle=${MAX_ALERTS_PER_CYCLE} telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
+  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegramHourly=${TELEGRAM_HOURLY_CAP}/hour maxCycle=${MAX_ALERTS_PER_CYCLE} maxTelegramCycle=${MAX_TELEGRAM_PER_CYCLE} telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
   await runCycle();
   if (RUN_ONCE) {
     await pool.end();
