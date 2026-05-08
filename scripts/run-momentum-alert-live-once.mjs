@@ -15,10 +15,14 @@ for (const file of [".env.local", ".env", "workers/momentum-alerts/.env", "worke
   }
 }
 
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
 process.env.MOMENTUM_ALERT_DRY_RUN = "false";
 process.env.MOMENTUM_ALERT_ONCE = "true";
 
-const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const url = cleanEnv(process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "");
 if (!url) {
   console.error("DATABASE_URL or POSTGRES_URL is required.");
   process.exit(1);

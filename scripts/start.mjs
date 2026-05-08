@@ -1,5 +1,13 @@
 import { spawn } from "node:child_process";
 
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+function envFlag(name) {
+  return cleanEnv(process.env[name]).toLowerCase() === "true";
+}
+
 const isRailway = Boolean(
   process.env.RAILWAY_ENVIRONMENT_NAME ||
     process.env.RAILWAY_PROJECT_ID ||
@@ -7,8 +15,8 @@ const isRailway = Boolean(
     process.env.RAILWAY_SERVICE_NAME,
 );
 
-const forceWeb = String(process.env.HYPERPULSE_START_WEB || "").toLowerCase() === "true";
-const forceWorkers = String(process.env.HYPERPULSE_START_WORKERS || "").toLowerCase() === "true";
+const forceWeb = envFlag("HYPERPULSE_START_WEB");
+const forceWorkers = envFlag("HYPERPULSE_START_WORKERS");
 const runWorkers = forceWorkers || (isRailway && !forceWeb);
 
 const command = "node";

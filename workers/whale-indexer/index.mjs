@@ -8,13 +8,17 @@ import {
   WebSocketTransport,
 } from '@nktkas/hyperliquid';
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+function cleanEnv(value) {
+  return String(value ?? '').trim().replace(/^["']|["']$/g, '');
+}
+
+const DATABASE_URL = cleanEnv(process.env.DATABASE_URL || process.env.POSTGRES_URL);
 if (!DATABASE_URL) {
   throw new Error('DATABASE_URL or POSTGRES_URL is required for the whale indexer');
 }
 
 function envNumber(name, fallback) {
-  const value = Number(process.env[name]);
+  const value = Number(cleanEnv(process.env[name]));
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
@@ -43,14 +47,14 @@ const CROWDING_POS_FUNDING_APR = envNumber('POSITIONING_CROWDING_POS_FUNDING_APR
 const CROWDING_NEG_FUNDING_APR_ABS = envNumber('POSITIONING_CROWDING_NEG_FUNDING_APR_ABS', 10);
 const CROWDING_OI_CHANGE_1H_PCT = envNumber('POSITIONING_CROWDING_OI_CHANGE_1H_PCT', 3);
 const CROWDING_OI_CHANGE_4H_PCT = envNumber('POSITIONING_CROWDING_OI_CHANGE_4H_PCT', 8);
-const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
-const SHEETS_ENABLED = process.env.GOOGLE_SHEETS_ENABLED === 'true';
-const SHEETS_CREDS_B64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 || '';
-const SHEETS_SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || '';
-const SHEETS_TAB = process.env.GOOGLE_SHEET_TAB || 'RAW DATA';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hyperpulsehl.com';
+const TELEGRAM_ENABLED = cleanEnv(process.env.TELEGRAM_ENABLED).toLowerCase() === 'true';
+const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+const TELEGRAM_CHAT_ID = cleanEnv(process.env.TELEGRAM_CHAT_ID);
+const SHEETS_ENABLED = cleanEnv(process.env.GOOGLE_SHEETS_ENABLED).toLowerCase() === 'true';
+const SHEETS_CREDS_B64 = cleanEnv(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64);
+const SHEETS_SPREADSHEET_ID = cleanEnv(process.env.GOOGLE_SHEET_ID);
+const SHEETS_TAB = cleanEnv(process.env.GOOGLE_SHEET_TAB) || 'RAW DATA';
+const APP_URL = cleanEnv(process.env.NEXT_PUBLIC_APP_URL) || 'https://hyperpulsehl.com';
 
 setMaxListeners(0);
 
@@ -92,10 +96,10 @@ function isQualifiedHip3Symbol(symbol) {
 const pool = new Pool({ connectionString: DATABASE_URL, max: 8 });
 const info = new InfoClient({ transport: new HttpTransport() });
 const marketWs = new SubscriptionClient({
-  transport: new WebSocketTransport({ url: process.env.HYPERLIQUID_WS_URL || 'wss://api.hyperliquid.xyz/ws' }),
+  transport: new WebSocketTransport({ url: cleanEnv(process.env.HYPERLIQUID_WS_URL) || 'wss://api.hyperliquid.xyz/ws' }),
 });
 const rpcWs = new SubscriptionClient({
-  transport: new WebSocketTransport({ url: process.env.WHALERPC_URL || 'wss://rpc.hyperliquid.xyz/ws' }),
+  transport: new WebSocketTransport({ url: cleanEnv(process.env.WHALERPC_URL) || 'wss://rpc.hyperliquid.xyz/ws' }),
 });
 
 const recentExplorerFlow = new Map();

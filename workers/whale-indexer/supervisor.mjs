@@ -13,13 +13,31 @@ const siblingMomentumWorker = resolve(workerDir, "../momentum-alerts/index.mjs")
 const bundledMomentumWorker = resolve(workerDir, "momentum-alerts/index.mjs");
 const momentumWorker = existsSync(siblingMomentumWorker) ? siblingMomentumWorker : bundledMomentumWorker;
 
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+function envFlag(name, fallback = false) {
+  const value = cleanEnv(process.env[name]).toLowerCase();
+  if (!value) return fallback;
+  return value === "true" || value === "1" || value === "yes";
+}
+
+const momentumOnly = envFlag("MOMENTUM_ONLY");
+const whaleEnabled = !momentumOnly && cleanEnv(process.env.WHALE_INDEXER_ENABLED).toLowerCase() !== "false";
+const momentumEnabled = cleanEnv(process.env.MOMENTUM_ALERTS_ENABLED).toLowerCase() !== "false";
+
 const workers = [
-  {
-    name: "whale-indexer",
-    command: "node",
-    args: [resolve(workerDir, "index.mjs")],
-  },
-  ...(existsSync(momentumWorker)
+  ...(whaleEnabled
+    ? [
+        {
+          name: "whale-indexer",
+          command: "node",
+          args: [resolve(workerDir, "index.mjs")],
+        },
+      ]
+    : []),
+  ...(momentumEnabled && existsSync(momentumWorker)
     ? [
         {
           name: "momentum-alerts",
@@ -29,6 +47,17 @@ const workers = [
       ]
     : []),
 ];
+
+console.log(
+  `[supervisor] config workers=${workers.map((worker) => worker.name).join(",") || "none"} ` +
+    `database=${cleanEnv(process.env.DATABASE_URL || process.env.POSTGRES_URL) ? "present" : "missing"} ` +
+    `telegram=${cleanEnv(process.env.TELEGRAM_BOT_TOKEN) && cleanEnv(process.env.TELEGRAM_CHAT_ID) ? "present" : "missing"}`,
+);
+
+if (!workers.length) {
+  console.error("[supervisor] no workers enabled; set MOMENTUM_ALERTS_ENABLED=true or WHALE_INDEXER_ENABLED=true");
+  process.exit(1);
+}
 
 function log(name, chunk) {
   for (const line of String(chunk).split(/\r?\n/)) {

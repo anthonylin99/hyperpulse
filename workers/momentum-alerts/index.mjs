@@ -21,15 +21,25 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+function envFlag(name, fallback = false) {
+  const value = cleanEnv(process.env[name]).toLowerCase();
+  if (!value) return fallback;
+  return value === "true" || value === "1" || value === "yes";
+}
+
+const DATABASE_URL = cleanEnv(process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "");
 if (!DATABASE_URL) {
   console.error("[momentum-alerts] DATABASE_URL or POSTGRES_URL is required.");
   process.exit(1);
 }
 
 const WORKER = "momentum-alerts";
-const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
-const RUN_ONCE = process.argv.includes("--once") || process.env.MOMENTUM_ALERT_ONCE === "true";
+const NETWORK = cleanEnv(process.env.HYPERPULSE_NETWORK) === "testnet" ? "testnet" : "mainnet";
+const RUN_ONCE = process.argv.includes("--once") || envFlag("MOMENTUM_ALERT_ONCE");
 const LOOP_INTERVAL_MS = Math.max(envNumber("MOMENTUM_ALERT_INTERVAL_MS", 5 * 60 * 1000), 60_000);
 const ASSET_LIMIT = clamp(envNumber("MOMENTUM_ALERT_ASSET_LIMIT", 45), 5, 80);
 const DYNAMIC_MOVER_LIMIT = clamp(envNumber("MOMENTUM_ALERT_DYNAMIC_MOVER_LIMIT", 20), 5, 40);
@@ -39,28 +49,29 @@ const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 *
 const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 10), 1, 24);
 const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 12), TELEGRAM_DAILY_CAP, 24);
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 3), 1, 5);
-const CANDLE_INTERVAL = process.env.MOMENTUM_ALERT_CANDLE_INTERVAL || "5m";
+const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
 const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 72);
 const HIGH_SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_HIGH_SCORE_THRESHOLD", 82);
 const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
+const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+const TELEGRAM_CHAT_ID = cleanEnv(process.env.TELEGRAM_CHAT_ID);
 const TELEGRAM_CONFIGURED = Boolean(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID);
-const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === "false"
+const TELEGRAM_ENV = cleanEnv(process.env.TELEGRAM_ENABLED).toLowerCase();
+const TELEGRAM_ENABLED = TELEGRAM_ENV === "false"
   ? false
-  : process.env.TELEGRAM_ENABLED === "true" || TELEGRAM_CONFIGURED;
-const DRY_RUN_REQUESTED = process.env.MOMENTUM_ALERT_DRY_RUN === "true";
+  : TELEGRAM_ENV === "true" || TELEGRAM_CONFIGURED;
+const DRY_RUN_REQUESTED = envFlag("MOMENTUM_ALERT_DRY_RUN");
 const DRY_RUN =
   DRY_RUN_REQUESTED &&
   !TELEGRAM_ENABLED &&
-  (!PROD_LIKE || process.env.MOMENTUM_ALERT_ALLOW_PROD_DRY_RUN === "true");
+  (!PROD_LIKE || envFlag("MOMENTUM_ALERT_ALLOW_PROD_DRY_RUN"));
 if (DRY_RUN_REQUESTED && !DRY_RUN) {
   console.warn("[momentum-alerts] ignoring MOMENTUM_ALERT_DRY_RUN=true because Telegram/prod delivery is enabled");
 }
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "https://hyperpulsehl.com";
+const APP_URL = cleanEnv(process.env.NEXT_PUBLIC_APP_URL) || cleanEnv(process.env.APP_URL) || "https://hyperpulsehl.com";
 const CONFIGURED_ASSETS = parseList(process.env.MOMENTUM_ALERT_ASSETS);
-const DEBUG = process.env.MOMENTUM_ALERT_DEBUG === "true";
+const DEBUG = envFlag("MOMENTUM_ALERT_DEBUG");
 
 const PRIORITY_ASSETS = new Set([
   "BTC", "ETH", "SOL", "HYPE", "ZEC", "TAO", "TON", "AAVE", "NEAR", "LINK", "SUI", "DOGE",
@@ -76,7 +87,7 @@ const pool = new Pool({ connectionString: DATABASE_URL, max: 5 });
 const info = new InfoClient({ transport: new HttpTransport({ isTestnet: NETWORK === "testnet" }) });
 
 function envNumber(name, fallback) {
-  const parsed = Number(process.env[name]);
+  const parsed = Number(cleanEnv(process.env[name]));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
@@ -86,7 +97,7 @@ function clamp(value, min, max) {
 
 function parseList(value, fallback = []) {
   if (!value) return fallback;
-  return String(value).split(",").map((item) => item.trim()).filter(Boolean);
+  return cleanEnv(value).split(",").map((item) => cleanEnv(item)).filter(Boolean);
 }
 
 function parseNumber(value) {

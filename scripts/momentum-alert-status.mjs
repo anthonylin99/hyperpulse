@@ -14,17 +14,22 @@ for (const file of [".env.local", ".env", "workers/momentum-alerts/.env", "worke
   }
 }
 
-const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+const url = cleanEnv(process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "");
 if (!url) {
   console.error("DATABASE_URL or POSTGRES_URL is required.");
   process.exit(1);
 }
 
-const telegramTokenPresent = Boolean(process.env.TELEGRAM_BOT_TOKEN);
-const telegramChatPresent = Boolean(process.env.TELEGRAM_CHAT_ID);
-const telegramEnabled = process.env.TELEGRAM_ENABLED === "false"
+const telegramTokenPresent = Boolean(cleanEnv(process.env.TELEGRAM_BOT_TOKEN));
+const telegramChatPresent = Boolean(cleanEnv(process.env.TELEGRAM_CHAT_ID));
+const telegramEnv = cleanEnv(process.env.TELEGRAM_ENABLED).toLowerCase();
+const telegramEnabled = telegramEnv === "false"
   ? false
-  : process.env.TELEGRAM_ENABLED === "true" || (telegramTokenPresent && telegramChatPresent);
+  : telegramEnv === "true" || (telegramTokenPresent && telegramChatPresent);
 
 const pool = new Pool({ connectionString: url, max: 1 });
 const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
