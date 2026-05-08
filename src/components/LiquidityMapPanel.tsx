@@ -300,16 +300,6 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
     return rows.sort(sortByDistance).slice(0, MAX_TABLE_LEVELS);
   }, [action.downsideMagnet, action.fallbackBands, action.nearestResistance, action.nearestSupport, action.upsideMagnet]);
 
-  const readCopy = useMemo(() => {
-    if (!data) return "";
-    const up = action.upsideMagnet;
-    const down = action.downsideMagnet;
-    if (up && down) return `Nearest magnets: upside ${bandRangeLabel(up)} (${formatDistance(up.distancePct)}), downside ${bandRangeLabel(down)} (${formatDistance(down.distancePct)}).`;
-    if (up) return `Upside magnet: ${bandRangeLabel(up)} (${formatDistance(up.distancePct)}).`;
-    if (down) return `Downside magnet: ${bandRangeLabel(down)} (${formatDistance(down.distancePct)}).`;
-    return "No clean nearby liquidity magnet; default to price structure.";
-  }, [action.downsideMagnet, action.upsideMagnet, data]);
-
   const highlighted = activeBand ?? levelRows[0] ?? null;
 
   return (
@@ -317,11 +307,11 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
       <div className="rounded-2xl border border-zinc-800 bg-[#10151b] px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <SectionEyebrow>Liquidity map</SectionEyebrow>
-            <div className="mt-1 text-sm font-semibold text-zinc-100">Scrollable liquidation and depth zones</div>
+            <SectionEyebrow>Liquidity Context</SectionEyebrow>
+            <div className="mt-1 text-sm font-semibold text-zinc-100">Advanced depth and zone context</div>
             <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
               <MousePointer2 className="h-3.5 w-3.5 text-teal-300" />
-              Drag to pan. Scroll/pinch to zoom. Levels are estimates, not exact exchange-wide liquidations.
+              Secondary context only. Use the Price chart TA Guide for the main decision levels.
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -361,9 +351,6 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
               <div className="grid gap-2 md:grid-cols-2">
                 <ActionCard title="Upside TP / short risk" band={action.upsideMagnet} empty="No upside zone nearby" icon="up" />
                 <ActionCard title="Downside TP / long risk" band={action.downsideMagnet} empty="No downside zone nearby" icon="down" />
-              </div>
-              <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs leading-5 text-zinc-400">
-                <span className="text-zinc-200">Trader read:</span> {readCopy}
               </div>
             </div>
 

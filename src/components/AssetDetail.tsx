@@ -223,7 +223,7 @@ export default function AssetDetail({
       {/* Tab selector */}
       <div className="flex flex-wrap items-center gap-1 px-4 pb-2">
         <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
-        <FilterChip label="Liquidity map" active={tab === "liquidity"} onClick={() => setTab("liquidity")} className="py-1.5 text-xs" />
+        <FilterChip label="Liquidity Context" active={tab === "liquidity"} onClick={() => setTab("liquidity")} className="py-1.5 text-xs" />
         <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
         <FilterChip label="Positioning" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
         <div className="ml-auto flex flex-wrap items-center gap-1">
@@ -246,7 +246,7 @@ export default function AssetDetail({
       {/* Chart area */}
       <div className="px-4 pb-3">
         {tab === "price" ? (
-          <div className="min-h-[720px]">
+          <div className="min-h-[620px]">
             <PriceChart
               coin={asset.coin}
               compact

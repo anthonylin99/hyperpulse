@@ -1,5 +1,6 @@
 import type { SupportResistanceLevel } from "@/types";
 import type { ChartInterval, LevelCandle } from "@/lib/supportResistance";
+import { buildTaGuide } from "@/lib/technicalAnalysis";
 
 export interface TradePlan {
   bias: "wait" | "long-setup" | "short-setup";
@@ -150,15 +151,18 @@ function fundingContext(fundingAPR?: number | null, fundingPercentile?: number |
 export function buildMarketSetupSignal({
   candles,
   levels,
+  fundingAPR,
+  fundingPercentile,
 }: {
   candles: LevelCandle[];
   levels: SupportResistanceLevel[];
+  fundingAPR?: number | null;
+  fundingPercentile?: number | null;
 }): MarketSetupSignal {
   const sorted = [...candles].sort((a, b) => normalizeTimestamp(a.time) - normalizeTimestamp(b.time));
   const latest = sorted.at(-1);
-  const previous = sorted.at(-2);
 
-  if (!latest || !previous || levels.length === 0) {
+  if (!latest) {
     return {
       type: "none",
       label: "No setup",
@@ -171,135 +175,69 @@ export function buildMarketSetupSignal({
   }
 
   const currentPrice = latest.close;
-  const atr = averageTrueRange(sorted);
-  const support = nearestLevel(levels, "support", currentPrice);
-  const resistance = nearestLevel(levels, "resistance", currentPrice);
-  const supportDistance = support ? ((currentPrice - support.price) / currentPrice) * 100 : null;
-  const resistanceDistance = resistance ? ((resistance.price - currentPrice) / currentPrice) * 100 : null;
-  const breakBuffer = Math.max(atr * 0.12, currentPrice * 0.001);
-  const minimumRewardPct = minRewardPct(currentPrice, atr);
-  const proximityPct = 0.55;
-  const resistanceTarget = resistance ? nextResistance(levels, resistance.price, resistance.price)?.price ?? currentPrice + atr * 2.5 : null;
-  const supportTarget = support ? nextSupport(levels, support.price, support.price)?.price ?? currentPrice - atr * 2.5 : null;
+  const guide = buildTaGuide({ candles: sorted, levels, fundingAPR, fundingPercentile });
+  const supportDistance =
+    guide.nearestSupport && currentPrice > 0
+      ? ((currentPrice - guide.nearestSupport.price) / currentPrice) * 100
+      : null;
+  const resistanceDistance =
+    guide.nearestResistance && currentPrice > 0
+      ? ((guide.nearestResistance.price - currentPrice) / currentPrice) * 100
+      : null;
 
-  const resistanceBreak =
-    resistance != null &&
-    previous.close <= resistance.price &&
-    latest.close > resistance.price + breakBuffer;
-  if (
-    resistanceBreak &&
-    resistance &&
-    hasCleanRewardRisk({
-      direction: "long",
-      entry: currentPrice,
-      target: resistanceTarget,
-      stop: resistance.price - riskBuffer(resistance.price, atr),
-      minRewardPct: minimumRewardPct,
-    })
-  ) {
+  if (guide.bias === "momentum-long") {
+    const breakoutLevel = guide.nearestResistance ?? guide.nextResistance;
     return {
-      type: "resistance-break",
-      label: "Resistance break",
-      detail: `Cleared ${formatPrice(resistance.price)}`,
-      tone: "green",
-      level: resistance.price,
+      type: guide.biasLabel === "Momentum long" ? "resistance-break" : "momentum-long",
+      label: guide.biasLabel === "Momentum long" ? "Breakout" : "Trend up",
+      detail: guide.entryCondition,
+      tone: guide.tone,
+      level: breakoutLevel?.price ?? null,
       distancePct: resistanceDistance,
-      isActive: true,
+      isActive: guide.confidence !== "low",
     };
   }
 
-  const supportReclaim =
-    support != null &&
-    latest.low <= support.price + atr * 0.35 &&
-    latest.close > support.price + breakBuffer &&
-    latest.close > previous.close;
-  if (
-    supportReclaim &&
-    support &&
-    hasCleanRewardRisk({
-      direction: "long",
-      entry: currentPrice,
-      target: resistance?.price,
-      stop: support.price - riskBuffer(support.price, atr),
-      minRewardPct: minimumRewardPct,
-    })
-  ) {
-    return {
-      type: "support-reclaim",
-      label: "Support reclaim",
-      detail: `Held ${formatPrice(support.price)}`,
-      tone: "green",
-      level: support.price,
-      distancePct: supportDistance,
-      isActive: true,
-    };
-  }
-
-  const supportBreak =
-    support != null &&
-    previous.close >= support.price &&
-    latest.close < support.price - breakBuffer;
-  if (
-    supportBreak &&
-    support &&
-    hasCleanRewardRisk({
-      direction: "short",
-      entry: currentPrice,
-      target: supportTarget,
-      stop: support.price + riskBuffer(support.price, atr),
-      minRewardPct: minimumRewardPct,
-    })
-  ) {
-    return {
-      type: "support-break",
-      label: "Support break",
-      detail: `Lost ${formatPrice(support.price)}`,
-      tone: "red",
-      level: support.price,
-      distancePct: supportDistance,
-      isActive: true,
-    };
-  }
-
-  if (resistance && resistanceDistance != null && resistanceDistance <= proximityPct) {
-    return {
-      type: "near-resistance",
-      label: "Testing resistance",
-      detail: `${formatPrice(resistance.price)} is ${resistanceDistance.toFixed(2)}% above`,
-      tone: "amber",
-      level: resistance.price,
-      distancePct: resistanceDistance,
-      isActive: false,
-    };
-  }
-
-  if (support && supportDistance != null && supportDistance <= proximityPct) {
+  if (guide.bias === "pullback-long") {
     return {
       type: "near-support",
-      label: "Near support",
-      detail: `${formatPrice(support.price)} is ${supportDistance.toFixed(2)}% below`,
-      tone: "amber",
-      level: support.price,
+      label: "Retest",
+      detail: guide.entryCondition,
+      tone: guide.tone,
+      level: guide.nearestSupport?.price ?? null,
       distancePct: supportDistance,
+      isActive: guide.confidence !== "low",
+    };
+  }
+
+  if (guide.bias === "rejection-risk") {
+    return {
+      type: "near-resistance",
+      label: "At resistance",
+      detail: guide.entryCondition,
+      tone: guide.tone,
+      level: guide.nearestResistance?.price ?? null,
+      distancePct: resistanceDistance,
       isActive: false,
+    };
+  }
+
+  if (guide.bias === "breakdown-risk") {
+    return {
+      type: "support-break",
+      label: "Breakdown",
+      detail: guide.entryCondition,
+      tone: guide.tone,
+      level: guide.nearestSupport?.price ?? null,
+      distancePct: supportDistance,
+      isActive: guide.confidence !== "low",
     };
   }
 
   return {
     type: "none",
-    label:
-      support &&
-      resistance &&
-      resistanceDistance != null &&
-      supportDistance != null &&
-      resistanceDistance + supportDistance < minimumRewardPct
-        ? "Range too tight"
-        : "Range wait",
-    detail: resistance
-      ? `Need clean hold above ${formatPrice(resistance.price)}`
-      : support
-        ? `Need sweep/reclaim near ${formatPrice(support.price)}`
-        : "No nearby confirmation",
+    label: "No setup",
+    detail: guide.entryCondition,
     tone: "neutral",
     level: null,
     distancePct: resistanceDistance ?? supportDistance,

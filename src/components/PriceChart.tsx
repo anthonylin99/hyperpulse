@@ -15,7 +15,6 @@ import {
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick, formatEasternDateTime } from "@/lib/time";
-import { type ReactionOverlayMode } from "@/lib/reactionLevels";
 import { calculateSupportResistanceLevels } from "@/lib/supportResistance";
 import { buildTaGuide, type MovingAveragePoint } from "@/lib/technicalAnalysis";
 import { SectionEyebrow } from "@/components/trading-ui";
@@ -169,20 +168,16 @@ function isStressZone(level: SupportResistanceLevel): boolean {
 function isDownsideReactionLevel(
   level: SupportResistanceLevel,
   currentPrice: number | null,
-  overlayMode: ReactionOverlayMode,
 ): boolean {
   if (level.kind !== "support") return false;
-  if (overlayMode === "oi_holding" && level.exposureSide === "bull") return true;
   return currentPrice == null || level.price < currentPrice;
 }
 
 function isUpsideReactionLevel(
   level: SupportResistanceLevel,
   currentPrice: number | null,
-  overlayMode: ReactionOverlayMode,
 ): boolean {
   if (level.kind !== "resistance") return false;
-  if (overlayMode === "oi_holding" && level.exposureSide === "bear") return true;
   return currentPrice == null || level.price > currentPrice;
 }
 
@@ -256,14 +251,6 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
     reason: "The level is active, but the strength read is not one-sided yet.",
     className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
   };
-}
-
-function formatCompactUsd(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value) || value <= 0) return "n/a";
-  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -361,7 +348,7 @@ export default function PriceChart({
   const visibleDownsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => isDownsideReactionLevel(level, currentPrice, "all")),
+        levels.filter((level) => isDownsideReactionLevel(level, currentPrice)),
         4,
       ),
     [currentPrice, levels],
@@ -369,17 +356,12 @@ export default function PriceChart({
   const visibleUpsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => isUpsideReactionLevel(level, currentPrice, "all")),
+        levels.filter((level) => isUpsideReactionLevel(level, currentPrice)),
         4,
       ),
     [currentPrice, levels],
   );
   const activeZoneId = hoveredZoneId ?? selectedZoneId;
-  const activeZoneBand = useMemo(
-    () => zoneBands.find((band) => band.id === activeZoneId) ?? zoneBands[0] ?? null,
-    [activeZoneId, zoneBands],
-  );
-
   useEffect(() => {
     if (selectedZoneId && !zoneBands.some((band) => band.id === selectedZoneId)) {
       setSelectedZoneId(null);
@@ -699,17 +681,12 @@ export default function PriceChart({
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] leading-5 text-zinc-500">
           <span>{levelSourceNote}</span>
+          <span className="rounded-full border border-teal-500/20 bg-teal-500/10 px-2 py-0.5 text-teal-300">green support</span>
+          <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-rose-300">red resistance</span>
           {taGuide.movingAverages.latest.sma200 == null ? (
             <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-zinc-500">SMA 200 warming up</span>
           ) : null}
         </div>
-        <ZoneDetailPanel
-          bands={zoneBands}
-          activeBand={activeZoneBand}
-          currentPrice={currentPrice}
-          onHover={setHoveredZoneId}
-          onSelect={setSelectedZoneId}
-        />
       </div>
 
       {!loading && !error && candles.length > 0 ? (
@@ -754,91 +731,6 @@ export default function PriceChart({
   );
 }
 
-function ZoneDetailPanel({
-  bands,
-  activeBand,
-  currentPrice,
-  onHover,
-  onSelect,
-}: {
-  bands: ChartZoneBand[];
-  activeBand: ChartZoneBand | null;
-  currentPrice: number | null;
-  onHover: (id: string | null) => void;
-  onSelect: (id: string) => void;
-}) {
-  const rows = [...bands].sort((a, b) => Math.abs(a.level.distancePct ?? 0) - Math.abs(b.level.distancePct ?? 0)).slice(0, 6);
-
-  if (rows.length === 0) {
-    return (
-      <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-3 text-xs text-zinc-500">
-        Reaction zones are still warming up for this asset.
-      </div>
-    );
-  }
-
-  const selected = activeBand ?? rows[0];
-  const flowSize = selected.level.zoneTooltip?.inferredOiUsd ?? selected.level.zoneTooltip?.totalRecentFlowUsd ?? selected.level.notionalUsd;
-
-  return (
-    <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/65 p-3">
-      <div className="grid gap-2 text-xs md:grid-cols-[1fr_1fr_0.75fr_0.75fr_1.5fr]">
-        <ZoneMetric label="Role" value={zoneRoleLabel(selected)} tone={selected.side === "downside" ? "success" : "danger"} />
-        <ZoneMetric label="Range" value={formatLevelRange(selected.level)} />
-        <ZoneMetric label="Distance" value={formatSignedPct(selected.level.distancePct ?? distanceFromCurrent(selected.level.price, currentPrice))} />
-        <ZoneMetric label="Flow/OI" value={formatCompactUsd(flowSize)} />
-        <ZoneMetric label="Trader read" value={shortTraderRead(selected.level, selected.side)} />
-      </div>
-
-      <div className="mt-3 overflow-x-auto">
-        <table className="min-w-full text-left text-[11px]">
-          <thead className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
-            <tr>
-              <th className="px-2 py-2 font-medium">Role</th>
-              <th className="px-2 py-2 font-medium">Range</th>
-              <th className="px-2 py-2 font-medium">Distance</th>
-              <th className="px-2 py-2 font-medium">Size</th>
-              <th className="px-2 py-2 font-medium">Read</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-900">
-            {rows.map((band) => {
-              const active = band.id === selected.id;
-              const rowRead = levelReadFor(band.level, band.side);
-              const size = band.level.zoneTooltip?.inferredOiUsd ?? band.level.zoneTooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
-              return (
-                <tr
-                  key={band.id}
-                  className={`cursor-pointer transition ${active ? "bg-zinc-900/80 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200"}`}
-                  onMouseEnter={() => onHover(band.id)}
-                  onMouseLeave={() => onHover(null)}
-                  onClick={() => onSelect(band.id)}
-                >
-                  <td className={`whitespace-nowrap px-2 py-2 font-medium ${band.side === "downside" ? "text-teal-300" : "text-rose-300"}`}>{zoneRoleLabel(band)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatLevelRange(band.level)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatSignedPct(band.level.distancePct ?? distanceFromCurrent(band.level.price, currentPrice))}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatCompactUsd(size)}</td>
-                  <td className="min-w-[220px] px-2 py-2 text-zinc-400">{shortTraderRead(band.level, band.side) || rowRead.label}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-2 text-[10px] leading-4 text-zinc-600">Click a zone row to pin it. Hovering highlights the matching band on the chart.</div>
-    </div>
-  );
-}
-
-function ZoneMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "success" | "danger" }) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">{label}</div>
-      <div className={`mt-1 truncate font-mono text-xs ${tone === "success" ? "text-teal-300" : tone === "danger" ? "text-rose-300" : "text-zinc-200"}`}>{value}</div>
-    </div>
-  );
-}
-
 function GuideMetric({
   label,
   value,
@@ -863,32 +755,6 @@ function GuideMetric({
       {detail ? <div className="mt-0.5 truncate text-[10px] text-zinc-600">{detail}</div> : null}
     </div>
   );
-}
-
-function zoneRoleLabel(band: ChartZoneBand): string {
-  if (band.side === "downside") return "Downside support";
-  return "Upside resistance";
-}
-
-function distanceFromCurrent(price: number, currentPrice: number | null): number | null {
-  if (currentPrice == null || currentPrice <= 0 || price <= 0) return null;
-  return ((price - currentPrice) / currentPrice) * 100;
-}
-
-function formatSignedPct(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "n/a";
-  const abs = Math.abs(value);
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${sign}${abs.toFixed(abs < 1 ? 2 : 1)}%`;
-}
-
-function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upside"): string {
-  if (side === "downside") {
-    if (level.exposureSide === "bull") return "Support/long-risk zone; reclaim can fuel bounce.";
-    return "Downside liquidity; fail below can extend lower.";
-  }
-  if (level.exposureSide === "bear") return "Resistance/short-risk zone; clean hold can squeeze.";
-  return "Upside liquidity; rejection can mark take-profit.";
 }
 
 function FlowZoneOverlay({

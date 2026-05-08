@@ -18,12 +18,8 @@ import {
 import { formatCompact, formatPct, formatUSD } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { reportClientError } from "@/lib/clientErrorReporter";
-import {
-  buildReactionSetupSignal,
-  isDefaultReactionAsset,
-  type ReactionLevelsPayload,
-} from "@/lib/reactionLevels";
-import type { MarketSetupSignal } from "@/lib/tradePlan";
+import { calculateSupportResistanceLevels, type LevelCandle } from "@/lib/supportResistance";
+import { buildMarketSetupSignal, type MarketSetupSignal } from "@/lib/tradePlan";
 import type { MomentumAlert } from "@/types";
 
 type Mode = "perps" | "spot";
@@ -75,12 +71,14 @@ const RWA_SPOT_CATEGORIES = [
 
 const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
 const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
-const REACTION_BATCH_SIZE = 4;
-const REACTION_SCAN_INTERVAL_MS = 2 * 60_000;
-const REACTION_DEFAULT_SIGNAL: MarketSetupSignal = {
+const SETUP_BATCH_SIZE = 4;
+const SETUP_SCAN_INTERVAL_MS = 5 * 60_000;
+const SETUP_SCAN_LIMIT = 12;
+const SETUP_SCAN_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
+const SETUP_DEFAULT_SIGNAL: MarketSetupSignal = {
   type: "none",
-  label: "Reaction defaults",
-  detail: "BTC ETH SOL HYPE",
+  label: "No setup",
+  detail: "Open a top liquid perp to scan TA levels",
   tone: "neutral",
   level: null,
   distancePct: null,
@@ -231,7 +229,7 @@ export default function MarketTable({
     const interval = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
       fetchSavedMomentumFlags().catch((error) => reportClientError("market.momentum-flags", error));
-    }, REACTION_SCAN_INTERVAL_MS);
+    }, SETUP_SCAN_INTERVAL_MS);
 
     return () => {
       cancelled = true;
@@ -284,64 +282,81 @@ export default function MarketTable({
     return arr;
   }, [assets, search, categoryFilter, hideSmallCaps, perpSortKey, perpSortAsc]);
 
-  const reactionAssetCoins = useMemo(
-    () => perpsFiltered.filter((asset) => isDefaultReactionAsset(asset.coin)).map((asset) => asset.coin),
+  const setupAssetCoins = useMemo(
+    () => perpsFiltered.slice(0, SETUP_SCAN_LIMIT).map((asset) => asset.coin),
     [perpsFiltered],
   );
-  const reactionAssetKey = reactionAssetCoins.join(",");
+  const setupAssetKey = setupAssetCoins.join(",");
 
   useEffect(() => {
-    if (mode !== "perps" || reactionAssetKey.length === 0) return;
+    if (mode !== "perps" || setupAssetKey.length === 0) return;
     let cancelled = false;
 
-    async function scanReactionLevels() {
-      const bucket = Math.floor(Date.now() / REACTION_SCAN_INTERVAL_MS);
-      const coins = reactionAssetKey.split(",").filter(Boolean);
+    async function scanSetups() {
+      const bucket = Math.floor(Date.now() / SETUP_SCAN_INTERVAL_MS);
+      const coins = setupAssetKey.split(",").filter(Boolean);
       const nextSignals: Record<string, MarketSetupSignal> = {};
-      const scanKey = `${reactionAssetKey}:${bucket}`;
+      const scanKey = `${setupAssetKey}:${bucket}`;
       if (setupScanRef.current.key === scanKey) return;
       setupScanRef.current.key = scanKey;
       setupScanRef.current.timestamp = Date.now();
 
       const batches = Array.from(
-        { length: Math.ceil(coins.length / REACTION_BATCH_SIZE) },
-        (_, index) => coins.slice(index * REACTION_BATCH_SIZE, (index + 1) * REACTION_BATCH_SIZE),
+        { length: Math.ceil(coins.length / SETUP_BATCH_SIZE) },
+        (_, index) => coins.slice(index * SETUP_BATCH_SIZE, (index + 1) * SETUP_BATCH_SIZE),
       );
 
-      await Promise.all(
-        batches.map(async (batch) => {
-          if (cancelled || batch.length === 0) return;
-          await Promise.all(
-            batch.map(async (coin) => {
-              const response = await fetch(
-                withNetworkParam(
-                  `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=15m`,
-                ),
-              );
-              if (!response.ok) return;
-              const payload = (await response.json()) as ReactionLevelsPayload;
-              nextSignals[coin] = buildReactionSetupSignal(payload);
-            }),
-          );
-        }),
-      );
+      for (const batch of batches) {
+        if (cancelled || batch.length === 0) break;
+        await Promise.all(
+          batch.map(async (coin) => {
+            const now = Date.now();
+            const response = await fetch(
+              withNetworkParam(
+                `/api/market/candles?coin=${encodeURIComponent(coin)}&marketType=perp&interval=15m&startTime=${now - SETUP_SCAN_LOOKBACK_MS}&endTime=${now}`,
+              ),
+            );
+            if (!response.ok) return;
+            const rawCandles = (await response.json()) as Array<Record<string, string | number>>;
+            const candles: LevelCandle[] = rawCandles
+              .map((candle) => ({
+                time: Number(candle.t ?? candle.T ?? candle.time),
+                open: Number(candle.o ?? candle.open),
+                high: Number(candle.h ?? candle.high),
+                low: Number(candle.l ?? candle.low),
+                close: Number(candle.c ?? candle.close),
+                volume: Number(candle.v ?? candle.vlm ?? 0),
+              }))
+              .filter((candle) => Number.isFinite(candle.close) && candle.close > 0)
+              .sort((a, b) => a.time - b.time);
+            const levels = calculateSupportResistanceLevels(candles, "15m");
+            const asset = assets.find((item) => item.coin === coin);
+            nextSignals[coin] = buildMarketSetupSignal({
+              candles,
+              levels,
+              fundingAPR: asset?.fundingAPR,
+              fundingPercentile: asset?.signal.fundingPercentile,
+            });
+          }),
+        );
+      }
 
       if (!cancelled) {
         setSetupSignals((prev) => ({ ...prev, ...nextSignals }));
       }
     }
 
-    scanReactionLevels().catch((error) => reportClientError("market.reaction-scan", error));
+    scanSetups().catch((error) => reportClientError("market.setup-scan", error));
     const interval = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
-      scanReactionLevels().catch((error) => reportClientError("market.reaction-scan", error));
-    }, REACTION_SCAN_INTERVAL_MS);
+      scanSetups().catch((error) => reportClientError("market.setup-scan", error));
+    }, SETUP_SCAN_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [mode, reactionAssetKey]);
+  }, [assets, mode, setupAssetKey]);
 
   const spotFiltered = useMemo(() => {
     let arr = [...rwaSpotAssets];
@@ -535,7 +550,8 @@ export default function MarketTable({
                 {perpsFiltered.map((asset, index) => {
                   const setupSignal =
                     momentumSignals[asset.coin] ??
-                    (isDefaultReactionAsset(asset.coin) ? setupSignals[asset.coin] : REACTION_DEFAULT_SIGNAL);
+                    setupSignals[asset.coin] ??
+                    SETUP_DEFAULT_SIGNAL;
 
                   return (
                     <AssetRow
