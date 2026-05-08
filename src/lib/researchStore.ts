@@ -4,6 +4,7 @@ import type { DailyMarketPrice, PortfolioTrackedWallet, TradeSizingSnapshot } fr
 
 const DATABASE_URL = getPooledDatabaseUrl();
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
+const RESEARCH_SCHEMA_WRITES_ENABLED = process.env.ENABLE_RESEARCH_STORE_WRITES === "true";
 
 let pool: Pool | null = null;
 let disabledUntil = 0;
@@ -30,6 +31,7 @@ export function isResearchStoreConfigured(): boolean {
 }
 
 async function ensureResearchTables(): Promise<void> {
+  if (!RESEARCH_SCHEMA_WRITES_ENABLED) return;
   const client = getPool();
   if (!client) return;
 

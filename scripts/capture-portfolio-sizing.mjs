@@ -35,6 +35,11 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+if (process.env.ENABLE_PORTFOLIO_CAPTURE !== "true") {
+  console.log("[portfolio-capture] disabled; set ENABLE_PORTFOLIO_CAPTURE=true to write portfolio sizing tables.");
+  process.exit(0);
+}
+
 const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
 
 function parseNumber(value) {

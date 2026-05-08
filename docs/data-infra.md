@@ -15,16 +15,12 @@ No Kafka, ClickHouse, Kubernetes, or full web Docker migration is required in th
 
 ## Data Layers
 
-### Current product tables
+### Current Reaction Map product tables
 
 - `reaction_exposure_zones_current`
 - `reaction_exposure_zone_events`
-- `whale_wallets_current`
-- `whale_wallet_asset_stats`
-- `whale_positioning_current`
-- `whale_alert_events`
 
-`reaction_exposure_zones_current` is the serving table for the Reaction Map. It stores up to five bull zones and five bear zones per asset/window for BTC, ETH, and SOL. Zones are clustered from recent public Hyperliquid flow within a 0.8% band and remain explicitly inferred, not exact trader-position truth.
+`reaction_exposure_zones_current` is the serving table for the Reaction Map. It stores ranked long-OI and short-OI holding zones per asset/window for BTC, ETH, and SOL. Zones are clustered from recent public Hyperliquid flow and remain explicitly inferred, not exact trader-position truth.
 
 ### Short-lived worker inputs
 
@@ -143,8 +139,8 @@ HyperPulse no longer runs the whale indexer as an active product surface. Reacti
 
 - `/api/market/reaction-levels` reads current reaction zones from the reaction-map worker tables.
 - `/api/market/pressure` runs in market-only mode without tracked-wallet liquidation buckets.
-- `/api/alerts/momentum` reads saved Momentum Alert rows and delivery status.
-- Historical whale tables may remain in Neon for audit, but they are not part of the current runtime.
+- `/api/alerts/momentum` is legacy unless `ENABLE_MOMENTUM_ALERTS=true` is set.
+- Historical whale, market-collector, research, and portfolio-sizing tables are not part of the current Reaction Map runtime.
 
 ## Guardrails
 

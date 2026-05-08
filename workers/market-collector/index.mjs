@@ -31,6 +31,11 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+if (process.env.ENABLE_MARKET_COLLECTOR !== "true") {
+  console.log("[market-collector] disabled; set ENABLE_MARKET_COLLECTOR=true to write warehouse tables.");
+  process.exit(0);
+}
+
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
 const ASSET_LIMIT = clampInt(process.env.MARKET_COLLECTOR_ASSET_LIMIT, 15, 1, 25);
 const CONFIGURED_ASSETS = parseList(process.env.MARKET_COLLECTOR_ASSETS);

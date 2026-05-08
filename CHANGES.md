@@ -229,6 +229,13 @@
 - Decision: leave the chart frame clipped for the canvas/rounded corners, but render the tooltip outside that clipping context with a high z-index.
 - Result: rebuilt the web container and verified the SOL OI Holding tooltip opens with full flow/OI/path details at the normal browser size and a short viewport without clipping.
 
+## 2026-05-08
+
+- Request: stop the market chart tooltip from shaking violently on hover.
+- Attempted: traced the Reaction Map zone hover overlay, removed competing native `title` tooltips from the chart band buttons, and made the custom tooltip ignore pointer events so it cannot steal hover from the underlying band.
+- Decision: keep the existing visual tooltip and active-zone behavior, but prevent the tooltip card itself from participating in hit testing.
+- Result: `docker compose exec web npm run lint`, `docker compose exec web npm run build`, and `docker compose build web` passed. Web restarted on `WEB_PORT=3004`; Browser Use verified one tooltip node appears for a selected chart zone, the zone buttons no longer carry `title` attributes, the tooltip has `pointer-events-none`, and no fresh console errors appeared.
+
 ## 2026-05-07
 
 - Request: investigate why the SOL OI Holding band seemed to flip between bullish and bearish around the same 87.75-88.25 range.
@@ -291,3 +298,17 @@
 - Attempted: inspected Docker disk usage, removed the unused `hyperpulse_hyperpulse_pg` volume, ran the safe cleanup script dry-run, then applied builder-cache and unused-image pruning.
 - Decision: keep active containers/images and non-HyperPulse project volumes; the worker image can be rebuilt from `docker-compose.reaction-map.yml` when needed.
 - Result: Docker build cache is now `0B`, images dropped to seven active images with `0B` reclaimable, and `localhost:3004/api/health` still returns `200`.
+
+## 2026-05-08
+
+- Request: check whether legacy/whale Neon tables are intentional or being recreated, add a read-only Reaction Map health script, and reduce the OI-level stream to the current BTC/ETH/SOL use case.
+- Attempted: audited live Neon tables from the `web` container, dry-ran and applied a cleanup migration, added `npm run reaction:health`, gated legacy writers behind explicit `ENABLE_*` flags, narrowed Reaction Map worker defaults to BTC/ETH/SOL, and reduced the default zone cluster width from `0.8%` to `0.12%`.
+- Decision: keep only `schema_migrations` plus the five Reaction Map tables in the active Neon branch. Treat `momentum-alerts`, market collector, research/portfolio store writes, and portfolio capture as opt-in legacy/auxiliary surfaces.
+- Result: immediate health after cleanup showed no unexpected tables and BTC/ETH/SOL level refresh ages under a few seconds. A 3-minute watch showed `momentum_alert_events`, `notification_queue`, `worker_runs`, portfolio sizing, and research tables reappeared from an external deployed surface using old code; this local patch prevents those paths from recreating tables after redeploy/disable.
+
+## 2026-05-08
+
+- Request: fix the `market-radar` beta-history error after dropping `market_candles` from Reaction-only Neon.
+- Attempted: reproduced the missing-table condition through the Reaction-only health state, then guarded `/api/market/radar` with a `to_regclass('public.market_candles')` check before querying beta history.
+- Decision: keep beta history optional. If `market_candles` is absent, radar falls back to live market scoring without logging a Postgres `42P01` stack trace or recreating auxiliary tables.
+- Result: `docker compose build web` passed, `web` restarted on port `3004`, and `GET /api/market/radar` returned `200` with no fresh `market-radar`, `market_candles`, or `42P01` log entries.

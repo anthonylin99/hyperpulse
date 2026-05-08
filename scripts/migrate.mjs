@@ -27,6 +27,7 @@ const DATABASE_URL =
   process.env.NEON_DATABASE_URL_POOLING ??
   "";
 const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR ?? "migrations";
+const REACTION_ONLY_CLEANUP_MIGRATION = "0007_reaction_only_cleanup.sql";
 
 if (!DATABASE_URL) {
   console.error("[migrate] NEON_DATABASE_URL, DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL_POOLING is required.");
@@ -67,6 +68,11 @@ async function main() {
   try {
     await client.query("select pg_advisory_lock(hashtext('hyperpulse_schema_migrations'))");
     await ensureMigrationTable(client);
+    const cleanupApplied = await client.query(
+      "select 1 from schema_migrations where id = $1 limit 1",
+      [REACTION_ONLY_CLEANUP_MIGRATION],
+    );
+    const allowPreCleanupChecksumDrift = Boolean(cleanupApplied.rows[0]);
 
     for (const file of migrationFiles) {
       const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
@@ -74,6 +80,10 @@ async function main() {
       const existing = await client.query("select checksum from schema_migrations where id = $1 limit 1", [file]);
       if (existing.rows[0]) {
         if (existing.rows[0].checksum !== sum) {
+          if (allowPreCleanupChecksumDrift && file < REACTION_ONLY_CLEANUP_MIGRATION) {
+            console.warn(`[migrate] skip ${file}; checksum changed before ${REACTION_ONLY_CLEANUP_MIGRATION}`);
+            continue;
+          }
           throw new Error(`Migration ${file} changed after it was applied.`);
         }
         console.log(`[migrate] skip ${file}`);

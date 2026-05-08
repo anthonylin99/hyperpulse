@@ -5,6 +5,7 @@ import type { MomentumAlert, NotificationDeliveryStatus } from "@/types";
 const DATABASE_URL = getPooledDatabaseUrl();
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
 const WORKER_STALE_MS = 15 * 60 * 1000;
+const MOMENTUM_ALERT_SCHEMA_WRITES_ENABLED = process.env.ENABLE_MOMENTUM_ALERTS === "true";
 
 let pool: Pool | null = null;
 let disabledUntil = 0;
@@ -89,6 +90,7 @@ export function isMomentumAlertStoreConfigured(): boolean {
 }
 
 export async function ensureMomentumAlertTables(): Promise<void> {
+  if (!MOMENTUM_ALERT_SCHEMA_WRITES_ENABLED) return;
   const client = getPool();
   if (!client) return;
   await client.query(`

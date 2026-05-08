@@ -10,7 +10,9 @@ function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^["']|["']$/g, "");
 }
 
-const momentumEnabled = cleanEnv(process.env.MOMENTUM_ALERTS_ENABLED).toLowerCase() !== "false";
+const momentumEnabled =
+  cleanEnv(process.env.ENABLE_MOMENTUM_ALERTS).toLowerCase() === "true" ||
+  cleanEnv(process.env.MOMENTUM_ALERTS_ENABLED).toLowerCase() === "true";
 
 const workers = [
   ...(momentumEnabled
@@ -31,8 +33,8 @@ console.log(
 );
 
 if (!workers.length) {
-  console.error("[supervisor] no workers enabled; set MOMENTUM_ALERTS_ENABLED=true");
-  process.exit(1);
+  console.log("[supervisor] no workers enabled; set ENABLE_MOMENTUM_ALERTS=true to run legacy momentum alerts");
+  process.exit(0);
 }
 
 function log(name, message) {

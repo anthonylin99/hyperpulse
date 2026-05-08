@@ -14,7 +14,7 @@ For a Reaction Map-only deployment, the app does not need the legacy whale, Tele
 | `reaction_orderbook_buckets` | Yes | Compact book shelves used for the Order Book overlay. |
 | `reaction_exposure_zones_current` | Yes | Serving table for current BTC/ETH/SOL bull and bear OI zones. |
 | `reaction_exposure_zone_events` | Yes | Durable zone lifecycle memory for rank/status changes. |
-| `reaction_level_snapshots` | Optional | Legacy aggregate snapshots. Current API reads live buckets plus current zones, so this can be dropped after one smoke confirms no remaining reader. |
+| `reaction_level_snapshots` | No | Legacy aggregate snapshots. Current API reads worker current zones and compact buckets instead. |
 
 ## Production Snapshot
 
@@ -39,7 +39,7 @@ This is expected with the current compact product model: the worker stores up to
 
 ## Drop Candidates For Reaction-Only Mode
 
-Run this only on a verified Neon temp branch first, then production after approval.
+This cleanup is now encoded as `migrations/0007_reaction_only_cleanup.sql`. Run it only after the Reaction Map API and worker have been verified against the target branch.
 
 ```sql
 drop table if exists positioning_alerts cascade;
@@ -86,3 +86,16 @@ Remaining user tables after cleanup:
 | `reaction_trade_buckets` |
 
 `schema_migrations` was listed as a keep table in the retention model, but it was not present as a user table in this Neon database at cleanup time.
+
+## Re-Creation Guard
+
+If non-Reaction tables reappear, the usual cause is an older deployed worker or app route still running schema-creating code. The repository now gates those writers behind explicit env flags:
+
+| Surface | Re-enable flag |
+| --- | --- |
+| Momentum alert worker/store | `ENABLE_MOMENTUM_ALERTS=true` |
+| Market collector | `ENABLE_MARKET_COLLECTOR=true` |
+| Research/portfolio store schema writes | `ENABLE_RESEARCH_STORE_WRITES=true` |
+| Portfolio sizing capture script | `ENABLE_PORTFOLIO_CAPTURE=true` |
+
+Use `npm run reaction:health` from a container with Neon env access to verify only the Reaction Map tables remain and BTC/ETH/SOL level refresh ages stay fresh.

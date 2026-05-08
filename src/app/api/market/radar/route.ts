@@ -29,6 +29,8 @@ const BETA_MIN_SAMPLES = 72;
 
 let pool: Pool | null = null;
 let betaStoreDisabledUntil = 0;
+let marketCandlesChecked = false;
+let marketCandlesAvailable = false;
 
 function getPool(): Pool | null {
   if (!DATABASE_URL || betaStoreDisabledUntil > Date.now()) return null;
@@ -39,6 +41,15 @@ function getPool(): Pool | null {
 function disableBetaStore(error: unknown) {
   betaStoreDisabledUntil = Date.now() + 5 * 60 * 1000;
   console.warn("[market-radar] beta history unavailable", error);
+}
+
+async function hasMarketCandlesTable(client: Pool): Promise<boolean> {
+  if (marketCandlesChecked) return marketCandlesAvailable;
+  const result = await client.query("select to_regclass('public.market_candles') as table_name");
+  marketCandlesAvailable = Boolean(result.rows[0]?.table_name);
+  marketCandlesChecked = true;
+  if (!marketCandlesAvailable) betaStoreDisabledUntil = Date.now() + 5 * 60 * 1000;
+  return marketCandlesAvailable;
 }
 
 function parseAssetRows(data: unknown): ParsedAsset[] {
@@ -146,6 +157,7 @@ async function loadBtcBetas(coins: string[]): Promise<Record<string, RadarBetaIn
   if (!client) return {};
   const symbols = Array.from(new Set([...coins.map((coin) => coin.toUpperCase()), "BTC"]));
   try {
+    if (!(await hasMarketCandlesTable(client))) return {};
     const result = await client.query(
       `select upper(asset) as asset, open_time, close
        from market_candles

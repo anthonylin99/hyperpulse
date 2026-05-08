@@ -288,6 +288,14 @@
 
 ## 2026-05-08
 
+- Request summary: stop the Reaction Map chart tooltip from shaking on hover.
+- Skills used: `verification-gate`, `ui-ux-pro-max`, `webapp-testing`, `browser-use:browser`, `repo-execution`.
+- What helped: source inspection showed the custom tooltip could sit over its own hover trigger, and Browser Use confirmed the patched tooltip has `pointer-events-none` with no competing native `title` attributes.
+- Friction or missing capability: `git pull --ff-only` was blocked by existing local edits in `workers/momentum-alerts/index.mjs`; the in-app browser surface also did not provide a direct reliable hover primitive, so verification used selection plus DOM/class checks for the hover-jitter cause.
+- Recommendation: keep chart tooltips non-interactive unless they need clickable controls, and use a separate pinned detail panel for interactive zone actions.
+
+## 2026-05-08
+
 - Request summary: support the user's current `.env` names `NEON_DATABASE_URL` and `NEON_DATABASE_URL_POOLING`.
 - Skills used: `verification-gate`, `repo-execution`, `coding-discipline`.
 - What helped: checking container env presence without printing values proved Compose was passing the Neon aliases and the code was choosing the pooled URL.
@@ -341,3 +349,27 @@
 - What helped: `docker system df -v` showed the old HyperPulse volume was detached and build cache was the main reclaimable storage.
 - Friction or missing capability: Docker reported `0B` reclaimed for builder prune while also showing build cache dropped from `28.16GB` to `0B`, so final inventory was the reliable evidence.
 - Recommendation: keep named volumes opt-in for deletion and use dry-run cleanup before broad image pruning.
+
+## 2026-05-08
+
+- Request summary: inspect Neon Postgres and determine whether Reaction Map levels are still being pushed continuously.
+- Skills used: `neon-postgres`, `verification-gate`.
+- What helped: running read-only SQL from inside the `web` Compose service used the same Neon env surface as the app while keeping connection strings hidden.
+- Friction or missing capability: the first Node probe hit PowerShell quote stripping, so the query script was piped into container Node instead.
+- Recommendation: use paired timestamp samples on `reaction_exposure_zones_current` and worker bucket tables when checking live ingestion health.
+
+## 2026-05-08
+
+- Request summary: clean legacy Neon table re-creation, add Reaction Map health reporting, and narrow OI-level ingestion to the active BTC/ETH/SOL case.
+- Skills used: `prompt-master`, `diagnosis-loop`, `neon-postgres`, `verification-gate`, `coding-discipline`, `repo-execution`.
+- What helped: the read-only health script made table drift and level freshness obvious, while a watch window proved external old-code workers were recreating auxiliary tables.
+- Friction or missing capability: local code can gate future writes, but the already-deployed external worker must be redeployed or disabled before the DB stays reaction-only.
+- Recommendation: deploy this patch before the final cleanup drop, then run `npm run reaction:health` twice across one old worker interval.
+
+## 2026-05-08
+
+- Request summary: fix `/api/market/radar` logging `relation "market_candles" does not exist` after Reaction-only cleanup.
+- Skills used: `diagnosis-loop`, `coding-discipline`, `verification-gate`.
+- What helped: checking for `market_candles` with `to_regclass` made beta history optional without reintroducing warehouse tables.
+- Friction or missing capability: external old-code surfaces are still recreating auxiliary tables until redeployed or stopped, so table hygiene remains a deploy follow-through item.
+- Recommendation: use this pattern for any remaining optional warehouse readers before the next cleanup pass.

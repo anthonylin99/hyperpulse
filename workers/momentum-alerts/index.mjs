@@ -43,6 +43,11 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+if (!envFlag("ENABLE_MOMENTUM_ALERTS")) {
+  console.log("[momentum-alerts] disabled; set ENABLE_MOMENTUM_ALERTS=true to run this legacy alert worker.");
+  process.exit(0);
+}
+
 const WORKER = "momentum-alerts";
 const NETWORK = cleanEnv(process.env.HYPERPULSE_NETWORK) === "testnet" ? "testnet" : "mainnet";
 const RUN_ONCE = process.argv.includes("--once") || envFlag("MOMENTUM_ALERT_ONCE");

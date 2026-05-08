@@ -18,12 +18,12 @@ Hidden in the public demo by default:
 - `Trading`
 - `Factors`
 
-Whale tracking has been retired from the active product/runtime. Historical database tables may remain for audit purposes, but the live app redirects old whale routes back to Markets.
+Whale tracking has been retired from the active product/runtime. The live app redirects old whale routes back to Markets, and the active Neon runtime should stay focused on Reaction Map tables.
 
 ## Product Surfaces
 
 - **Markets**: table-first Hyperliquid directory with price, funding, Reaction Map setup status, and top-level tape context
-- **Reaction Map**: market-positioning level map for BTC, ETH, SOL, and HYPE using public Hyperliquid trades, OI changes, book depth, funding, and optional tracked-wallet liquidation samples. It shows likely reaction pressure, not exact exchange-wide positions.
+- **Reaction Map**: market-positioning level map for BTC, ETH, and SOL using public Hyperliquid trades, OI changes, book depth, and funding. It shows likely reaction pressure, not exact exchange-wide positions.
 - **Portfolio**: read-only wallet review with performance chart, positions, and trade journal
 - **Docs**: methodology and implementation notes for the current demo
 
@@ -32,7 +32,7 @@ Whale tracking has been retired from the active product/runtime. Historical data
 - **Frontend**: Next.js App Router
 - **Primary deployment target**: Vercel
 - **Market data**: Hyperliquid-native APIs
-- **Ingestion workers**: DigitalOcean Docker droplet or Railway service for always-on Reaction Map and Momentum alerts
+- **Ingestion workers**: DigitalOcean Docker droplet for the always-on Reaction Map stream worker
 - **Database**: Neon Postgres for worker-backed analytics where enabled
 
 ## Feature Flags
@@ -80,8 +80,9 @@ HyperPulse now includes a lean warehouse foundation for market capture and marke
 - Canonical SQL migrations via `npm run db:migrate`
 - Market collector worker via `npm run market:collect`
 - Reaction Map stream worker via `npm run reaction:start`
+- Reaction Map read-only health check via `npm run reaction:health`
 - Reaction-level API at `/api/market/reaction-levels?coin=BTC&window=15m`
-- Current exposure-zone serving table with top five bull and top five bear zones per asset/window
+- Current exposure-zone serving table with ranked Long OI and Short OI holding zones per asset/window
 - Docker Compose local stack via `npm run docker:up`
 - Worker-only DigitalOcean Compose path via `docker-compose.reaction-map.yml`
 - Private read-only MCP server via `npm run mcp:start`

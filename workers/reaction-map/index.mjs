@@ -33,7 +33,7 @@ if (!DATABASE_URL) {
 }
 
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
-const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, ["BTC", "ETH", "SOL", "HYPE", "XRP", "DOGE", "ZEC", "AAVE"]).map((asset) =>
+const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, ["BTC", "ETH", "SOL"]).map((asset) =>
   asset.toUpperCase(),
 );
 const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["5m", "15m", "1h"])
@@ -47,7 +47,7 @@ const FLUSH_MS = envNumber("REACTION_MAP_FLUSH_MS", 15_000, 2_000);
 const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 40, 5);
 const RETENTION_MS = envNumber("REACTION_MAP_RETENTION_MS", 24 * 60 * 60 * 1000, 30 * 60 * 1000);
 const RETENTION_SWEEP_MS = envNumber("REACTION_MAP_RETENTION_SWEEP_MS", 10 * 60 * 1000, 60_000);
-const ZONE_CLUSTER_WIDTH_PCT = envNumber("REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT", 0.8, 0.1);
+const ZONE_CLUSTER_WIDTH_PCT = envNumber("REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT", 0.12, 0.05);
 const ZONE_MIN_TRADE_NOTIONAL_USD = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD", 250_000, 1_000);
 const ZONE_RANGE_MIN_PCT = envNumber("REACTION_MAP_CLEANUP_RANGE_MIN_PCT", 2, 0.5);
 const ZONE_RANGE_MAX_PCT = envNumber("REACTION_MAP_CLEANUP_RANGE_MAX_PCT", 35, 5);

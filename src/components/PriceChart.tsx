@@ -1054,8 +1054,6 @@ function FlowZoneOverlay({
         const idleBandAlpha = band.alpha * 0.045;
         const idleBorderAlpha = band.alpha * 0.24;
         const active = activeZoneId === band.id;
-        const title = zoneHoverTitle(band);
-
         return (
           <div key={band.id}>
             <button
@@ -1073,7 +1071,6 @@ function FlowZoneOverlay({
                 borderBottomColor: active ? `rgba(${color}, 0.62)` : `rgba(${color}, ${idleBorderAlpha})`,
               }}
               aria-label={`${formatLevelRange(band.level)} ${read.label} ${band.level.label}`}
-              title={title}
               onClick={() => onSelect(band.id)}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
@@ -1092,7 +1089,6 @@ function FlowZoneOverlay({
                 opacity: active ? 1 : Math.max(0.5, band.alpha * 0.86),
               }}
               aria-label={`${formatLevelRange(band.level)} ${read.label} details`}
-              title={title}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
@@ -1109,18 +1105,6 @@ function FlowZoneOverlay({
   );
 }
 
-function zoneHoverTitle(band: ChartZoneBand): string {
-  const read = levelReadFor(band.level, band.side);
-  const flowSize = band.level.zoneTooltip?.inferredOiUsd ?? band.level.zoneTooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
-  return [
-    `${formatLevelRange(band.level)} - ${read.label}`,
-    shortTraderRead(band.level, band.side),
-    `Flow/OI ${formatCompactUsd(flowSize)}`,
-    band.level.zoneTooltip?.reasonSelected ?? read.reason,
-    "Inferred zone, not exact exchange-wide positions.",
-  ].filter(Boolean).join("\n");
-}
-
 function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
   const read = levelReadFor(band.level, band.side);
   const tooltip = band.level.zoneTooltip;
@@ -1132,7 +1116,7 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
 
   return (
     <div
-      className={`absolute right-3 z-30 w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
+      className={`pointer-events-none absolute right-3 z-30 w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
         isDownside ? "border-teal-400/35" : "border-rose-400/35"
       }`}
       style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}

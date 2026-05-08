@@ -19,6 +19,7 @@
     "momentum:alerts:once": "node workers/momentum-alerts/index.mjs --once",
     "momentum:alerts:live-once": "node scripts/run-momentum-alert-live-once.mjs",
     "reaction:start": "node workers/reaction-map/index.mjs",
+    "reaction:health": "node scripts/reaction-map-health.mjs",
     "docker:up": "docker compose up --build",
     "mcp:start": "node workers/mcp-server/index.mjs",
     "railway:start": "HYPERPULSE_START_WORKERS=true node scripts/start.mjs",
