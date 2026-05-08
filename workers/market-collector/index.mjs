@@ -20,9 +20,14 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DATABASE_URL =
+  process.env.NEON_DATABASE_URL_POOLING ??
+  process.env.NEON_DATABASE_URL ??
+  process.env.DATABASE_URL ??
+  process.env.POSTGRES_URL ??
+  "";
 if (!DATABASE_URL) {
-  console.error("[market-collector] DATABASE_URL or POSTGRES_URL is required.");
+  console.error("[market-collector] NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required.");
   process.exit(1);
 }
 

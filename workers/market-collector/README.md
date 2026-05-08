@@ -13,7 +13,7 @@ Always-on Railway/Docker worker for the first HyperPulse market warehouse.
 
 ## Required env
 
-- `DATABASE_URL` or `POSTGRES_URL`
+- `NEON_DATABASE_URL_POOLING`, `NEON_DATABASE_URL`, `DATABASE_URL`, or `POSTGRES_URL`
 
 ## Optional env
 

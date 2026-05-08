@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { getPooledDatabaseUrl } from "@/lib/databaseEnv";
 import type {
   PositioningAlert,
   PositioningDigestRun,
@@ -14,7 +15,7 @@ import type {
 import { isWhalesEnabled } from "@/lib/appConfig";
 import { isQualifiedHip3Symbol } from "@/lib/whaleTaxonomy";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DATABASE_URL = getPooledDatabaseUrl();
 const DEFAULT_WHALE_MIN_REALIZED_PNL_30D = 200_000;
 const DEFAULT_FEED_FETCH_MULTIPLIER = 5;
 const TRACKED_CLUSTER_MAX_DISTANCE_PCT = Number.isFinite(Number(process.env.POSITIONING_TRACKED_CLUSTER_MAX_DISTANCE_PCT))

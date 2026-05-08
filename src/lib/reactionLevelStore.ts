@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { getPooledDatabaseUrl } from "@/lib/databaseEnv";
 import {
   buildReactionLevels,
   type ReactionBookBucket,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/reactionLevels";
 import { listTrackedLiquidationBuckets } from "@/lib/whaleStore";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
+const DATABASE_URL = getPooledDatabaseUrl();
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
 const TRACKED_LIQ_MAX_AGE_MS = 45 * 60 * 1000;
 

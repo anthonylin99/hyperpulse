@@ -8,9 +8,9 @@ import {
   WebSocketTransport,
 } from '@nktkas/hyperliquid';
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const DATABASE_URL = process.env.NEON_DATABASE_URL_POOLING || process.env.NEON_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL;
 if (!DATABASE_URL) {
-  throw new Error('DATABASE_URL or POSTGRES_URL is required for the whale indexer');
+  throw new Error('NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required for the whale indexer');
 }
 
 function envNumber(name, fallback) {

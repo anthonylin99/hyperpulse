@@ -14,5 +14,5 @@ All tools are read-only and return guardrails with `noOrderPlacement: true`.
 ## Run
 
 ```bash
-DATABASE_URL=postgres://... npm run mcp:start
+NEON_DATABASE_URL_POOLING=postgres://... npm run mcp:start
 ```

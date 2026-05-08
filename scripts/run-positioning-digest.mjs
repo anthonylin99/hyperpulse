@@ -11,9 +11,9 @@ loadEnvFile(path.join(repoRoot, '.env.local'));
 loadEnvFile(path.join(repoRoot, '.env'));
 loadEnvFile(path.join(repoRoot, 'workers/whale-indexer/.env'));
 
-const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
+const DATABASE_URL = process.env.NEON_DATABASE_URL_POOLING || process.env.NEON_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 if (!DATABASE_URL) {
-  throw new Error('DATABASE_URL or POSTGRES_URL is required to run the positioning digest.');
+  throw new Error('NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required to run the positioning digest.');
 }
 
 const POSITIONING_DIGEST_INTERVAL_MS = envNumber('POSITIONING_DIGEST_INTERVAL_MS', 2 * 60 * 60 * 1000);

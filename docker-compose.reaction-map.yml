@@ -10,7 +10,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the Neon Postgres connection string}
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:?Set NEON_DATABASE_URL to the direct Neon Postgres connection string}
+      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:?Set NEON_DATABASE_URL_POOLING to the pooled Neon Postgres connection string}
+      DATABASE_URL: ${DATABASE_URL:-}
+      POSTGRES_URL: ${POSTGRES_URL:-}
       HYPERPULSE_NETWORK: ${HYPERPULSE_NETWORK:-mainnet}
       REACTION_MAP_ASSETS: ${REACTION_MAP_ASSETS:-BTC,ETH,SOL}
       REACTION_MAP_BUCKET_MS: ${REACTION_MAP_BUCKET_MS:-60000}

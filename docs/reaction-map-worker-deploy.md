@@ -1,15 +1,24 @@
 # Reaction Map Worker Deployment
 
-Use this path when DigitalOcean should run only the Reaction Map stream worker. It does not start the web app, local Postgres, migrations, market collector, or whale indexer.
+Use this path when a Linux host or DigitalOcean droplet should run only the Reaction Map stream worker. It does not start the web app, local Postgres, migrations, market collector, or whale indexer.
 
-The worker expects the Neon schema to already be migrated. If startup logs mention missing tables or columns, apply the migrations first and restart the worker after the schema is ready.
+The worker expects the Neon schema to already be migrated. Run migrations from the app/deploy pipeline with `NEON_DATABASE_URL` before starting the worker. If startup logs mention missing tables or columns, apply the migrations first and restart the worker after the schema is ready.
+
+## Runtime contract
+
+```text
+Linux worker -> public Hyperliquid streams -> Neon reaction tables -> frontend /api/market/reaction-levels -> OI Holding chips
+```
+
+The worker writes compact current OI Holding zones into Neon. The frontend picks up new top OI Holding levels only when the frontend host also has Neon env access, preferably `NEON_DATABASE_URL_POOLING`, pointed at the same Neon project and branch.
 
 ## Required env
 
-Create a droplet `.env` next to the compose file, or set these values in the DigitalOcean service environment:
+Create a droplet `.env` next to the compose file, or set these values in the Linux service environment:
 
 ```bash
-DATABASE_URL="postgresql://...?sslmode=verify-full"
+NEON_DATABASE_URL="postgresql://...?sslmode=verify-full"
+NEON_DATABASE_URL_POOLING="postgresql://...?sslmode=verify-full"
 REACTION_MAP_ASSETS=BTC,ETH,SOL
 REACTION_MAP_BUCKET_MS=60000
 REACTION_MAP_FLUSH_MS=15000
@@ -23,11 +32,23 @@ REACTION_MAP_CLEANUP_RANGE_MAX_PCT=35
 REACTION_MAP_RETENTION_MS=86400000
 ```
 
-Do not commit the real `DATABASE_URL`. Keep it in DigitalOcean secrets or a droplet-local `.env`.
+Do not commit the real Neon URL. Keep it in DigitalOcean secrets or a droplet-local `.env`.
+
+Use `NEON_DATABASE_URL_POOLING` for the worker. Use `NEON_DATABASE_URL` for migrations. Keep both set on deploy hosts so no service needs to rename either value to `DATABASE_URL`.
 
 Prefer `sslmode=verify-full` for Neon connection strings. The Node `pg` driver currently treats `sslmode=require` like `verify-full`, but startup logs warn that this behavior will change in a future major release.
 
 ## Start only the worker
+
+One-command deploy/smoke path:
+
+```bash
+bash scripts/deploy-reaction-map-worker.sh
+```
+
+The script targets a Linux shell on the worker host. On Windows, use the manual Compose commands below.
+
+Manual path:
 
 ```bash
 git fetch
@@ -57,10 +78,7 @@ Healthy logs look like:
 ## Update the worker
 
 ```bash
-git fetch
-git pull
-docker compose -f docker-compose.reaction-map.yml up -d --build reaction-map
-docker compose -f docker-compose.reaction-map.yml logs --tail=80 reaction-map
+bash scripts/deploy-reaction-map-worker.sh
 ```
 
 ## Stop the worker
@@ -74,3 +92,13 @@ docker compose -f docker-compose.reaction-map.yml down
 The root `docker-compose.yml` is for local full-stack development and includes `db`, `migrate`, `web`, `market-collector`, `reaction-map`, and `whale-indexer`.
 
 For a worker-only droplet, prefer `docker-compose.reaction-map.yml`. If you intentionally use the root compose file for a one-off smoke, run `docker compose run -d --no-deps reaction-map`; otherwise Compose may try to resolve the local `db` service.
+
+## Frontend pickup check
+
+After the worker flushes rows, check the frontend against the same Neon project:
+
+```bash
+curl -fsS "https://hyperpulsehl.com/api/market/reaction-levels?coin=BTC&window=15m" | head -c 500
+```
+
+The response should include `levels` and OI Holding overlay entries once the worker has flushed fresh BTC/ETH/SOL buckets. If the Linux worker is healthy but the frontend stays stale, check the frontend deploy env first: it needs `NEON_DATABASE_URL_POOLING` for runtime reads.
