@@ -341,7 +341,7 @@ export function buildTaGuide({
     };
   }
 
-  if (trend.up) {
+  if (trend.up && resistance) {
     return {
       bias: "momentum-long",
       biasLabel: "Trend up",
@@ -349,12 +349,8 @@ export function buildTaGuide({
       confidence: crowdedFunding ? "low" : "medium",
       trendLabel: trend.label,
       trendDetail: trend.detail,
-      entryCondition: resistance ? `Watch reclaim/break above ${formatPrice(resistance.price)}.` : "Watch hold above EMA 21.",
-      trimText: nextResistanceLevel
-        ? `Next trim ${formatPrice(nextResistanceLevel.price)}`
-        : resistance
-          ? `Trim into ${formatPrice(resistance.price)}`
-          : "No clean resistance yet.",
+      entryCondition: `Watch reclaim/break above ${formatPrice(resistance.price)}.`,
+      trimText: nextResistanceLevel ? `Next trim ${formatPrice(nextResistanceLevel.price)}` : `Trim into ${formatPrice(resistance.price)}`,
       invalidationText: longInvalidation ? `Invalidate below ${formatPrice(longInvalidation)}.` : "Invalidate on EMA failure.",
       why: [maReason, fundingReason ?? "Trend stack is constructive."].slice(0, 2),
       nearestSupport: support,
