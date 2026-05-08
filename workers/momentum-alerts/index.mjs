@@ -142,15 +142,6 @@ function average(values) {
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
 }
 
-function formatUsd(value, digits = 1) {
-  if (!Number.isFinite(value)) return "n/a";
-  const abs = Math.abs(value);
-  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(digits)}B`;
-  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(digits)}M`;
-  if (abs >= 1_000) return `$${(value / 1_000).toFixed(digits)}K`;
-  return `$${value.toFixed(0)}`;
-}
-
 function formatPrice(value) {
   if (!Number.isFinite(value)) return "n/a";
   if (value >= 1000) return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
@@ -190,17 +181,6 @@ function easternDateKey(time = Date.now()) {
   }).formatToParts(new Date(time));
   const get = (type) => parts.find((part) => part.type === type)?.value ?? "00";
   return `${get("year")}-${get("month")}-${get("day")}`;
-}
-
-function easternTimeLabel(time = Date.now()) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(new Date(time));
 }
 
 function candleToRow(candle) {
@@ -708,19 +688,56 @@ function eventId(candidate, now) {
     .slice(0, 24);
 }
 
+function formatMultiple(value, digits = 1) {
+  if (!Number.isFinite(value)) return "n/a";
+  return `${value.toFixed(digits)}x`;
+}
+
+function setupLabel(alert) {
+  const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
+  if (alert.triggerKind === "momentum_ignition") {
+    return direction === "SHORT" ? "BREAKDOWN" : "BREAKOUT";
+  }
+  return direction === "SHORT" ? "DOWNSIDE CONTINUATION" : "MOMENTUM CONTINUATION";
+}
+
+function triggerLevelLine(alert) {
+  const direction = alert.payload?.direction === "short" ? "short" : "long";
+  const recentHigh = Number(alert.payload?.recentHigh);
+  const recentLow = Number(alert.payload?.recentLow);
+  const support = alert.payload?.support;
+  const resistance = alert.payload?.resistance;
+
+  if (direction === "short") {
+    if (Number.isFinite(recentLow) && alert.payload?.breakdown) return `Lost: ${formatPrice(recentLow)}`;
+    if (support?.price) return `Level: below ${formatPrice(Number(support.price))}`;
+    return `Trigger: downside momentum`;
+  }
+
+  if (Number.isFinite(recentHigh) && alert.payload?.breakout) return `Broke: ${formatPrice(recentHigh)}`;
+  if (resistance?.price) return `Level: above ${formatPrice(Number(resistance.price))}`;
+  return `Trigger: upside momentum`;
+}
+
+function fundingTag(value) {
+  if (!Number.isFinite(value)) return "funding n/a";
+  if (Math.abs(value) < 8) return `funding ${formatPct(value)}`;
+  return value > 0 ? `funding rich ${formatPct(value)}` : `funding cheap ${formatPct(value)}`;
+}
+
 function buildTelegramText(alert) {
   const link = new URL(alert.routeHref, APP_URL).toString();
-  const conviction = alert.severity === "high" ? "HIGH" : "MEDIUM";
-  const direction = alert.payload?.direction === "short" ? "Short" : "Long";
-  const invalidationLabel = direction === "Short" ? "invalid above" : "invalid below";
+  const severity = alert.severity === "high" ? "HIGH" : "MED";
+  const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
+  const invalidationLabel = direction === "SHORT" ? "Invalid >" : "Invalid <";
   const lines = [
-    `⚡ MOMENTUM ALERT · ${conviction}`,
-    `${alert.asset} ${direction} · ${formatPct(alert.return1hPct)} 1h · ${formatPct(alert.return4hPct)} 4h · ${formatPct(alert.return24hPct)} 24h`,
-    `ALERT PRICE: ${formatPrice(alert.alertPrice)} · OI ${formatUsd(alert.openInterestUsd)} · volume ${alert.volumeVsBaseline.toFixed(1)}x`,
-    `WHY: ${alert.reason}`,
-    `WATCH: target ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`,
-    `TIME: ${easternTimeLabel(alert.createdAt)}`,
-    link,
+    `HYPERPULSE · ${severity}`,
+    `${alert.asset} ${direction} · ${setupLabel(alert)}`,
+    `Now: ${formatPrice(alert.alertPrice)} · 1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)}`,
+    triggerLevelLine(alert),
+    `Trim: ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`,
+    `Context: vol ${formatMultiple(alert.volumeVsBaseline)} · ${fundingTag(alert.fundingApr)}`,
+    `Chart: ${link}`,
   ];
   return lines.join("\n");
 }
