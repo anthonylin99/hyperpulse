@@ -34,7 +34,7 @@ for (const check of checks) {
         throw new Error(`/api/health expected ok payload, got ${body}`);
       }
     } else {
-      for (const key of ["tradingEnabled", "whalesEnabled"]) {
+      for (const key of ["tradingEnabled", "factorsEnabled"]) {
         if (typeof config[key] !== "boolean") {
           throw new Error(`/api/public-config expected boolean ${key}, got ${config[key]}`);
         }
@@ -42,7 +42,6 @@ for (const check of checks) {
       if (expectPublicFlags) {
         const expectedOff = [
           ["tradingEnabled", false],
-          ["whalesEnabled", false],
         ];
         for (const [key, expected] of expectedOff) {
           if (config[key] !== expected) {
@@ -74,15 +73,13 @@ if (expectPublicFlags) {
     console.log(`ok ${path} disabled redirect`);
   }
 
-  for (const path of ["/api/whales/feed"]) {
-    const response = await fetch(`${baseUrl}${path}`, {
-      headers: { "user-agent": "HyperPulse public smoke/1.0" },
-    });
-    if (response.status !== 404) {
-      throw new Error(`${path} expected 404 while disabled, got ${response.status}`);
-    }
-    console.log(`ok ${path} disabled 404`);
+  const response = await fetch(`${baseUrl}/api/whales/feed`, {
+    headers: { "user-agent": "HyperPulse public smoke/1.0" },
+  });
+  if (response.status !== 404) {
+    throw new Error(`/api/whales/feed expected 404 after whale removal, got ${response.status}`);
   }
+  console.log("ok /api/whales/feed removed 404");
 }
 
 console.log(`public smoke passed for ${baseUrl}`);

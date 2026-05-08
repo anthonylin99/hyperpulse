@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.mjs",
+    "railway:start": "node index.mjs",
     "once": "node index.mjs --once"
   },
   "dependencies": {

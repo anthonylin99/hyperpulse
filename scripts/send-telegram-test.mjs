@@ -19,10 +19,13 @@ function loadEnv(file) {
 loadEnv(".env.local");
 loadEnv(".env");
 loadEnv("workers/momentum-alerts/.env");
-loadEnv("workers/whale-indexer/.env");
 
-const token = process.env.TELEGRAM_BOT_TOKEN || "";
-const chatId = process.env.TELEGRAM_CHAT_ID || "";
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+const chatId = cleanEnv(process.env.TELEGRAM_CHAT_ID);
 const text = process.argv.slice(2).join(" ") || [
   "🧪 HyperPulse momentum alert smoke test",
   "This proves Telegram delivery through the same TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID env path.",

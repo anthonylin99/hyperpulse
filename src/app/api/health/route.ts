@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   PUBLIC_DEPLOYMENT_MODE,
   isTradingEnabled,
-  isWhalesEnabled,
 } from "@/lib/appConfig";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +19,6 @@ export async function GET() {
       null,
     featureFlags: {
       tradingEnabled: isTradingEnabled(),
-      whalesEnabled: isWhalesEnabled(),
       momentumAlertsEnabled: true,
     },
     timestamp: new Date().toISOString(),

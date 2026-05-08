@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
 
-for (const file of [".env.local", ".env", "workers/momentum-alerts/.env", "workers/whale-indexer/.env"]) {
+for (const file of [".env.local", ".env", "workers/momentum-alerts/.env"]) {
   if (!existsSync(file)) continue;
   const contents = readFileSync(file, "utf8");
   for (const line of contents.split(/\r?\n/)) {
@@ -15,15 +15,20 @@ for (const file of [".env.local", ".env", "workers/momentum-alerts/.env", "worke
   }
 }
 
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
 process.env.MOMENTUM_ALERT_DRY_RUN = "false";
 process.env.MOMENTUM_ALERT_ONCE = "true";
 
-const url =
+const url = cleanEnv(
   process.env.NEON_DATABASE_URL_POOLING ??
-  process.env.NEON_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL ??
-  "";
+    process.env.NEON_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_URL ??
+    "",
+);
 if (!url) {
   console.error("NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required.");
   process.exit(1);

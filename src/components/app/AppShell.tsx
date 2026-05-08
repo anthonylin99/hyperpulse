@@ -24,9 +24,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname === "/docs" ||
     pathname.startsWith("/docs/") ||
     pathname === "/factors" ||
-    pathname.startsWith("/factors/") ||
-    pathname === "/whales" ||
-    pathname.startsWith("/whales/");
+    pathname.startsWith("/factors/");
   const buildStamp = getBuildStamp();
   const syncLabel = lastUpdated ? formatEasternTime(lastUpdated, true) : "--:--:-- EST";
 

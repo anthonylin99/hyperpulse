@@ -10,7 +10,6 @@ import {
   House,
   Layers3,
   Shield,
-  Waves,
   type LucideIcon,
 } from "lucide-react";
 import BrandLogo from "@/components/brand/BrandLogo";
@@ -23,7 +22,6 @@ const TAB_ICONS: Record<AppTabKey, LucideIcon> = {
   markets: BarChart3,
   alerts: Bell,
   factors: Layers3,
-  whales: Waves,
   portfolio: BriefcaseBusiness,
   docs: Shield,
 };
@@ -33,17 +31,15 @@ const TAB_HELPERS: Record<AppTabKey, string> = {
   markets: "Directory + context",
   alerts: "Momentum history",
   factors: "Regime baskets",
-  whales: "Tracked flow",
   portfolio: "Review workspace",
   docs: "Methodology",
 };
 
 export default function AppSidebar() {
   const pathname = usePathname();
-  const { whalesEnabled, factorsEnabled } = useAppConfig();
+  const { factorsEnabled } = useAppConfig();
 
   const tabs = APP_TABS.filter((tab) => {
-    if (!whalesEnabled && tab.key === "whales") return false;
     if (!factorsEnabled && tab.key === "factors") return false;
     return true;
   });

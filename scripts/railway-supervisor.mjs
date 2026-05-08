@@ -6,18 +6,34 @@ let shuttingDown = false;
 
 console.log("[start] worker supervisor mode");
 
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+const momentumEnabled = cleanEnv(process.env.MOMENTUM_ALERTS_ENABLED).toLowerCase() !== "false";
+
 const workers = [
-  {
-    name: "whale-indexer",
-    command: "node",
-    args: ["workers/whale-indexer/index.mjs"],
-  },
-  {
-    name: "momentum-alerts",
-    command: "node",
-    args: ["workers/momentum-alerts/index.mjs"],
-  },
+  ...(momentumEnabled
+    ? [
+        {
+          name: "momentum-alerts",
+          command: "node",
+          args: ["workers/momentum-alerts/index.mjs"],
+        },
+      ]
+    : []),
 ];
+
+console.log(
+  `[supervisor] config workers=${workers.map((worker) => worker.name).join(",") || "none"} ` +
+    `database=${cleanEnv(process.env.DATABASE_URL || process.env.POSTGRES_URL) ? "present" : "missing"} ` +
+    `telegram=${cleanEnv(process.env.TELEGRAM_BOT_TOKEN) && cleanEnv(process.env.TELEGRAM_CHAT_ID) ? "present" : "missing"}`,
+);
+
+if (!workers.length) {
+  console.error("[supervisor] no workers enabled; set MOMENTUM_ALERTS_ENABLED=true");
+  process.exit(1);
+}
 
 function log(name, message) {
   for (const line of String(message).split(/\r?\n/)) {

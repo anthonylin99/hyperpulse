@@ -3,21 +3,17 @@
 import { Suspense, useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import HomePage from "@/components/HomePage";
-import { useAppConfig } from "@/context/AppConfigContext";
 
 function LandingContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { whalesEnabled } = useAppConfig();
 
   const redirectHref = useMemo(() => {
     const tab = searchParams.get("tab");
     if (!tab) return null;
 
     const asset = searchParams.get("asset");
-    const address = searchParams.get("address");
-
     switch (tab) {
       case "home":
         return "/";
@@ -28,12 +24,11 @@ function LandingContent() {
       case "docs":
         return "/docs";
       case "whales":
-        if (!whalesEnabled) return "/markets";
-        return address ? `/whales/${address}` : "/whales";
+        return "/markets";
       default:
         return null;
     }
-  }, [searchParams, whalesEnabled]);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!redirectHref) return;

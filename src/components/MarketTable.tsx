@@ -24,6 +24,7 @@ import {
   type ReactionLevelsPayload,
 } from "@/lib/reactionLevels";
 import type { MarketSetupSignal } from "@/lib/tradePlan";
+import type { MomentumAlert } from "@/types";
 
 type Mode = "perps" | "spot";
 
@@ -85,6 +86,61 @@ const REACTION_DEFAULT_SIGNAL: MarketSetupSignal = {
   distancePct: null,
   isActive: false,
 };
+const MOMENTUM_FLAG_MIN_VISIBLE_MS = 6 * 60 * 60 * 1000;
+const MOMENTUM_FLAG_HARD_EXPIRE_MS = 24 * 60 * 60 * 1000;
+
+function alertDirection(alert: MomentumAlert): "long" | "short" {
+  return alert.payload?.direction === "short" ? "short" : "long";
+}
+
+function isMomentumFlagActive(alert: MomentumAlert): boolean {
+  const createdAt = Number(alert.createdAt);
+  if (!Number.isFinite(createdAt)) return false;
+  const ageMs = Date.now() - createdAt;
+  if (ageMs < 0 || ageMs > MOMENTUM_FLAG_HARD_EXPIRE_MS) return false;
+
+  const currentPrice = alert.currentPrice ?? alert.currentPriceAtEval;
+  const invalidationPrice = alert.invalidationPrice;
+  const direction = alertDirection(alert);
+  if (
+    currentPrice != null &&
+    invalidationPrice != null &&
+    Number.isFinite(currentPrice) &&
+    Number.isFinite(invalidationPrice)
+  ) {
+    if (direction === "long" && currentPrice <= invalidationPrice) return false;
+    if (direction === "short" && currentPrice >= invalidationPrice) return false;
+  }
+
+  if (ageMs <= MOMENTUM_FLAG_MIN_VISIBLE_MS) return true;
+  if (alert.returnSinceAlertPct == null || !Number.isFinite(alert.returnSinceAlertPct)) return true;
+  return direction === "long" ? alert.returnSinceAlertPct > -0.5 : alert.returnSinceAlertPct < 0.5;
+}
+
+function momentumAlertToSetupSignal(alert: MomentumAlert): MarketSetupSignal {
+  const direction = alertDirection(alert);
+  const currentPrice = alert.currentPrice ?? alert.currentPriceAtEval;
+  const targetDistancePct =
+    currentPrice != null && alert.targetPrice != null && currentPrice > 0
+      ? ((alert.targetPrice - currentPrice) / currentPrice) * 100
+      : null;
+  const returnText =
+    alert.returnSinceAlertPct == null
+      ? "saved momentum alert"
+      : `${alert.returnSinceAlertPct >= 0 ? "+" : ""}${alert.returnSinceAlertPct.toFixed(1)}% since alert`;
+
+  return {
+    type: direction === "short" ? "momentum-short" : "momentum-long",
+    label: direction === "short" ? "Saved short momentum" : "Saved long momentum",
+    detail: `${returnText}. Alert price ${formatUSD(alert.alertPrice)}. ${
+      alert.invalidationPrice ? `Invalid ${direction === "short" ? "above" : "below"} ${formatUSD(alert.invalidationPrice)}.` : "Invalidation unavailable."
+    }`,
+    tone: direction === "short" ? "red" : "green",
+    level: alert.targetPrice ?? alert.alertPrice,
+    distancePct: targetDistancePct,
+    isActive: true,
+  };
+}
 
 function getPerpSortValue(asset: MarketAsset, key: PerpSortKey): number | string {
   switch (key) {
@@ -127,6 +183,7 @@ export default function MarketTable({
   const [spotSortAsc, setSpotSortAsc] = useState(false);
   const [spotFilter, setSpotFilter] = useState<SpotCategory | "All">("All");
   const [setupSignals, setSetupSignals] = useState<Record<string, MarketSetupSignal>>({});
+  const [momentumSignals, setMomentumSignals] = useState<Record<string, MarketSetupSignal>>({});
   const setupScanRef = useRef({ key: "", timestamp: 0 });
 
   const fetchSpot = useCallback(async () => {
@@ -151,6 +208,36 @@ export default function MarketTable({
     const interval = setInterval(fetchSpot, POLL_INTERVAL_MARKET);
     return () => clearInterval(interval);
   }, [mode, fetchSpot]);
+
+  useEffect(() => {
+    if (mode !== "perps") return;
+    let cancelled = false;
+
+    async function fetchSavedMomentumFlags() {
+      const response = await fetch("/api/alerts/momentum?limit=100", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as { alerts?: MomentumAlert[] };
+      const nextSignals: Record<string, MarketSetupSignal> = {};
+      for (const alert of payload.alerts ?? []) {
+        const asset = alert.asset.toUpperCase();
+        if (!isMomentumFlagActive(alert)) continue;
+        if (nextSignals[asset] && nextSignals[asset].isActive) continue;
+        nextSignals[asset] = momentumAlertToSetupSignal(alert);
+      }
+      if (!cancelled) setMomentumSignals(nextSignals);
+    }
+
+    fetchSavedMomentumFlags().catch((error) => reportClientError("market.momentum-flags", error));
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      fetchSavedMomentumFlags().catch((error) => reportClientError("market.momentum-flags", error));
+    }, REACTION_SCAN_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [mode]);
 
   const rwaSpotAssets = useMemo(
     () => spotAssets.filter((asset) => RWA_SPOT_CATEGORY_SET.has(asset.category)),
@@ -446,9 +533,9 @@ export default function MarketTable({
               </thead>
               <tbody>
                 {perpsFiltered.map((asset, index) => {
-                  const setupSignal = isDefaultReactionAsset(asset.coin)
-                    ? setupSignals[asset.coin]
-                    : REACTION_DEFAULT_SIGNAL;
+                  const setupSignal =
+                    momentumSignals[asset.coin] ??
+                    (isDefaultReactionAsset(asset.coin) ? setupSignals[asset.coin] : REACTION_DEFAULT_SIGNAL);
 
                   return (
                     <AssetRow

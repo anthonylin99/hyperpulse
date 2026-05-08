@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
 
-for (const file of [".env.local", ".env", "workers/momentum-alerts/.env", "workers/whale-indexer/.env"]) {
+for (const file of [".env.local", ".env", "workers/momentum-alerts/.env"]) {
   if (!existsSync(file)) continue;
   const contents = readFileSync(file, "utf8");
   for (const line of contents.split(/\r?\n/)) {
@@ -14,22 +14,28 @@ for (const file of [".env.local", ".env", "workers/momentum-alerts/.env", "worke
   }
 }
 
-const url =
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+const url = cleanEnv(
   process.env.NEON_DATABASE_URL_POOLING ??
-  process.env.NEON_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL ??
-  "";
+    process.env.NEON_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_URL ??
+    "",
+);
 if (!url) {
   console.error("NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required.");
   process.exit(1);
 }
 
-const telegramTokenPresent = Boolean(process.env.TELEGRAM_BOT_TOKEN);
-const telegramChatPresent = Boolean(process.env.TELEGRAM_CHAT_ID);
-const telegramEnabled = process.env.TELEGRAM_ENABLED === "false"
+const telegramTokenPresent = Boolean(cleanEnv(process.env.TELEGRAM_BOT_TOKEN));
+const telegramChatPresent = Boolean(cleanEnv(process.env.TELEGRAM_CHAT_ID));
+const telegramEnv = cleanEnv(process.env.TELEGRAM_ENABLED).toLowerCase();
+const telegramEnabled = telegramEnv === "false"
   ? false
-  : process.env.TELEGRAM_ENABLED === "true" || (telegramTokenPresent && telegramChatPresent);
+  : telegramEnv === "true" || (telegramTokenPresent && telegramChatPresent);
 
 const pool = new Pool({ connectionString: url, max: 1 });
 const sinceMs = Date.now() - 24 * 60 * 60 * 1000;

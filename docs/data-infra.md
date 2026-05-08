@@ -137,14 +137,14 @@ Cleanup uses `current spot +/- clamp(3 * recent average move, 2%, 35%)` with a h
 
 Production should run this worker as an always-on Docker process on the DigitalOcean droplet. Vercel reads current zones through `/api/market/reaction-levels`; it should not persist exposure-zone rows.
 
-## Tracked Trader Liquidation Map
+## Reaction Map And Momentum Alerts
 
-HyperPulse stores a zero-spend v1 liquidation map from tracked wallet profiles, not a full exchange-wide position book.
+HyperPulse no longer runs the whale indexer as an active product surface. Reaction Map uses public market stream buckets and visible order-book shelves; Momentum Alerts persist durable signal rows in `momentum_alert_events`.
 
-- `tracked_position_snapshots` normalizes current per-wallet perp positions with entry, mark, signed size, notional, margin, leverage, and liquidation price.
-- `liq_heatmap_buckets` aggregates those positions by liquidation price bucket so the app can show tracked long/short liquidation pockets without recomputing from JSON profiles on every request.
-- Buckets are rebuilt by the whale indexer during its positioning cycle and are used by `/api/whales/liquidation-heatmap` and `/api/market/pressure` when fresh rows exist.
-- Labels should say `tracked trader` or `tracked wallet sample`; do not call this a full-market liquidation heatmap.
+- `/api/market/reaction-levels` reads current reaction zones from the reaction-map worker tables.
+- `/api/market/pressure` runs in market-only mode without tracked-wallet liquidation buckets.
+- `/api/alerts/momentum` reads saved Momentum Alert rows and delivery status.
+- Historical whale tables may remain in Neon for audit, but they are not part of the current runtime.
 
 ## Guardrails
 

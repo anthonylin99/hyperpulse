@@ -10,6 +10,8 @@ const TONE_CLASS: Record<MarketSetupSignal["tone"], string> = {
 };
 
 function setupAction(setup: MarketSetupSignal): string {
+  if (setup.type === "momentum-long") return "Momentum long";
+  if (setup.type === "momentum-short") return "Momentum short";
   if (setup.type === "resistance-break") return "Long if holds >";
   if (setup.type === "support-reclaim") return "Long reclaim";
   if (setup.type === "support-break") return "Short below";
