@@ -47,8 +47,9 @@ const WORKER = "momentum-alerts";
 const NETWORK = cleanEnv(process.env.HYPERPULSE_NETWORK) === "testnet" ? "testnet" : "mainnet";
 const RUN_ONCE = process.argv.includes("--once") || envFlag("MOMENTUM_ALERT_ONCE");
 const LOOP_INTERVAL_MS = Math.max(envNumber("MOMENTUM_ALERT_INTERVAL_MS", 5 * 60 * 1000), 60_000);
-const ASSET_LIMIT = clamp(envNumber("MOMENTUM_ALERT_ASSET_LIMIT", 45), 5, 80);
-const DYNAMIC_MOVER_LIMIT = clamp(envNumber("MOMENTUM_ALERT_DYNAMIC_MOVER_LIMIT", 20), 5, 40);
+const ASSET_LIMIT = clamp(envNumber("MOMENTUM_ALERT_ASSET_LIMIT", 80), 5, 160);
+const DYNAMIC_MOVER_LIMIT = clamp(envNumber("MOMENTUM_ALERT_DYNAMIC_MOVER_LIMIT", 60), 5, 120);
+const EXCEPTIONAL_MOVE_PCT = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MOVE_PCT", 18);
 const MIN_OI_USD = envNumber("MOMENTUM_ALERT_MIN_OI_USD", 8_000_000);
 const MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_MIN_VOLUME_USD", 20_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
@@ -388,12 +389,13 @@ async function loadUniverse() {
         fundingApr: parseNumber(ctx.funding) * 8760 * 100,
         score: dayVolumeUsd + openInterestUsd * 0.35,
         isActive: !entry.isDelisted,
+        liquidityQualified: openInterestUsd >= MIN_OI_USD && dayVolumeUsd >= MIN_VOLUME_USD,
       };
     })
     .filter((asset) => {
       if (!asset.isActive || !asset.asset || EXCLUDED_ASSETS.has(asset.asset)) return false;
       if (asset.markPx <= 0) return false;
-      return asset.openInterestUsd >= MIN_OI_USD && asset.dayVolumeUsd >= MIN_VOLUME_USD;
+      return true;
     });
 
   if (CONFIGURED_ASSETS.length > 0) {
@@ -403,7 +405,8 @@ async function loadUniverse() {
   }
 
   const selected = new Map();
-  for (const asset of assets.sort((a, b) => b.score - a.score).slice(0, ASSET_LIMIT)) selected.set(asset.asset, asset);
+  const liquidAssets = assets.filter((asset) => asset.liquidityQualified);
+  for (const asset of liquidAssets.sort((a, b) => b.score - a.score).slice(0, ASSET_LIMIT)) selected.set(asset.asset, asset);
   for (const symbol of PRIORITY_ASSETS) {
     const match = assets.find((asset) => asset.asset === symbol);
     if (match) selected.set(match.asset, match);
@@ -414,7 +417,12 @@ async function loadUniverse() {
     .slice(0, DYNAMIC_MOVER_LIMIT)) {
     selected.set(asset.asset, asset);
   }
-  return [...selected.values()].sort((a, b) => b.score - a.score);
+  for (const asset of assets
+    .filter((item) => Math.abs(item.dayChangePct) >= EXCEPTIONAL_MOVE_PCT)
+    .sort((a, b) => Math.abs(b.dayChangePct) - Math.abs(a.dayChangePct))) {
+    selected.set(asset.asset, asset);
+  }
+  return [...selected.values()].sort((a, b) => Math.abs(b.dayChangePct) - Math.abs(a.dayChangePct) || b.score - a.score);
 }
 
 async function fetchCandles(asset) {
@@ -496,8 +504,17 @@ function scoreCandidate(asset, features, oiChangePct, direction = "long") {
     d1h >= -1.25 &&
     volumeVs >= 0.85 &&
     (nearExtreme || d4h >= 1.5 || d1h >= 0.4 || d24h >= 25);
+  // Exceptional 24h movers should not disappear just because they were outside
+  // the curated liquid universe. If the move is extreme and not fully reversing,
+  // evaluate it, then let scoring/caps decide whether it deserves an alert.
+  const exceptionalRunner =
+    d24h >= EXCEPTIONAL_MOVE_PCT &&
+    d1h >= -2.5 &&
+    (nearExtreme || d4h >= 0.5 || d24h >= EXCEPTIONAL_MOVE_PCT + 8);
   const qualifiesByMove = strongMove || trendDayRunner || majorDayMove;
-  if (!qualifiesByMove || !confirmation || (!ignition && !continuation && !broadRunner && !localRunner && !trendDayRunner)) {
+  const qualifies = qualifiesByMove || exceptionalRunner;
+  const confirmed = confirmation || exceptionalRunner;
+  if (!qualifies || !confirmed || (!ignition && !continuation && !broadRunner && !localRunner && !trendDayRunner && !exceptionalRunner)) {
     if (DEBUG && (d24h >= 8 || d4h >= 3 || d1h >= 1.5)) {
       console.log(
         `[momentum-alerts] reject ${asset.asset} ${direction} move=${qualifiesByMove} confirm=${confirmation} r1=${r1h.toFixed(2)} r4=${r4h.toFixed(2)} r24=${r24h.toFixed(2)} vol=${volumeVs.toFixed(2)} break=${structureBreak} nearExtreme=${nearExtreme}`,
@@ -515,9 +532,11 @@ function scoreCandidate(asset, features, oiChangePct, direction = "long") {
   if (broadRunner) score += 6;
   if (localRunner) score += 4;
   if (trendDayRunner) score += 5;
+  if (exceptionalRunner) score += 12;
   if (majorDayMove) score += 6;
   score += Math.min(Math.max(volumeVs - 1, 0) * 7, 14);
   if (oiChangePct != null) score += Math.min(Math.max(oiChangePct, 0) * 1.4, 10);
+  if (!asset.liquidityQualified) score -= 4;
   if (direction === "long" && fundingApr > 65) score -= Math.min((fundingApr - 65) * 0.18, 10);
   if (direction === "long" && fundingApr < -40) score -= Math.min(Math.abs(fundingApr + 40) * 0.08, 5);
   if (direction === "short" && fundingApr < -65) score -= Math.min((Math.abs(fundingApr) - 65) * 0.18, 10);
@@ -647,6 +666,10 @@ async function buildCandidate(asset) {
       liquidity: {
         minOiUsd: MIN_OI_USD,
         minVolumeUsd: MIN_VOLUME_USD,
+        qualified: asset.liquidityQualified,
+        openInterestUsd: asset.openInterestUsd,
+        dayVolumeUsd: asset.dayVolumeUsd,
+        exceptionalMovePct: EXCEPTIONAL_MOVE_PCT,
       },
     },
   };
