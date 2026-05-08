@@ -52,10 +52,15 @@ const DYNAMIC_MOVER_LIMIT = clamp(envNumber("MOMENTUM_ALERT_DYNAMIC_MOVER_LIMIT"
 const EXCEPTIONAL_MOVE_PCT = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MOVE_PCT", 18);
 const MIN_OI_USD = envNumber("MOMENTUM_ALERT_MIN_OI_USD", 8_000_000);
 const MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_MIN_VOLUME_USD", 20_000_000);
+const LARGE_CAP_OI_USD = envNumber("MOMENTUM_ALERT_LARGE_CAP_OI_USD", 35_000_000);
+const LARGE_CAP_VOLUME_USD = envNumber("MOMENTUM_ALERT_LARGE_CAP_VOLUME_USD", 75_000_000);
+const EXCEPTIONAL_MIN_OI_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_OI_USD", 3_000_000);
+const EXCEPTIONAL_MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_VOLUME_USD", 8_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
-const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 10), 1, 24);
-const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 12), TELEGRAM_DAILY_CAP, 24);
-const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 3), 1, 5);
+const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 6), 1, 24);
+const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 10), TELEGRAM_DAILY_CAP, 24);
+const MAX_ALERTS_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_CYCLE", 3), 1, 8);
+const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
 const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 72);
@@ -166,6 +171,14 @@ function momentumBucket(asset) {
   if (DEFI_ASSETS.has(symbol)) return "defi";
   if (MEME_ASSETS.has(symbol)) return "meme";
   return "alts";
+}
+
+function isLargeCapLike(asset) {
+  return PRIORITY_ASSETS.has(asset.asset) || asset.openInterestUsd >= LARGE_CAP_OI_USD || asset.dayVolumeUsd >= LARGE_CAP_VOLUME_USD;
+}
+
+function passesExceptionalLiquidityFloor(asset) {
+  return asset.openInterestUsd >= EXCEPTIONAL_MIN_OI_USD || asset.dayVolumeUsd >= EXCEPTIONAL_MIN_VOLUME_USD;
 }
 
 function easternDateKey(time = Date.now()) {
@@ -412,13 +425,13 @@ async function loadUniverse() {
     if (match) selected.set(match.asset, match);
   }
   for (const asset of assets
-    .filter((item) => Math.abs(item.dayChangePct) >= 7.5)
+    .filter((item) => item.liquidityQualified && Math.abs(item.dayChangePct) >= 7.5)
     .sort((a, b) => Math.abs(b.dayChangePct) - Math.abs(a.dayChangePct))
     .slice(0, DYNAMIC_MOVER_LIMIT)) {
     selected.set(asset.asset, asset);
   }
   for (const asset of assets
-    .filter((item) => Math.abs(item.dayChangePct) >= EXCEPTIONAL_MOVE_PCT)
+    .filter((item) => Math.abs(item.dayChangePct) >= EXCEPTIONAL_MOVE_PCT && (item.liquidityQualified || isLargeCapLike(item) || passesExceptionalLiquidityFloor(item)))
     .sort((a, b) => Math.abs(b.dayChangePct) - Math.abs(a.dayChangePct))) {
     selected.set(asset.asset, asset);
   }
@@ -510,6 +523,7 @@ function scoreCandidate(asset, features, oiChangePct, direction = "long") {
   const exceptionalRunner =
     d24h >= EXCEPTIONAL_MOVE_PCT &&
     d1h >= -2.5 &&
+    (asset.liquidityQualified || isLargeCapLike(asset) || passesExceptionalLiquidityFloor(asset)) &&
     (nearExtreme || d4h >= 0.5 || d24h >= EXCEPTIONAL_MOVE_PCT + 8);
   const qualifiesByMove = strongMove || trendDayRunner || majorDayMove;
   const qualifies = qualifiesByMove || exceptionalRunner;
@@ -541,9 +555,12 @@ function scoreCandidate(asset, features, oiChangePct, direction = "long") {
   if (direction === "long" && fundingApr < -40) score -= Math.min(Math.abs(fundingApr + 40) * 0.08, 5);
   if (direction === "short" && fundingApr < -65) score -= Math.min((Math.abs(fundingApr) - 65) * 0.18, 10);
   score = Math.max(0, Math.min(100, score));
-  if (score < SCORE_THRESHOLD) {
+  const qualityScoreThreshold = asset.liquidityQualified || isLargeCapLike(asset)
+    ? SCORE_THRESHOLD
+    : Math.max(SCORE_THRESHOLD, HIGH_SCORE_THRESHOLD + 3);
+  if (score < qualityScoreThreshold) {
     if (DEBUG && (d24h >= 8 || d4h >= 3 || d1h >= 1.5)) {
-      console.log(`[momentum-alerts] reject ${asset.asset} ${direction} score=${score.toFixed(1)} threshold=${SCORE_THRESHOLD}`);
+      console.log(`[momentum-alerts] reject ${asset.asset} ${direction} score=${score.toFixed(1)} threshold=${qualityScoreThreshold}`);
     }
     return null;
   }
@@ -625,6 +642,10 @@ async function buildCandidate(asset) {
   const volumeVs = features.volumeVsBaseline ?? 1;
   const oiText = oiChangePct == null ? "OI context limited" : `OI ${formatPct(oiChangePct)}`;
   const bucket = momentumBucket(asset.asset);
+  const telegramEligible =
+    asset.liquidityQualified ||
+    isLargeCapLike(asset) ||
+    score.score >= HIGH_SCORE_THRESHOLD + 5;
   const reason = direction === "short"
     ? `${asset.asset} broke lower with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h downside momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`
     : `${asset.asset} broke higher with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`;
@@ -667,10 +688,14 @@ async function buildCandidate(asset) {
         minOiUsd: MIN_OI_USD,
         minVolumeUsd: MIN_VOLUME_USD,
         qualified: asset.liquidityQualified,
+        largeCapLike: isLargeCapLike(asset),
         openInterestUsd: asset.openInterestUsd,
         dayVolumeUsd: asset.dayVolumeUsd,
         exceptionalMovePct: EXCEPTIONAL_MOVE_PCT,
+        exceptionalMinOiUsd: EXCEPTIONAL_MIN_OI_USD,
+        exceptionalMinVolumeUsd: EXCEPTIONAL_MIN_VOLUME_USD,
       },
+      telegramEligible,
     },
   };
 }
@@ -745,12 +770,15 @@ async function persistAlert(candidate, now) {
 
   const easternDate = alert.payload.easternDate;
   const telegramCount = await countQueuedOrSentToday(easternDate);
-  const canSendTelegram = TELEGRAM_ENABLED && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID && telegramCount < TELEGRAM_DAILY_CAP;
+  const telegramQualityEligible = alert.payload?.telegramEligible !== false;
+  const canSendTelegram = telegramQualityEligible && TELEGRAM_ENABLED && TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID && telegramCount < TELEGRAM_DAILY_CAP;
   const message = buildTelegramText(alert);
   const queueStatus = canSendTelegram ? "queued" : "disabled";
   const lastError = canSendTelegram
     ? null
-    : TELEGRAM_ENABLED
+    : !telegramQualityEligible
+      ? "Stored only: below Telegram quality gate."
+      : TELEGRAM_ENABLED
       ? "Telegram daily cap reached or credentials missing."
       : "Telegram disabled.";
 
@@ -827,6 +855,8 @@ async function runCycle() {
     network: NETWORK,
     dryRun: DRY_RUN,
     dynamicMoverLimit: DYNAMIC_MOVER_LIMIT,
+    exceptionalMovePct: EXCEPTIONAL_MOVE_PCT,
+    maxAlertsPerCycle: MAX_ALERTS_PER_CYCLE,
     telegramConfigured: TELEGRAM_CONFIGURED,
     telegramEnabled: TELEGRAM_ENABLED,
     storeDailyCap: STORE_DAILY_CAP,
@@ -849,7 +879,10 @@ async function runCycle() {
       }
     }
 
-    candidates.sort((a, b) => b.score - a.score);
+    candidates.sort((a, b) =>
+      Number(b.payload?.telegramEligible === true) - Number(a.payload?.telegramEligible === true) ||
+      b.score - a.score,
+    );
     let remaining = Math.max(STORE_DAILY_CAP - await countAlertsToday(easternDate), 0);
     let inserted = 0;
     let queued = 0;
@@ -857,6 +890,7 @@ async function runCycle() {
     const bucketCounts = new Map();
     for (const candidate of candidates) {
       if (remaining <= 0) break;
+      if (inserted >= MAX_ALERTS_PER_CYCLE) break;
       const bucket = `${candidate.payload?.direction ?? "long"}:${candidate.payload?.signalBucket ?? momentumBucket(candidate.asset)}`;
       const bucketCount = bucketCounts.get(bucket) ?? 0;
       if (bucketCount >= MAX_PER_SIGNAL_BUCKET) continue;
@@ -890,7 +924,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + movers`}`);
+  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day maxCycle=${MAX_ALERTS_PER_CYCLE} telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
   await runCycle();
   if (RUN_ONCE) {
     await pool.end();
