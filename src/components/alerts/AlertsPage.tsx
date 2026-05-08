@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell, BookOpenCheck, Clock3, ExternalLink, Radio, RefreshCw, Send, type LucideIcon } from "lucide-react";
+import { Bell, BookOpenCheck, ExternalLink, Radio, RefreshCw, Send, type LucideIcon } from "lucide-react";
 import { cn, formatChartPrice } from "@/lib/format";
 import { formatEasternDateTime } from "@/lib/time";
 import { useShadowBook } from "@/context/ShadowBookContext";
@@ -120,16 +120,16 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-3xl border border-zinc-800 bg-[#10151b]">
-        <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.13),transparent_34%),#10151b] px-5 py-5 md:px-6">
+      <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#10151b]">
+        <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.11),transparent_32%),#10151b] px-4 py-4 md:px-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <SectionEyebrow className="text-teal-300">Alerts</SectionEyebrow>
-              <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">
-                Momentum runners, captured at the moment HyperPulse noticed.
+              <h1 className="mt-2 max-w-3xl text-2xl font-semibold tracking-tight text-zinc-50 md:text-3xl">
+                Momentum alert blotter.
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">
-                Selective alerts for liquid Hyperliquid perps. Every event stores the alert price and timestamp so we can judge whether the signal worked after the fact.
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
+                Dense event log for liquid perp momentum. Each row stores the exact alert price and timestamp.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -151,7 +151,7 @@ export default function AlertsPage() {
         <div className="rounded-2xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div>
       ) : null}
 
-      <section className="rounded-3xl border border-zinc-800 bg-[#0b0f14]">
+      <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b0f14]">
         <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
           <div className="flex items-center gap-2">
             <Bell className="h-4 w-4 text-teal-300" />
@@ -174,7 +174,18 @@ export default function AlertsPage() {
             <div className="mx-auto mt-2 max-w-xl text-sm text-zinc-500">{diagnostics?.message ?? "When the worker spots a selective liquid-perp momentum setup, it will appear here with the exact alert price."}</div>
           </div>
         ) : (
-          <div className="divide-y divide-zinc-800">
+          <div className="min-w-full overflow-x-auto">
+            <div className="grid min-w-[1180px] grid-cols-[92px_150px_120px_170px_170px_128px_128px_minmax(220px,1fr)_190px] border-b border-zinc-800 bg-zinc-950/60 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-zinc-600">
+              <div>Time</div>
+              <div>Asset</div>
+              <div>Signal</div>
+              <div>Momentum</div>
+              <div>Participation</div>
+              <div>Alert</div>
+              <div>Now</div>
+              <div>Reason</div>
+              <div className="text-right">Actions</div>
+            </div>
             {alerts.map((alert) => (
               <AlertCard key={alert.id} alert={alert} />
             ))}
@@ -237,74 +248,109 @@ function AlertCard({ alert }: { alert: MomentumAlert }) {
   const { openTicket } = useShadowBook();
   const positive = (alert.returnSinceAlertPct ?? 0) >= 0;
   const direction = alert.payload?.direction === "short" ? "short" : "long";
+  const delivery = deliveryLabel(alert);
   return (
-    <article className="grid gap-4 px-4 py-4 transition hover:bg-zinc-950/40 lg:grid-cols-[220px_minmax(0,1fr)_220px]">
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-2xl font-semibold text-zinc-50">{alert.asset}</span>
-          <span className={cn("rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]", severityTone(alert.severity))}>{alert.severity}</span>
+    <article className="grid min-w-[1180px] grid-cols-[92px_150px_120px_170px_170px_128px_128px_minmax(220px,1fr)_190px] items-center border-b border-zinc-900 px-4 py-2.5 text-sm transition last:border-b-0 hover:bg-zinc-950/60">
+      <div className="font-mono text-xs text-zinc-500">
+        {new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(alert.createdAt))}
+        <div className="mt-0.5 text-[10px] text-zinc-700">
+          {new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/New_York",
+            month: "short",
+            day: "numeric",
+          }).format(new Date(alert.createdAt))}
         </div>
-        <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-          <Clock3 className="h-3.5 w-3.5" />
-          {formatEasternDateTime(alert.createdAt, true)}
-        </div>
-        <div className="mt-2 text-[11px] text-zinc-600">{triggerLabel(alert.triggerKind)}</div>
       </div>
 
       <div className="min-w-0">
-        <div className="text-sm leading-6 text-zinc-300">{alert.reason}</div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <Metric label="1h / 4h / 24h" value={`${formatPct(alert.return1hPct)} · ${formatPct(alert.return4hPct)} · ${formatPct(alert.return24hPct)}`} />
-          <Metric label="OI / volume" value={`${formatPct(alert.openInterestChangePct)} OI · ${alert.volumeVsBaseline == null ? "n/a" : `${alert.volumeVsBaseline.toFixed(1)}x`} vol`} />
-          <Metric label="Funding" value={formatPct(alert.fundingApr)} />
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-base font-semibold text-zinc-50">{alert.asset}</span>
+          <span className={cn("rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]", severityTone(alert.severity))}>
+            {alert.severity}
+          </span>
+        </div>
+        <div className="mt-0.5 truncate text-[10px] uppercase tracking-[0.12em] text-zinc-600">{triggerLabel(alert.triggerKind)}</div>
+      </div>
+
+      <div>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em]",
+            direction === "short"
+              ? "border-rose-500/25 bg-rose-500/10 text-rose-300"
+              : "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+          )}
+        >
+          {direction}
+        </span>
+      </div>
+
+      <div className="font-mono text-xs text-zinc-300">
+        <span className={cn((alert.return1hPct ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300")}>{formatPct(alert.return1hPct)}</span>
+        <span className="text-zinc-700"> / </span>
+        <span className={cn((alert.return4hPct ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300")}>{formatPct(alert.return4hPct)}</span>
+        <span className="text-zinc-700"> / </span>
+        <span className={cn((alert.return24hPct ?? 0) >= 0 ? "text-emerald-300" : "text-rose-300")}>{formatPct(alert.return24hPct)}</span>
+        <div className="mt-0.5 text-[10px] text-zinc-600">1h / 4h / 24h</div>
+      </div>
+
+      <div className="font-mono text-xs text-zinc-300">
+        <span>{formatPct(alert.openInterestChangePct)} OI</span>
+        <span className="text-zinc-700"> · </span>
+        <span>{alert.volumeVsBaseline == null ? "n/a" : `${alert.volumeVsBaseline.toFixed(1)}x`} vol</span>
+        <div className="mt-0.5 text-[10px] text-zinc-600">funding {formatPct(alert.fundingApr)}</div>
+      </div>
+
+      <div className="font-mono text-xs text-zinc-200">
+        {formatChartPrice(alert.alertPrice)}
+        <div className="mt-0.5 text-[10px] text-zinc-600">inv {alert.invalidationPrice == null ? "n/a" : formatChartPrice(alert.invalidationPrice)}</div>
+      </div>
+
+      <div className="font-mono text-xs">
+        <span className="text-zinc-200">{alert.currentPrice == null ? "n/a" : formatChartPrice(alert.currentPrice)}</span>
+        <div className={cn("mt-0.5 text-[10px]", positive ? "text-emerald-300" : "text-rose-300")}>
+          {formatPct(alert.returnSinceAlertPct)}
         </div>
       </div>
 
-      <div className="space-y-2 lg:text-right">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-          <Metric label="Alert price" value={formatChartPrice(alert.alertPrice)} />
-          <Metric label="Current" value={alert.currentPrice == null ? "n/a" : formatChartPrice(alert.currentPrice)} tone={positive ? "green" : "red"} helper={formatPct(alert.returnSinceAlertPct)} />
+      <div className="min-w-0">
+        <div className="truncate text-xs text-zinc-300" title={alert.reason}>{alert.reason}</div>
+        <div className="mt-0.5 font-mono text-[10px] text-zinc-600">
+          target {alert.targetPrice == null ? "n/a" : formatChartPrice(alert.targetPrice)}
+          <span className="mx-1 text-zinc-800">·</span>
+          {delivery}
         </div>
-        <div className="grid grid-cols-2 gap-2 text-left lg:text-right">
-          <Metric label="Invalid" value={alert.invalidationPrice == null ? "n/a" : formatChartPrice(alert.invalidationPrice)} />
-          <Metric label="Target" value={alert.targetPrice == null ? "n/a" : formatChartPrice(alert.targetPrice)} />
-        </div>
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          <span className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-500">
-            <Send className="h-3 w-3" /> {deliveryLabel(alert)}
-          </span>
-          <button
-            onClick={() =>
-              openTicket({
-                asset: alert.asset,
-                side: direction,
-                entryPrice: alert.currentPrice ?? alert.alertPrice,
-                stopPrice: alert.invalidationPrice,
-                targetPrice: alert.targetPrice,
-                source: "momentum_alert",
-                sourceId: alert.id,
-              })
-            }
-            className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-200 hover:bg-emerald-500/15"
-          >
-            <BookOpenCheck className="h-3 w-3" />
-            Track paper
-          </button>
-          <Link href={alert.routeHref} className="inline-flex items-center gap-1 rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15">
-            Open market <ExternalLink className="h-3 w-3" />
-          </Link>
-        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-1.5">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/70 text-zinc-500" title={delivery}>
+          <Send className="h-3.5 w-3.5" />
+        </span>
+        <button
+          onClick={() =>
+            openTicket({
+              asset: alert.asset,
+              side: direction,
+              entryPrice: alert.currentPrice ?? alert.alertPrice,
+              stopPrice: alert.invalidationPrice,
+              targetPrice: alert.targetPrice,
+              source: "momentum_alert",
+              sourceId: alert.id,
+            })
+          }
+          className="inline-flex h-7 items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 text-[11px] text-emerald-200 hover:bg-emerald-500/15"
+        >
+          <BookOpenCheck className="h-3 w-3" />
+          Paper
+        </button>
+        <Link href={alert.routeHref} className="inline-flex h-7 items-center gap-1 rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 text-[11px] text-teal-200 hover:bg-teal-500/15">
+          Market <ExternalLink className="h-3 w-3" />
+        </Link>
       </div>
     </article>
-  );
-}
-
-function Metric({ label, value, helper, tone = "neutral" }: { label: string; value: string; helper?: string; tone?: "neutral" | "green" | "red" }) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
-      <div className={cn("mt-1 font-mono text-sm text-zinc-100", tone === "green" && "text-emerald-300", tone === "red" && "text-rose-300")}>{value}</div>
-      {helper ? <div className={cn("mt-0.5 font-mono text-[11px]", helper.startsWith("+") ? "text-emerald-300" : helper.startsWith("-") ? "text-rose-300" : "text-zinc-500")}>{helper}</div> : null}
-    </div>
   );
 }
