@@ -334,8 +334,6 @@ function oiHoldingPriority(level: ReactionLevel): number {
 }
 
 function oiHoldingSide(level: ReactionLevel): ReactionExposureSide {
-  if (level.distancePct < 0) return "bull";
-  if (level.distancePct > 0) return "bear";
   return level.components.buyNotionalUsd >= level.components.sellNotionalUsd ? "bull" : "bear";
 }
 
@@ -484,7 +482,7 @@ function zoneFromCluster(
     formatDistance(distancePct),
     `${compactUsd(components.tradeNotionalUsd)} recent flow`,
     `${formatSignedUsd(components.oiEntryNotionalUsd)} inferred OI build`,
-    `${side === "bull" ? "Bull" : "Bear"} OI holding zone`,
+    `${side === "bull" ? "Long" : "Short"} OI holding zone`,
     `${cluster.length} clustered bucket${cluster.length === 1 ? "" : "s"} across ${clusterWidthPct.toFixed(2)}%`,
     "Not exact open positions",
   ];
@@ -512,7 +510,7 @@ function zoneFromCluster(
       inferredOiUsd: components.oiEntryNotionalUsd,
       buyNotionalUsd: components.buyNotionalUsd,
       sellNotionalUsd: components.sellNotionalUsd,
-      reasonSelected: `Top ${side} inferred OI zone from ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`,
+      reasonSelected: `Top ${side === "bull" ? "long" : "short"} inferred OI zone from ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`,
     },
     components,
   };
@@ -790,6 +788,14 @@ export function buildReactionLevels({
 }
 
 function reactionKind(level: ReactionLevel, currentPrice: number): "support" | "resistance" {
+  if (level.primarySource === "positioning") {
+    const zoneLow = level.zoneLow ?? level.price;
+    const zoneHigh = level.zoneHigh ?? level.price;
+    const zoneMid = (zoneLow + zoneHigh) / 2;
+    if (currentPrice < zoneLow) return "resistance";
+    if (currentPrice > zoneHigh) return "support";
+    return zoneMid <= currentPrice ? "support" : "resistance";
+  }
   if (level.price < currentPrice) return "support";
   return "resistance";
 }
@@ -946,9 +952,9 @@ export function reactionLevelsToSupportResistanceLevels(
         label:
           level.primarySource === "positioning"
             ? level.zoneSide === "bull"
-              ? "Bull OI holding zone"
+              ? "Long OI holding zone"
               : level.zoneSide === "bear"
-                ? "Bear OI holding zone"
+                ? "Short OI holding zone"
                 : level.components.buyNotionalUsd >= level.components.sellNotionalUsd
                   ? "Likely long holding"
                   : "Likely short holding"

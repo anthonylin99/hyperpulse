@@ -13,6 +13,17 @@ import { resolveSpotCoinForCandles } from "@/lib/spotMarkets";
 
 export const dynamic = "force-dynamic";
 
+function normalizeCandleSnapshot(data: unknown): unknown {
+  if (typeof data !== "string") return data;
+
+  try {
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : data;
+  } catch {
+    return data;
+  }
+}
+
 export async function GET(request: Request) {
   const limited = enforceRateLimit(request, {
     key: "api-market-candles",
@@ -67,7 +78,7 @@ export async function GET(request: Request) {
       startTime,
       endTime,
     });
-    return jsonSuccess(data, { cache: "public-market" });
+    return jsonSuccess(normalizeCandleSnapshot(data), { cache: "public-market" });
   } catch (err) {
     logServerError("api/market/candles", err);
     return jsonError("Unable to fetch market candles right now.", {

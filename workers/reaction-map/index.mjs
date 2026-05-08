@@ -146,9 +146,7 @@ function compactUsd(value) {
   return `$${abs.toFixed(0)}`;
 }
 
-function zoneSideFor(price, currentPrice, buyNotionalUsd, sellNotionalUsd) {
-  if (price < currentPrice) return "bull";
-  if (price > currentPrice) return "bear";
+function zoneSideFor(_price, _currentPrice, buyNotionalUsd, sellNotionalUsd) {
   return buyNotionalUsd >= sellNotionalUsd ? "bull" : "bear";
 }
 
@@ -650,7 +648,8 @@ function buildZoneFromCluster(cluster, side, currentPrice) {
         Math.min(12, Math.abs(buyNotionalUsd - sellNotionalUsd) / Math.max(tradeNotionalUsd, 1) * 12),
     ),
   );
-  const reasonSelected = `Top ${side} OI zone from ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`;
+  const holdingSideLabel = side === "bull" ? "long" : "short";
+  const reasonSelected = `Top ${holdingSideLabel} OI zone from ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`;
 
   return {
     side,
@@ -920,7 +919,6 @@ async function sweepRetention() {
   await pool.query("delete from reaction_context_snapshots where bucket_ms < $1", [cutoff]);
   await pool.query("delete from reaction_orderbook_buckets where bucket_ms < $1", [cutoff]);
   await pool.query("delete from reaction_trade_buckets where bucket_ms < $1", [cutoff]);
-  await pool.query("delete from reaction_level_snapshots where generated_at < $1", [cutoff]);
 
   for (const asset of ASSETS) {
     const context = await latestContext(asset, Date.now() - RETENTION_MS);

@@ -83,9 +83,11 @@ HyperPulse now includes a lean warehouse foundation for market capture and marke
 - Reaction-level API at `/api/market/reaction-levels?coin=BTC&window=15m`
 - Current exposure-zone serving table with top five bull and top five bear zones per asset/window
 - Docker Compose local stack via `npm run docker:up`
+- Worker-only DigitalOcean Compose path via `docker-compose.reaction-map.yml`
 - Private read-only MCP server via `npm run mcp:start`
 
 See [`docs/data-infra.md`](docs/data-infra.md).
+For a DigitalOcean droplet that should run only the Reaction Map worker, see [`docs/reaction-map-worker-deploy.md`](docs/reaction-map-worker-deploy.md).
 
 ## Verification
 

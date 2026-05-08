@@ -11,6 +11,7 @@ import type {
   WhaleWalletProfile,
   WhaleWatchlistEntry,
 } from "@/types";
+import { isWhalesEnabled } from "@/lib/appConfig";
 import { isQualifiedHip3Symbol } from "@/lib/whaleTaxonomy";
 
 const DATABASE_URL = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
@@ -22,6 +23,7 @@ const TRACKED_CLUSTER_MAX_DISTANCE_PCT = Number.isFinite(Number(process.env.POSI
 
 let pool: Pool | null = null;
 function getPool(): Pool | null {
+  if (!isWhalesEnabled()) return null;
   if (!DATABASE_URL) return null;
   if (!pool) {
     pool = new Pool({ connectionString: DATABASE_URL, max: 4 });

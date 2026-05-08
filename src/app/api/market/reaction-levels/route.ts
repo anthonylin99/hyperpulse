@@ -37,18 +37,16 @@ export async function GET(request: Request) {
   if (!coin) {
     return jsonError("A valid coin is required.", {
       status: 400,
-      cache: "public-market",
     });
   }
 
   try {
     const payload = await getReactionLevelMap({ coin, windowMs });
-    return jsonSuccess(payload, { cache: "public-market" });
+    return jsonSuccess(payload);
   } catch (error) {
     logServerError("api/market/reaction-levels", error);
     return jsonError("Unable to fetch Reaction Map right now.", {
       status: 502,
-      cache: "public-market",
     });
   }
 }
