@@ -301,3 +301,43 @@
 - What helped: keeping worker-only Compose separate from the full local stack preserved the no-local-db deploy path while direct API checks proved frontend pickup.
 - Friction or missing capability: the Linux Bash deploy wrapper syntax checks locally, but Git-Bash/Docker capture on Windows hung, so validation used the underlying Compose and API commands directly.
 - Recommendation: run `scripts/deploy-reaction-map-worker.sh` on the actual Linux host after pulling this branch, then verify frontend `/api/market/reaction-levels` against the same Neon branch.
+
+## 2026-05-08
+
+- Request summary: find missing market chart tooltips and make the chart bands expose visible explanations.
+- Skills used: `verification-gate`, `ui-ux-pro-max`, `webapp-testing`, `browser-use:browser`, `coding-discipline`.
+- What helped: Browser Use showed the live page had only hidden native titles/details-below-chart behavior, while source inspection showed the current chart band overlay did not render a real tooltip card.
+- Friction or missing capability: the running `web` container was stale versus the pulled source and had to be rebuilt on `WEB_PORT=3004`; localhost still logs expected Vercel analytics/speed-insights warnings.
+- Recommendation: keep tooltip metadata rendering in the chart component and treat any future hydration warning as a separate page-load investigation.
+
+## 2026-05-08
+
+- Request summary: remove the new TA Guide merge and restore the previous Reaction Map / OI Holding market chart.
+- Skills used: `verification-gate`, `coding-discipline`, `webapp-testing`, `browser-use:browser`.
+- What helped: comparing `37c4843` against `f9e27d9` and `e1ff26c` isolated the TA-guide blast radius without needing a full branch reset.
+- Friction or missing capability: an earlier tooltip patch targeted the now-unwanted TA-guide chart and had to be superseded by restoring the pre-TA-guide chart files; one duplicated ternary line needed cleanup before the Docker build passed.
+- Recommendation: if TA guidance comes back later, land it as a secondary panel or explicit tab rather than replacing the Reaction Map data contract.
+
+## 2026-05-08
+
+- Request summary: fix Reaction Map appearing stuck and intermittent candle-load failures on the BTC market chart.
+- Skills used: `diagnosis-loop`, `verification-gate`, `coding-discipline`, `webapp-testing`, `browser-use:browser`.
+- What helped: separate timing checks showed Reaction Map and candle APIs were fast, while browser sampling proved the confusing loading state was the candle gate.
+- Friction or missing capability: root `docker compose up -d web` still depends on the migration service, which failed on a changed historical migration, so UI verification used the already-built web image with `--no-deps`.
+- Recommendation: add a follow-up Compose/migration hygiene pass so routine web restarts do not depend on replaying historical local migrations.
+
+## 2026-05-08
+
+- Request summary: add an actual hover tooltip to the restored Reaction Map chart bands.
+- Skills used: `verification-gate`, `ui-ux-pro-max`, `coding-discipline`, `webapp-testing`, `browser-use:browser`.
+- What helped: keeping the tooltip inside the existing `FlowZoneOverlay` reused the same active band state that already powered highlighting and the lower detail panel.
+- Friction or missing capability: Browser Use locator wrappers in this session do not expose `hover`, so verification used chart-band selection/focus path plus DOM role checks for the same tooltip component.
+- Recommendation: keep the in-chart tooltip and below-chart detail table both present; they serve quick read and deeper comparison separately.
+
+## 2026-05-08
+
+- Request summary: remove the old HyperPulse local Postgres data volume and prune unused Docker images/cache.
+- Skills used: `docker-cleanup`, `verification-gate`.
+- What helped: `docker system df -v` showed the old HyperPulse volume was detached and build cache was the main reclaimable storage.
+- Friction or missing capability: Docker reported `0B` reclaimed for builder prune while also showing build cache dropped from `28.16GB` to `0B`, so final inventory was the reliable evidence.
+- Recommendation: keep named volumes opt-in for deletion and use dry-run cleanup before broad image pruning.

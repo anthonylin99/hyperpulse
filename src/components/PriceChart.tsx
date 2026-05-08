@@ -81,6 +81,10 @@ const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
   { label: "Stress", value: "stress" },
 ];
 
+const CANDLE_FETCH_TIMEOUT_MS = 10_000;
+const CANDLE_FETCH_RETRIES = 2;
+const CANDLE_RETRY_DELAY_MS = 350;
+
 type CandleDatum = {
   time: number;
   open: number;
@@ -121,6 +125,54 @@ function toCandlestickData(candles: CandleDatum[]): CandlestickData[] {
         candle.close > 0
       );
     });
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function fetchCandleRows(url: string): Promise<Array<Record<string, string | number>>> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= CANDLE_FETCH_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), CANDLE_FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: unknown } | null;
+        const upstreamMessage = typeof body?.error === "string" ? body.error : "";
+        const transient = response.status === 429 || response.status >= 500;
+        lastError = new Error(upstreamMessage || "Unable to fetch price candles.");
+        if (!transient || attempt === CANDLE_FETCH_RETRIES) throw lastError;
+      } else {
+        const payload = await response.json();
+        if (!Array.isArray(payload)) throw new Error("Price candle response was not usable.");
+        return payload as Array<Record<string, string | number>>;
+      }
+    } catch (error) {
+      const aborted = error instanceof DOMException && error.name === "AbortError";
+      lastError = aborted
+        ? new Error("Price candles took too long to load.")
+        : error instanceof Error
+          ? error
+          : new Error("Unable to fetch price candles.");
+      if (attempt === CANDLE_FETCH_RETRIES) throw lastError;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+
+    await wait(CANDLE_RETRY_DELAY_MS * (attempt + 1));
+  }
+
+  throw lastError ?? new Error("Unable to fetch price candles.");
 }
 
 function formatLevelPrice(value: number | null | undefined): string {
@@ -359,6 +411,7 @@ export default function PriceChart({
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
   const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("all");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
+  const [candleRetryNonce, setCandleRetryNonce] = useState(0);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
@@ -425,13 +478,11 @@ export default function PriceChart({
       try {
         const now = Date.now();
         const startTime = now - LOOKBACK_MS[interval];
-        const response = await fetch(
+        const rawCandles = await fetchCandleRows(
           withNetworkParam(
             `/api/market/candles?coin=${encodeURIComponent(coin)}&marketType=${marketType}&interval=${API_INTERVAL[interval]}&startTime=${startTime}&endTime=${now}`,
           ),
         );
-        if (!response.ok) throw new Error("Unable to fetch price candles.");
-        const rawCandles = (await response.json()) as Array<Record<string, string | number>>;
         const nextCandles = rawCandles
           .map((candle) => ({
             time: Number(candle.t ?? candle.T ?? candle.time),
@@ -458,7 +509,7 @@ export default function PriceChart({
     return () => {
       cancelled = true;
     };
-  }, [coin, interval, marketType]);
+  }, [candleRetryNonce, coin, interval, marketType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -760,12 +811,22 @@ export default function PriceChart({
           className="relative h-[360px] overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
         >
           {loading ? (
-            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
-              Loading Reaction Map...
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-zinc-500">
+              <div>Loading price candles...</div>
+              {reactionPayload ? (
+                <div className="text-[11px] text-zinc-600">Reaction zones are ready.</div>
+              ) : null}
             </div>
           ) : error || candles.length === 0 ? (
-            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
-              {error ?? "No price candles available."}
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-zinc-500">
+              <div>{error ?? "No price candles available."}</div>
+              <button
+                type="button"
+                onClick={() => setCandleRetryNonce((value) => value + 1)}
+                className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-teal-400/50 hover:text-teal-200"
+              >
+                Retry candles
+              </button>
             </div>
           ) : (
             <>
@@ -980,6 +1041,8 @@ function FlowZoneOverlay({
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
 }) {
+  const activeBand = bands.find((band) => band.id === activeZoneId) ?? null;
+
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       {bands.map((band) => {
@@ -991,6 +1054,7 @@ function FlowZoneOverlay({
         const idleBandAlpha = band.alpha * 0.045;
         const idleBorderAlpha = band.alpha * 0.24;
         const active = activeZoneId === band.id;
+        const title = zoneHoverTitle(band);
 
         return (
           <div key={band.id}>
@@ -1009,6 +1073,7 @@ function FlowZoneOverlay({
                 borderBottomColor: active ? `rgba(${color}, 0.62)` : `rgba(${color}, ${idleBorderAlpha})`,
               }}
               aria-label={`${formatLevelRange(band.level)} ${read.label} ${band.level.label}`}
+              title={title}
               onClick={() => onSelect(band.id)}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
@@ -1026,6 +1091,8 @@ function FlowZoneOverlay({
                 boxShadow: active ? `0 0 ${Math.round(10 + band.alpha * 14)}px rgba(${color}, ${band.alpha * 0.14})` : "none",
                 opacity: active ? 1 : Math.max(0.5, band.alpha * 0.86),
               }}
+              aria-label={`${formatLevelRange(band.level)} ${read.label} details`}
+              title={title}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
@@ -1037,6 +1104,71 @@ function FlowZoneOverlay({
           </div>
         );
       })}
+      {activeBand ? <ZoneHoverTooltip band={activeBand} /> : null}
+    </div>
+  );
+}
+
+function zoneHoverTitle(band: ChartZoneBand): string {
+  const read = levelReadFor(band.level, band.side);
+  const flowSize = band.level.zoneTooltip?.inferredOiUsd ?? band.level.zoneTooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
+  return [
+    `${formatLevelRange(band.level)} - ${read.label}`,
+    shortTraderRead(band.level, band.side),
+    `Flow/OI ${formatCompactUsd(flowSize)}`,
+    band.level.zoneTooltip?.reasonSelected ?? read.reason,
+    "Inferred zone, not exact exchange-wide positions.",
+  ].filter(Boolean).join("\n");
+}
+
+function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
+  const read = levelReadFor(band.level, band.side);
+  const tooltip = band.level.zoneTooltip;
+  const isDownside = band.side === "downside";
+  const flowSize = tooltip?.inferredOiUsd ?? tooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
+  const refreshed = tooltip?.refreshedAtMs ? formatTimeMs(tooltip.refreshedAtMs) : null;
+  const sideLabel = tooltip?.side === "bear" ? "Short OI" : tooltip?.side === "bull" ? "Long OI" : zoneRoleLabel(band);
+  const reason = tooltip?.reasonSelected ?? read.reason;
+
+  return (
+    <div
+      className={`absolute right-3 z-30 w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
+        isDownside ? "border-teal-400/35" : "border-rose-400/35"
+      }`}
+      style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}
+      role="tooltip"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{sideLabel}</div>
+          <div className="mt-1 font-mono text-sm font-semibold text-zinc-100">{formatLevelRange(band.level)}</div>
+        </div>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono ${read.className}`}>{read.label}</span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-zinc-300">{shortTraderRead(band.level, band.side) || read.summary}</p>
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">
+        {tooltip?.rank || band.level.flowRank ? <TooltipMetric label="Rank" value={`#${tooltip?.rank ?? band.level.flowRank}`} /> : null}
+        <TooltipMetric label="Flow / OI" value={formatCompactUsd(flowSize)} />
+        {tooltip?.totalRecentFlowUsd ? <TooltipMetric label="Recent flow" value={formatCompactUsd(tooltip.totalRecentFlowUsd)} /> : null}
+        {tooltip?.buyNotionalUsd != null && tooltip?.sellNotionalUsd != null ? (
+          <TooltipMetric label="Buy / sell" value={`${formatCompactUsd(tooltip.buyNotionalUsd)} / ${formatCompactUsd(tooltip.sellNotionalUsd)}`} />
+        ) : null}
+      </div>
+      <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/55 px-2.5 py-2 text-[11px] leading-4 text-zinc-400">
+        {reason}
+      </div>
+      <div className="mt-2 text-[10px] leading-4 text-zinc-500">
+        {refreshed ? `Refreshed ${refreshed}. ` : null}Inferred zone, not exact exchange-wide positions.
+      </div>
+    </div>
+  );
+}
+
+function TooltipMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
+      <div className="text-[9px] uppercase tracking-[0.14em] text-zinc-600">{label}</div>
+      <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-200">{value}</div>
     </div>
   );
 }

@@ -256,3 +256,38 @@
 - Attempted: made `docker-compose.reaction-map.yml` fail fast unless both Neon direct and pooled URLs are set, added a Linux deploy/smoke script, and expanded the deploy doc with the worker-to-frontend runtime contract.
 - Decision: keep migrations outside the worker-only host; use `NEON_DATABASE_URL` from the app/deploy pipeline for schema changes, then run only the worker on Linux with `NEON_DATABASE_URL_POOLING`.
 - Result: the worker-only Compose file still resolves to just `reaction-map`, the worker is flushing BTC/ETH/SOL rows, and the local frontend API reads OI Holding rows for BTC, ETH, and SOL from the same Neon-backed store.
+
+## 2026-05-08
+
+- Request: clarify where the market chart tooltips are and make them visible.
+- Attempted: confirmed the live `localhost:3004` page had only native hover titles/details below the chart, added a visible hover/focus tooltip card to chart pressure bands, rebuilt the Docker web image, and restarted `web` on port `3004`.
+- Decision: keep the existing chart and band behavior, but make each band expose its range, role, explanation, optional flow/OI metadata, and inferred-not-exact-position caveat directly on hover/focus/click.
+- Result: `docker compose build web` passed the production Next build. Browser Use verified `/markets?asset=BTC` showed a real tooltip node after selecting a band. This was superseded by the following restore of the previous Reaction Map chart.
+
+## 2026-05-08
+
+- Request: remove the new TA Guide path and restore the previous Reaction Map / OI Holding market chart.
+- Attempted: compared the TA-guide commits against the pre-TA-guide restore point `37c4843`, restored the affected market UI and trade-plan files from that point, and removed the added `src/lib/technicalAnalysis.ts` helper.
+- Decision: revert only the TA-guide blast radius instead of resetting the whole repo, preserving unrelated current branch history and documentation.
+- Result: after removing one duplicated ternary fallback left by the restore, `docker compose build web` passed. The web container restarted on port `3004`, and Browser Use verified `/markets?asset=BTC` shows `Reaction Map`, `Order Book`, `OI Holding`, `Stress`, Long OI holding zones, the Flow/OI detail table, and no new browser errors beyond expected local Vercel analytics warnings.
+
+## 2026-05-08
+
+- Request: fix Reaction Map getting stuck on loading and intermittent `Unable to fetch price candles`.
+- Attempted: timed the live candle and reaction-level APIs, confirmed both were fast directly, traced the visible loading gate to the chart candle fetch, added client-side candle timeout/retry/manual retry behavior, and added a small upstream retry loop in the market candles API route.
+- Decision: keep Reaction Map data loading separate from candle loading; the chart now says `Loading price candles...` while candles gate rendering instead of implying the Reaction Map itself is stuck.
+- Result: `docker compose build web` passed. Web restarted on port `3004` with `--no-deps` because the root Compose migration dependency failed on a changed historical migration. Browser Use verified `/markets?asset=BTC` moved from `Loading price candles...` to visible Reaction Map/OI Holding/Flow-OI details by the second sample.
+
+## 2026-05-08
+
+- Request: add the missing hover tooltip back to the restored Reaction Map chart.
+- Attempted: wired the chart overlay hover/focus/selection state to a visible tooltip card using existing Reaction Map range, role, read, Flow/OI, rank, buy/sell, and inferred-not-exact-position metadata.
+- Decision: keep the details-below-chart panel, but add an in-chart tooltip so bands explain themselves immediately on hover/focus/click.
+- Result: `docker compose build web` passed, `web` restarted on port `3004`, and Browser Use verified selecting a chart band exposes a `tooltip` node with Flow/OI and inferred-position caveat. No fresh console errors appeared after the tooltip interaction.
+
+## 2026-05-08
+
+- Request: remove the old local HyperPulse Postgres data volume and continue Docker image cleanup.
+- Attempted: inspected Docker disk usage, removed the unused `hyperpulse_hyperpulse_pg` volume, ran the safe cleanup script dry-run, then applied builder-cache and unused-image pruning.
+- Decision: keep active containers/images and non-HyperPulse project volumes; the worker image can be rebuilt from `docker-compose.reaction-map.yml` when needed.
+- Result: Docker build cache is now `0B`, images dropped to seven active images with `0B` reclaimable, and `localhost:3004/api/health` still returns `200`.

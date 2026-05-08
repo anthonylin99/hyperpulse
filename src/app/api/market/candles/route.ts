@@ -13,6 +13,9 @@ import { resolveSpotCoinForCandles } from "@/lib/spotMarkets";
 
 export const dynamic = "force-dynamic";
 
+const CANDLE_UPSTREAM_RETRIES = 2;
+const CANDLE_UPSTREAM_RETRY_DELAY_MS = 250;
+
 function normalizeCandleSnapshot(data: unknown): unknown {
   if (typeof data !== "string") return data;
 
@@ -22,6 +25,12 @@ function normalizeCandleSnapshot(data: unknown): unknown {
   } catch {
     return data;
   }
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 export async function GET(request: Request) {
@@ -72,12 +81,27 @@ export async function GET(request: Request) {
     const resolvedCoin =
       marketType === "spot" ? await resolveSpotCoinForCandles(info, coin) : coin;
 
-    const data = await info.candleSnapshot({
-      coin: resolvedCoin,
-      interval,
-      startTime,
-      endTime,
-    });
+    let data: unknown = null;
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt <= CANDLE_UPSTREAM_RETRIES; attempt += 1) {
+      try {
+        data = await info.candleSnapshot({
+          coin: resolvedCoin,
+          interval,
+          startTime,
+          endTime,
+        });
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt === CANDLE_UPSTREAM_RETRIES) break;
+        await wait(CANDLE_UPSTREAM_RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
+
+    if (lastError) throw lastError;
     return jsonSuccess(normalizeCandleSnapshot(data), { cache: "public-market" });
   } catch (err) {
     logServerError("api/market/candles", err);
