@@ -10,14 +10,14 @@ const TONE_CLASS: Record<MarketSetupSignal["tone"], string> = {
 };
 
 function setupAction(setup: MarketSetupSignal): string {
-  if (setup.type === "momentum-long") return "Momentum long";
-  if (setup.type === "momentum-short") return "Momentum short";
-  if (setup.type === "resistance-break") return "Long if holds >";
-  if (setup.type === "support-reclaim") return "Long reclaim";
-  if (setup.type === "support-break") return "Short below";
-  if (setup.type === "near-support") return "Watch support";
-  if (setup.type === "near-resistance") return "Watch resistance";
-  return "Wait";
+  if (setup.type === "momentum-long") return "Trend up";
+  if (setup.type === "momentum-short") return "Trend down";
+  if (setup.type === "resistance-break") return "Breakout";
+  if (setup.type === "support-reclaim") return "Reclaim";
+  if (setup.type === "support-break") return "Breakdown";
+  if (setup.type === "near-support") return "Retest";
+  if (setup.type === "near-resistance") return "At resistance";
+  return "No setup";
 }
 
 function formatSetupLevel(value: number | null | undefined): string | null {

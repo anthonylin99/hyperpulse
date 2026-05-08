@@ -5,20 +5,19 @@ import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
+  LineSeries,
   LineStyle,
   createChart,
   type CandlestickData,
   type IChartApi,
+  type LineData,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick, formatEasternDateTime } from "@/lib/time";
-import {
-  reactionLevelsToSupportResistanceLevels,
-  type ReactionLevelsPayload,
-  type ReactionOverlayMode,
-} from "@/lib/reactionLevels";
-import { buildTradePlan } from "@/lib/tradePlan";
+import { type ReactionOverlayMode } from "@/lib/reactionLevels";
+import { calculateSupportResistanceLevels } from "@/lib/supportResistance";
+import { buildTaGuide, type MovingAveragePoint } from "@/lib/technicalAnalysis";
 import { SectionEyebrow } from "@/components/trading-ui";
 import type { SupportResistanceLevel } from "@/types";
 
@@ -39,14 +38,6 @@ const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> =
   "60": "1h",
   "240": "4h",
   D: "1d",
-};
-
-const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h"> = {
-  "5": "5m",
-  "15": "15m",
-  "60": "1h",
-  "240": "1h",
-  D: "1h",
 };
 
 const LOOKBACK_MS: Record<TradingInterval, number> = {
@@ -71,13 +62,6 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
   { label: "1h", value: "60" },
   { label: "4h", value: "240" },
   { label: "1d", value: "D" },
-];
-
-const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
-  { label: "All", value: "all" },
-  { label: "Order Book", value: "book" },
-  { label: "OI Holding", value: "oi_holding" },
-  { label: "Stress", value: "stress" },
 ];
 
 type CandleDatum = {
@@ -120,6 +104,15 @@ function toCandlestickData(candles: CandleDatum[]): CandlestickData[] {
         candle.close > 0
       );
     });
+}
+
+function toLineData(points: MovingAveragePoint[]): LineData[] {
+  return points
+    .map((point) => ({
+      time: toChartTime(point.time),
+      value: point.value,
+    }))
+    .filter((point) => Number.isFinite(point.value));
 }
 
 function formatLevelPrice(value: number | null | undefined): string {
@@ -171,10 +164,6 @@ type LevelRead = {
 
 function isStressZone(level: SupportResistanceLevel): boolean {
   return level.leverageBucket === "stress";
-}
-
-function isActionableFlowLevel(level: SupportResistanceLevel): boolean {
-  return level.status === "active";
 }
 
 function isDownsideReactionLevel(
@@ -353,55 +342,37 @@ export default function PriceChart({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
-  const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
-  const [reactionLoading, setReactionLoading] = useState(false);
-  const [reactionUnavailable, setReactionUnavailable] = useState(false);
-  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("all");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
-  const reactionSupported = marketType === "perp";
-  const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
+  const currentPrice = candles.at(-1)?.close ?? null;
   const levels = useMemo(
-    () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, overlayMode) : []),
-    [overlayMode, reactionPayload, reactionSupported],
+    () => calculateSupportResistanceLevels(candles, API_INTERVAL[interval]).filter((level) => level.status !== "expired" && level.status !== "broken"),
+    [candles, interval],
   );
-  const oiHoldingHidden =
-    overlayMode === "oi_holding" && reactionSupported && reactionPayload != null && levels.length === 0;
-  const orderBookWarming =
-    overlayMode === "book" && reactionSupported && reactionPayload != null && levels.length === 0;
-  const showReactionProgress = reactionLoading || orderBookWarming;
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
-  const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
-  const tradePlan = useMemo(
-    () =>
-      buildTradePlan({
-        candles,
-        interval: API_INTERVAL[interval],
-        levels: levels.filter(isActionableFlowLevel),
-        fundingAPR,
-        fundingPercentile,
-      }),
-    [candles, fundingAPR, fundingPercentile, interval, levels],
+  const taGuide = useMemo(
+    () => buildTaGuide({ candles, levels, fundingAPR, fundingPercentile }),
+    [candles, fundingAPR, fundingPercentile, levels],
   );
   const visibleDownsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => isDownsideReactionLevel(level, currentPrice, overlayMode)),
-        overlayMode === "oi_holding" ? 5 : 4,
+        levels.filter((level) => isDownsideReactionLevel(level, currentPrice, "all")),
+        4,
       ),
-    [currentPrice, levels, overlayMode],
+    [currentPrice, levels],
   );
   const visibleUpsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => isUpsideReactionLevel(level, currentPrice, overlayMode)),
-        overlayMode === "oi_holding" ? 5 : 4,
+        levels.filter((level) => isUpsideReactionLevel(level, currentPrice, "all")),
+        4,
       ),
-    [currentPrice, levels, overlayMode],
+    [currentPrice, levels],
   );
   const activeZoneId = hoveredZoneId ?? selectedZoneId;
   const activeZoneBand = useMemo(
@@ -458,50 +429,6 @@ export default function PriceChart({
       cancelled = true;
     };
   }, [coin, interval, marketType]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchReactionLevels() {
-      setReactionUnavailable(false);
-      setReactionPayload(null);
-      setReactionLoading(reactionSupported);
-
-      if (!reactionSupported) {
-        setReactionUnavailable(false);
-        setReactionLoading(false);
-        return;
-      }
-
-      try {
-        const params = new URLSearchParams({
-          coin,
-          window: REACTION_WINDOW[interval],
-        });
-        const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`), {
-          cache: "no-store",
-        });
-        if (!response.ok) throw new Error("Unable to fetch Reaction Map.");
-        const payload = (await response.json()) as ReactionLevelsPayload;
-        if (!cancelled) {
-          setReactionPayload(payload);
-          setReactionUnavailable(payload.levels.length === 0);
-        }
-      } catch {
-        if (!cancelled) {
-          setReactionPayload(null);
-          setReactionUnavailable(true);
-        }
-      } finally {
-        if (!cancelled) setReactionLoading(false);
-      }
-    }
-
-    fetchReactionLevels();
-    return () => {
-      cancelled = true;
-    };
-  }, [coin, interval, reactionSupported]);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -566,6 +493,26 @@ export default function PriceChart({
 
     candleSeries.setData(data);
 
+    const movingAverageLines = [
+      { label: "EMA 9", points: taGuide.movingAverages.ema9, color: "#2dd4bf", width: 1 },
+      { label: "EMA 21", points: taGuide.movingAverages.ema21, color: "#38bdf8", width: 1 },
+      { label: "SMA 50", points: taGuide.movingAverages.sma50, color: "#f59e0b", width: 2 },
+      { label: "SMA 200", points: taGuide.movingAverages.sma200, color: "#a78bfa", width: 2 },
+    ] as const;
+
+    movingAverageLines.forEach((line) => {
+      const lineData = toLineData(line.points);
+      if (lineData.length < 2) return;
+      const series = chart.addSeries(LineSeries, {
+        color: line.color,
+        lineWidth: line.width,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        title: line.label,
+      });
+      series.setData(lineData);
+    });
+
     const renderLevel = (level: SupportResistanceLevel, index: number, side: "downside" | "upside") => {
       const alpha = levelAlpha(level, index);
       const color = side === "downside" ? `rgba(20, 184, 166, ${alpha})` : `rgba(244, 63, 94, ${alpha})`;
@@ -578,8 +525,8 @@ export default function PriceChart({
         color,
         lineWidth,
         lineStyle: lineWidth >= 3 ? LineStyle.Solid : lineWidth === 2 ? LineStyle.Dashed : LineStyle.Dotted,
-        axisLabelVisible: false,
-        title: "",
+        axisLabelVisible: true,
+        title: side === "downside" ? "Support" : "Resistance",
       });
 
       if (level.zoneLow != null && level.zoneHigh != null) {
@@ -669,70 +616,42 @@ export default function PriceChart({
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, currentPrice, interval, visibleDownsideFlows, visibleUpsideFlows]);
+  }, [candles, currentPrice, interval, taGuide.movingAverages, visibleDownsideFlows, visibleUpsideFlows]);
 
   const levelSourceNote =
-    oiHoldingHidden
-      ? "OI Holding zones are warming up from current ingested flow."
-      : orderBookWarming
-        ? "Order Book shelves are still collecting from recent public depth."
-      : latestLevelTimeMs != null
-      ? `Reaction Map - refreshed ${formatTimeMs(latestLevelTimeMs)}`
-      : dataThroughTimeMs != null
-        ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
-        : "Reaction Map";
-  const levelAvailabilityMessage = oiHoldingHidden
-    ? "OI Holding zones need enough recent flow before they appear. Large near-spot zones are allowed when the ingested flow is strong enough."
-    : orderBookWarming
-      ? "Order Book levels need a few clean depth samples before they appear."
-    : reactionSupported
-      ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
-      : "Reaction Map is available for Hyperliquid perps.";
-  const hasActionablePlan = tradePlan.bias !== "wait";
+    dataThroughTimeMs != null
+      ? `TA Guide - candles through ${formatTimeMs(dataThroughTimeMs)}`
+      : "TA Guide";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
       <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <SectionEyebrow>{marketType === "spot" ? "RWA chart proxy" : "Reaction Map"}</SectionEyebrow>
+            <SectionEyebrow>{marketType === "spot" ? "RWA TA guide" : "TA Guide"}</SectionEyebrow>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <div className={compact ? "font-mono text-base font-semibold text-zinc-100" : "font-mono text-lg font-semibold text-zinc-100"}>{coin}</div>
               <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
                 {API_INTERVAL[interval]} candles
               </div>
-              {marketType === "perp" ? (
-                <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
-                  {REACTION_WINDOW[interval]} zones
-                </div>
-              ) : null}
+              <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
+                EMA 9/21 · SMA 50/200
+              </div>
               {currentPrice != null && (
                 <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-300">
                   {formatLevelPrice(currentPrice)}
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Thin bands mark nearby pressure zones. Details stay below the chart so candles remain readable.</div>
+            <div className="mt-2 grid gap-2 text-[11px] md:grid-cols-5">
+              <GuideMetric label="Trend" value={taGuide.trendLabel} detail={taGuide.trendDetail} tone={taGuide.tone === "red" ? "danger" : taGuide.tone === "green" ? "success" : "neutral"} />
+              <GuideMetric label="Support" value={formatLevelPrice(taGuide.nearestSupport?.price)} tone="success" />
+              <GuideMetric label="Resistance" value={formatLevelPrice(taGuide.nearestResistance?.price)} tone="danger" />
+              <GuideMetric label="Next trim" value={taGuide.nextResistance ? formatLevelPrice(taGuide.nextResistance.price) : formatLevelPrice(taGuide.nearestResistance?.price)} tone="danger" />
+              <GuideMetric label="Invalidation" value={taGuide.invalidationText.replace(/^Invalidate /, "").replace(/\.$/, "")} />
+            </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
-            {marketType === "perp" ? (
-              <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
-                {OVERLAY_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setOverlayMode(option.value)}
-                    className={`rounded-full px-2 py-0.5 transition ${
-                      overlayMode === option.value
-                        ? "bg-sky-500/15 text-sky-200"
-                        : "text-zinc-500 hover:text-zinc-200"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
             <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
               {INTERVAL_OPTIONS.map((option) => (
                 <button
@@ -760,7 +679,7 @@ export default function PriceChart({
         >
           {loading ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
-              Loading Reaction Map...
+              Loading chart...
             </div>
           ) : error || candles.length === 0 ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
@@ -778,7 +697,12 @@ export default function PriceChart({
             </>
           )}
         </div>
-        <div className="mt-2 text-[11px] leading-5 text-zinc-500">{levelSourceNote}</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] leading-5 text-zinc-500">
+          <span>{levelSourceNote}</span>
+          {taGuide.movingAverages.latest.sma200 == null ? (
+            <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-zinc-500">SMA 200 warming up</span>
+          ) : null}
+        </div>
         <ZoneDetailPanel
           bands={zoneBands}
           activeBand={activeZoneBand}
@@ -786,70 +710,43 @@ export default function PriceChart({
           onHover={setHoveredZoneId}
           onSelect={setSelectedZoneId}
         />
-        {showReactionProgress ? (
-          <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">
-            <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-sky-400/70" />
-          </div>
-        ) : null}
       </div>
 
       {!loading && !error && candles.length > 0 ? (
-        <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
-          <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
-            Reaction zones are inferred market pressure, not complete trader-position truth or a promise that price must hold.
-          </div>
-
-          <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
-            <div>
+        <div className="shrink-0 border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
+          <div className="grid gap-2 text-xs xl:grid-cols-[0.8fr_1.2fr]">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
               <div className="flex flex-wrap items-center gap-2">
-                <SectionEyebrow>Trade plan</SectionEyebrow>
+                <SectionEyebrow>TA Guide</SectionEyebrow>
                 <span
                   className={`rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] ${
-                    tradePlan.bias === "long-setup"
+                    taGuide.tone === "green"
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                      : tradePlan.bias === "short-setup"
+                      : taGuide.tone === "red"
                         ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                        : "border-zinc-700 bg-zinc-900 text-zinc-400"
+                        : taGuide.tone === "amber"
+                          ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                          : "border-zinc-700 bg-zinc-900 text-zinc-400"
                   }`}
                 >
-                  {tradePlan.confidence} confidence
+                  {taGuide.confidence} confidence
                 </span>
               </div>
-              <div className="mt-1 text-sm font-semibold text-zinc-100">{tradePlan.title}</div>
-              <div className="mt-1 text-xs leading-5 text-zinc-400">{tradePlan.summary}</div>
+              <div className="mt-1 text-sm font-semibold text-zinc-100">{taGuide.biasLabel}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {taGuide.why.slice(0, 2).map((item) => (
+                  <span key={item} className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-400">
+                    {item}
+                  </span>
+                ))}
+              </div>
             </div>
 
-            <div className="grid gap-2 text-xs md:grid-cols-3">
-              <PlanBox label="Confirmation level" value={tradePlan.trigger} />
-              <PlanBox
-                label="Invalidation"
-                value={hasActionablePlan ? tradePlan.invalidation : "Defined after confirmation."}
-                tone={hasActionablePlan ? "danger" : "neutral"}
-              />
-              <PlanBox
-                label="Target"
-                value={hasActionablePlan && tradePlan.targets.length > 0 ? tradePlan.targets.join(" -> ") : "Appears after confirmation."}
-                tone={hasActionablePlan ? "success" : "neutral"}
-              />
+            <div className="grid gap-2 md:grid-cols-3">
+              <PlanBox label="Entry condition" value={taGuide.entryCondition} />
+              <PlanBox label="Trim / sell" value={taGuide.trimText} tone={taGuide.tone === "red" ? "neutral" : "danger"} />
+              <PlanBox label="Invalidation" value={taGuide.invalidationText} tone="danger" />
             </div>
-          </div>
-
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {tradePlan.context.slice(0, 3).map((item) => (
-              <div key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                {item}
-              </div>
-            ))}
-            {dataThroughTimeMs != null ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                Candles through {formatTimeMs(dataThroughTimeMs)}. Reaction Map refreshes from public Hyperliquid streams.
-              </div>
-            ) : null}
-            {reactionUnavailable || (reactionSupported && levels.length === 0) ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                {levelAvailabilityMessage}
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -938,6 +835,32 @@ function ZoneMetric({ label, value, tone = "neutral" }: { label: string; value: 
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
       <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">{label}</div>
       <div className={`mt-1 truncate font-mono text-xs ${tone === "success" ? "text-teal-300" : tone === "danger" ? "text-rose-300" : "text-zinc-200"}`}>{value}</div>
+    </div>
+  );
+}
+
+function GuideMetric({
+  label,
+  value,
+  detail,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: "neutral" | "success" | "danger";
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/65 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+      <div
+        className={`mt-1 truncate font-mono text-xs ${
+          tone === "success" ? "text-emerald-300" : tone === "danger" ? "text-rose-300" : "text-zinc-200"
+        }`}
+      >
+        {value}
+      </div>
+      {detail ? <div className="mt-0.5 truncate text-[10px] text-zinc-600">{detail}</div> : null}
     </div>
   );
 }
