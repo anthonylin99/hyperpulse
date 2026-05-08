@@ -174,7 +174,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
         `${distancePct >= 0 ? "+" : ""}${distancePct.toFixed(1)}%`,
         `${compactUsd(tradeNotionalUsd)} recent flow`,
         `${compactUsd(inferredOiUsd)} inferred OI`,
-        side === "bull" ? "Bull OI holding zone" : "Bear OI holding zone",
+        side === "bull" ? "Long OI holding zone" : "Short OI holding zone",
         reasonSelected,
         "Not exact open positions",
       ];
@@ -263,6 +263,46 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
   }
 }
 
+function mergeCurrentZonesWithStreamPayload(
+  currentZones: ReactionLevelsPayload | null,
+  streamPayload: ReactionLevelsPayload,
+): ReactionLevelsPayload {
+  if (!currentZones) return streamPayload;
+
+  const currentZoneIds = new Set(currentZones.levels.map((level) => level.id));
+  const streamLevels = streamPayload.levels.filter(
+    (level) => level.primarySource !== "positioning" && !currentZoneIds.has(level.id),
+  );
+  const levels = [...currentZones.levels, ...streamLevels].sort((a, b) => {
+    if (a.primarySource !== b.primarySource) {
+      if (a.primarySource === "positioning") return -1;
+      if (b.primarySource === "positioning") return 1;
+    }
+    return a.price - b.price;
+  });
+
+  return {
+    ...streamPayload,
+    currentPrice: currentZones.currentPrice ?? streamPayload.currentPrice,
+    updatedAt: Math.max(currentZones.updatedAt, streamPayload.updatedAt),
+    coverage: {
+      marketStreams: currentZones.coverage.marketStreams || streamPayload.coverage.marketStreams,
+      trackedWalletSample: currentZones.coverage.trackedWalletSample || streamPayload.coverage.trackedWalletSample,
+      exactPositions: false,
+      note: "Reaction Map combines worker-built OI Holding zones with raw public-stream book shelves. It does not claim exact exchange-wide positions.",
+    },
+    levels,
+    overlayLevels: currentZones.overlayLevels,
+    overlays: {
+      ...streamPayload.overlays,
+      oiEntryProfile:
+        currentZones.overlays.oiEntryProfile.length > 0
+          ? currentZones.overlays.oiEntryProfile
+          : streamPayload.overlays.oiEntryProfile,
+    },
+  };
+}
+
 export async function getReactionLevelMap(args: {
   coin: string;
   windowMs: number;
@@ -275,7 +315,6 @@ export async function getReactionLevelMap(args: {
 
   try {
     const currentZones = await readCurrentExposureZones(client, asset, args.windowMs);
-    if (currentZones) return currentZones;
 
     const latestContextResult = await client.query(
       `
@@ -289,9 +328,9 @@ export async function getReactionLevelMap(args: {
       [asset, cutoff],
     );
     const latestContext = latestContextResult.rows[0] as Record<string, unknown> | undefined;
-    if (!latestContext) return emptyPayload(asset, args.windowMs);
+    if (!latestContext) return currentZones ?? emptyPayload(asset, args.windowMs);
     const currentPrice = asNumber(latestContext?.mark_px) ?? asNumber(latestContext?.mid_px) ?? asNumber(latestContext?.oracle_px);
-    if (currentPrice == null || currentPrice <= 0) return emptyPayload(asset, args.windowMs);
+    if (currentPrice == null || currentPrice <= 0) return currentZones ?? emptyPayload(asset, args.windowMs);
 
     const [earliestContextResult, oiDeltaResult, bookResult, tradeResult, trackedBuckets] = await Promise.all([
       client.query(
@@ -395,7 +434,7 @@ export async function getReactionLevelMap(args: {
       trackedLiquidations,
     });
 
-    return payload;
+    return mergeCurrentZonesWithStreamPayload(currentZones, payload);
   } catch (error) {
     markStoreUnavailable(error);
     return emptyPayload(asset, args.windowMs);

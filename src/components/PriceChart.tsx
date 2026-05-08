@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CandlestickSeries,
   ColorType,
@@ -183,6 +184,26 @@ function isActionableFlowLevel(level: SupportResistanceLevel): boolean {
   return level.status === "active";
 }
 
+function isDownsideReactionLevel(
+  level: SupportResistanceLevel,
+  currentPrice: number | null,
+  overlayMode: ReactionOverlayMode,
+): boolean {
+  if (level.kind !== "support") return false;
+  if (overlayMode === "oi_holding" && level.exposureSide === "bull") return true;
+  return currentPrice == null || level.price < currentPrice;
+}
+
+function isUpsideReactionLevel(
+  level: SupportResistanceLevel,
+  currentPrice: number | null,
+  overlayMode: ReactionOverlayMode,
+): boolean {
+  if (level.kind !== "resistance") return false;
+  if (overlayMode === "oi_holding" && level.exposureSide === "bear") return true;
+  return currentPrice == null || level.price > currentPrice;
+}
+
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
   const isUpside = side === "upside";
   if (level.leverageBucket === "positioning") {
@@ -268,8 +289,8 @@ function riskCopy(level: SupportResistanceLevel): string {
 }
 
 function sideLabel(level: SupportResistanceLevel): string {
-  if (level.exposureSide === "bull") return "bull zone";
-  if (level.exposureSide === "bear") return "bear zone";
+  if (level.exposureSide === "bull") return "long OI";
+  if (level.exposureSide === "bear") return "short OI";
   return level.flowSide === "forced_sell" ? "likely long holding" : "likely short holding";
 }
 
@@ -380,7 +401,7 @@ function levelAlpha(level: SupportResistanceLevel, index: number): number {
 function chartTagForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): string {
   if (isStressZone(level)) return `${side === "downside" ? "sell" : "buy"} stress`;
   if (level.leverageBucket === "book") return `${side === "downside" ? "bid" : "ask"} book`;
-  if (level.leverageBucket === "positioning") return `#${level.flowRank ?? "?"} ${level.exposureSide === "bear" ? "bear" : "bull"} OI`;
+  if (level.leverageBucket === "positioning") return `#${level.flowRank ?? "?"} ${level.exposureSide === "bear" ? "short" : "long"} OI`;
   if (level.leverageBucket === "mixed") return "mixed level";
   if (level.flowRank != null) return `#${level.flowRank} ${side === "downside" ? "sell" : "buy"} flow`;
   return level.label;
@@ -437,6 +458,7 @@ export default function PriceChart({
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
   const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
+  const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
   const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("all");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
@@ -451,6 +473,9 @@ export default function PriceChart({
   );
   const oiHoldingHidden =
     overlayMode === "oi_holding" && reactionSupported && reactionPayload != null && levels.length === 0;
+  const orderBookWarming =
+    overlayMode === "book" && reactionSupported && reactionPayload != null && levels.length === 0;
+  const showReactionProgress = reactionLoading || orderBookWarming;
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
   const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
@@ -468,7 +493,7 @@ export default function PriceChart({
   const visibleDownsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => level.kind === "support" && (currentPrice == null || level.price < currentPrice)),
+        levels.filter((level) => isDownsideReactionLevel(level, currentPrice, overlayMode)),
         overlayMode === "oi_holding" ? 5 : 4,
       ),
     [currentPrice, levels, overlayMode],
@@ -476,7 +501,7 @@ export default function PriceChart({
   const visibleUpsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => level.kind === "resistance" && (currentPrice == null || level.price > currentPrice)),
+        levels.filter((level) => isUpsideReactionLevel(level, currentPrice, overlayMode)),
         overlayMode === "oi_holding" ? 5 : 4,
       ),
     [currentPrice, levels, overlayMode],
@@ -549,9 +574,11 @@ export default function PriceChart({
     async function fetchReactionLevels() {
       setReactionUnavailable(false);
       setReactionPayload(null);
+      setReactionLoading(reactionSupported);
 
       if (!reactionSupported) {
         setReactionUnavailable(false);
+        setReactionLoading(false);
         return;
       }
 
@@ -560,7 +587,9 @@ export default function PriceChart({
           coin,
           window: REACTION_WINDOW[interval],
         });
-        const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`));
+        const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`), {
+          cache: "no-store",
+        });
         if (!response.ok) throw new Error("Unable to fetch Reaction Map.");
         const payload = (await response.json()) as ReactionLevelsPayload;
         if (!cancelled) {
@@ -572,6 +601,8 @@ export default function PriceChart({
           setReactionPayload(null);
           setReactionUnavailable(true);
         }
+      } finally {
+        if (!cancelled) setReactionLoading(false);
       }
     }
 
@@ -776,6 +807,8 @@ export default function PriceChart({
   const levelSourceNote =
     oiHoldingHidden
       ? "OI Holding zones are warming up from current ingested flow."
+      : orderBookWarming
+        ? "Order Book shelves are still collecting from recent public depth."
       : latestLevelTimeMs != null
       ? `Reaction Map - refreshed ${formatTimeMs(latestLevelTimeMs)}`
       : dataThroughTimeMs != null
@@ -783,6 +816,8 @@ export default function PriceChart({
         : "Reaction Map";
   const levelAvailabilityMessage = oiHoldingHidden
     ? "OI Holding zones need enough recent flow before they appear. Large near-spot zones are allowed when the ingested flow is strong enough."
+    : orderBookWarming
+      ? "Order Book levels need a few clean depth samples before they appear."
     : reactionSupported
       ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
       : "Reaction Map is available for Hyperliquid perps.";
@@ -811,7 +846,7 @@ export default function PriceChart({
               )}
             </div>
             <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Order Book shows visible shelves. OI Holding shows inferred bull and bear zones from current ingested flow.
+              Order Book shows visible shelves. OI Holding shows inferred long and short holding zones from current ingested flow.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -899,6 +934,11 @@ export default function PriceChart({
           )}
         </div>
         <div className="mt-2 text-[11px] leading-5 text-zinc-500">{levelSourceNote}</div>
+        {showReactionProgress ? (
+          <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">
+            <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-sky-400/70" />
+          </div>
+        ) : null}
       </div>
 
       {!loading && !error && candles.length > 0 ? (
@@ -978,10 +1018,11 @@ function FlowZoneOverlay({
   downsideLevels: SupportResistanceLevel[];
   upsideLevels: SupportResistanceLevel[];
 }) {
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const hoveredBand = bands.find((band) => band.id === hoveredZoneId) ?? null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-20">
+    <div ref={overlayRef} className="pointer-events-none absolute inset-0 z-20">
       {bands.map((band) => {
         const isDownside = band.side === "downside";
         const read = levelReadFor(band.level, band.side);
@@ -1050,7 +1091,7 @@ function FlowZoneOverlay({
 
             <button
               type="button"
-              className={`pointer-events-auto absolute right-16 max-w-[124px] cursor-help truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 ${borderColor} ${textColor}`}
+              className={`pointer-events-auto absolute right-2 max-w-[calc(100%_-_1rem)] cursor-help truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-16 sm:max-w-[124px] ${borderColor} ${textColor}`}
               style={{
                 top: Math.max(8, band.centerY - 10),
                 backgroundColor: `rgba(9, 9, 11, ${Math.max(0.74, 0.94 - band.alpha * 0.14)})`,
@@ -1071,7 +1112,12 @@ function FlowZoneOverlay({
       })}
 
       {hoveredBand ? (
-        <LevelHoverCard band={hoveredBand} downsideLevels={downsideLevels} upsideLevels={upsideLevels} />
+        <LevelHoverCard
+          band={hoveredBand}
+          downsideLevels={downsideLevels}
+          upsideLevels={upsideLevels}
+          overlayRef={overlayRef}
+        />
       ) : null}
     </div>
   );
@@ -1081,10 +1127,12 @@ function LevelHoverCard({
   band,
   downsideLevels,
   upsideLevels,
+  overlayRef,
 }: {
   band: ChartZoneBand;
   downsideLevels: SupportResistanceLevel[];
   upsideLevels: SupportResistanceLevel[];
+  overlayRef: { current: HTMLDivElement | null };
 }) {
   const sameSideLevels = band.side === "downside" ? downsideLevels : upsideLevels;
   const oppositeLevels = band.side === "downside" ? upsideLevels : downsideLevels;
@@ -1092,14 +1140,56 @@ function LevelHoverCard({
   const isDownside = band.side === "downside";
   const read = levelReadFor(band.level, band.side);
   const showPath = !isStressZone(band.level);
-  const cardTop = Math.max(10, band.centerY - 88);
+  const [placement, setPlacement] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
 
-  return (
+  useEffect(() => {
+    function updatePlacement() {
+      const rect = overlayRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const gutter = 12;
+      const width = Math.min(340, Math.max(240, window.innerWidth - gutter * 2));
+      const maxHeight = Math.min(360, Math.max(180, window.innerHeight - gutter * 2));
+      const left = Math.min(
+        Math.max(gutter, rect.right - 64 - width),
+        Math.max(gutter, window.innerWidth - gutter - width),
+      );
+      const preferredTop = rect.top + band.centerY - 88;
+      const top = Math.min(
+        Math.max(gutter, preferredTop),
+        Math.max(gutter, window.innerHeight - gutter - maxHeight),
+      );
+
+      setPlacement({ left, top, width, maxHeight });
+    }
+
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
+    return () => {
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
+    };
+  }, [band.centerY, overlayRef]);
+
+  if (!placement) return null;
+
+  return createPortal(
     <div
-      className={`pointer-events-none absolute right-16 w-[min(340px,calc(100%_-_5rem))] rounded-xl border bg-zinc-950/92 p-3 shadow-2xl backdrop-blur-md ${
+      className={`pointer-events-none fixed z-[1000] overflow-y-auto rounded-xl border bg-zinc-950/95 p-3 shadow-2xl backdrop-blur-md ${
         isDownside ? "border-teal-400/30" : "border-rose-400/30"
       }`}
-      style={{ top: cardTop }}
+      style={{
+        left: placement.left,
+        top: placement.top,
+        width: placement.width,
+        maxHeight: placement.maxHeight,
+      }}
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs text-zinc-100">{formatLevelRange(band.level)}</span>
@@ -1121,7 +1211,7 @@ function LevelHoverCard({
       {band.level.zoneTooltip ? (
         <div className="mt-2 grid grid-cols-2 gap-1.5 text-[10px] leading-4 text-zinc-500">
           <span>Rank #{band.level.zoneTooltip.rank ?? band.level.flowRank ?? "?"}</span>
-          <span>{band.level.zoneTooltip.side === "bear" ? "Bear zone" : "Bull zone"}</span>
+          <span>{band.level.zoneTooltip.side === "bear" ? "Short OI" : "Long OI"}</span>
           <span>Flow {formatCompactUsd(band.level.zoneTooltip.totalRecentFlowUsd)}</span>
           <span>OI {formatCompactUsd(band.level.zoneTooltip.inferredOiUsd)}</span>
           <span>Buy {formatCompactUsd(band.level.zoneTooltip.buyNotionalUsd)}</span>
@@ -1144,7 +1234,8 @@ function LevelHoverCard({
           ))}
         </div>
       ) : null}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
