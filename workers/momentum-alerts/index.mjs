@@ -62,6 +62,7 @@ const TELEGRAM_HOURLY_CAP = clamp(envNumber("MOMENTUM_ALERT_HOURLY_CAP", 2), 1, 
 const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 10), TELEGRAM_DAILY_CAP, 24);
 const MAX_ALERTS_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_CYCLE", 3), 1, 8);
 const MAX_TELEGRAM_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_TELEGRAM_PER_CYCLE", 1), 1, 3);
+const TELEGRAM_QUEUE_MAX_AGE_MS = envNumber("MOMENTUM_ALERT_QUEUE_MAX_AGE_MS", 60 * 60 * 1000);
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
@@ -83,7 +84,8 @@ const DRY_RUN =
 if (DRY_RUN_REQUESTED && !DRY_RUN) {
   console.warn("[momentum-alerts] ignoring MOMENTUM_ALERT_DRY_RUN=true because Telegram/prod delivery is enabled");
 }
-const APP_URL = cleanEnv(process.env.NEXT_PUBLIC_APP_URL) || cleanEnv(process.env.APP_URL) || "https://hyperpulsehl.com";
+const RAW_APP_URL = cleanEnv(process.env.NEXT_PUBLIC_APP_URL) || cleanEnv(process.env.APP_URL) || "https://hyperpulsehl.com";
+const APP_URL = RAW_APP_URL.includes("hyperpulse-gold.vercel.app") ? "https://hyperpulsehl.com" : RAW_APP_URL;
 const CONFIGURED_ASSETS = parseList(process.env.MOMENTUM_ALERT_ASSETS);
 const DEBUG = envFlag("MOMENTUM_ALERT_DEBUG");
 
@@ -800,6 +802,11 @@ function buildTelegramText(alert) {
   return lines.join("\n");
 }
 
+function normalizeTelegramText(text) {
+  const appUrl = APP_URL.replace(/\/$/, "");
+  return String(text).replace(/https:\/\/hyperpulse-gold\.vercel\.app/g, appUrl);
+}
+
 async function persistAlert(candidate, now, options = {}) {
   const id = eventId(candidate, now);
   const alert = { ...candidate, id, createdAt: now };
@@ -895,7 +902,7 @@ async function sendTelegramMessage(text) {
   const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: normalizeTelegramText(text), disable_web_page_preview: true }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
@@ -912,13 +919,11 @@ async function flushTelegramQueue() {
     `select id, payload, attempts from notification_queue
      where event_type = 'momentum_alert'
        and channel = 'telegram'
-       and (
-         status = 'queued'
-         or (status in ('disabled', 'failed') and created_at >= $1 and attempts < 3)
-       )
+       and status = 'queued'
+       and created_at >= $1
      order by created_at asc
      limit 10`,
-    [Date.now() - 24 * 60 * 60 * 1000],
+    [Date.now() - TELEGRAM_QUEUE_MAX_AGE_MS],
   );
   let sent = 0;
   for (const row of result.rows) {
