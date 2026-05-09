@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BarChart3, BookOpenCheck, CircleDashed, FolderKanban, Rows3, SlidersHorizontal } from "lucide-react";
+import { BarChart3, BookOpenCheck, FolderKanban, Rows3, SlidersHorizontal } from "lucide-react";
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import StatsGrid from "@/components/portfolio/StatsGrid";
@@ -200,60 +200,27 @@ export default function PortfolioWorkspace() {
       ) : (
         <>
           <section className="space-y-4">
-            <div className="rounded-lg border border-emerald-900/35 bg-[linear-gradient(180deg,rgba(8,18,16,0.92),rgba(9,9,11,0.9))] p-3 shadow-[0_0_0_1px_rgba(16,185,129,0.06)] sm:p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="px-1">
-                  <div className="flex items-center gap-2">
-                    <CircleDashed className="h-4 w-4 text-emerald-300" />
-                    <div className="text-[12px] font-mono uppercase tracking-[0.2em] text-zinc-100">
-                      Portfolio review
-                    </div>
-                  </div>
-                  <div className="mt-2 text-sm text-zinc-400">
-                    Overview, live exposure, journal, paper tracking, and diagnostics.
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                {PORTFOLIO_TABS.map((tab) => {
-                  const Icon = TAB_ICONS[tab.key];
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => setSubtab(tab.key)}
-                      className={cn(
-                        "flex min-h-[104px] items-start gap-3 rounded-lg border px-4 py-4 text-left transition-all",
-                        subtab === tab.key
-                          ? "border-emerald-400/35 bg-emerald-500/[0.13] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.22)]"
-                          : "border-zinc-800 bg-zinc-950/80 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-950 hover:text-zinc-200",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
-                          subtab === tab.key
-                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
-                            : "border-zinc-800 bg-zinc-900/60 text-zinc-500"
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="font-mono text-sm uppercase tracking-[0.08em] text-zinc-100">{tab.label}</div>
-                        <div
-                          className={cn(
-                            "mt-1 text-[11px]",
-                            subtab === tab.key ? "text-zinc-300" : "text-zinc-500"
-                          )}
-                        >
-                          {tab.helper}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-950/80 p-1">
+              {PORTFOLIO_TABS.map((tab) => {
+                const Icon = TAB_ICONS[tab.key];
+                const active = subtab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setSubtab(tab.key)}
+                    title={tab.helper}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/35"
+                        : "text-zinc-500 hover:bg-zinc-900/80 hover:text-zinc-200",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="min-w-0 space-y-4">

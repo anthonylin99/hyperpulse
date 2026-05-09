@@ -187,7 +187,7 @@ export default function DashboardHeader() {
 
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_220px_320px]">
           <div
-            className="relative rounded-2xl border border-zinc-800 bg-zinc-950/78 p-4"
+            className="relative rounded-lg border border-zinc-800 bg-zinc-950/78 p-4"
             ref={switcherRef}
           >
             {address ? (
@@ -195,7 +195,7 @@ export default function DashboardHeader() {
                 <button
                   onClick={() => setShowSwitcher((open) => !open)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950",
+                    "flex w-full items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-950/85 px-4 py-3 text-left transition-colors hover:border-emerald-900/30 hover:bg-zinc-950",
                     showSwitcher && "border-emerald-700/40"
                   )}
                 >
@@ -223,7 +223,7 @@ export default function DashboardHeader() {
                   </div>
                 </button>
               ) : (
-                <div className="flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3">
+                <div className="flex w-full items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-950/85 px-4 py-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 label">
                       <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
@@ -244,7 +244,7 @@ export default function DashboardHeader() {
             ) : null}
 
             {remembersWallets && showSwitcher ? (
-              <div className="absolute left-0 top-full z-50 mt-2 w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/30">
+              <div className="absolute left-0 top-full z-50 mt-2 w-full max-w-xl overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/30">
                 <div className="border-b border-zinc-800 px-4 py-4">
                   <div className="label">
                     Current Wallet
@@ -355,26 +355,20 @@ export default function DashboardHeader() {
               </div>
             ) : null}
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-              <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
+            <div
+              className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500"
+              title="Equity = perps + spot wallet. Staked HYPE excluded."
+            >
+              <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 font-mono">
                 {address ?? "No wallet"}
               </span>
               <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
-                {remembersWallets ? "Browser memory on" : "Not saved on this browser"}
-              </span>
-              <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1">
-                Perps + full spot wallet
-              </span>
-              <span
-                className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1"
-                title="Perps equity plus the full marked spot wallet. Staked HYPE not included."
-              >
-                Staked HYPE excluded
+                {remembersWallets ? "Saved" : "Not saved"}
               </span>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/78 px-4 py-3">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/78 px-4 py-3">
             <div className="flex items-center gap-2 label">
               <RefreshCw className="h-3.5 w-3.5 text-emerald-300" />
               Refresh
@@ -383,13 +377,11 @@ export default function DashboardHeader() {
               {lastRefreshLabel}
             </div>
             <div className="mt-1 text-xs text-zinc-500">
-              {refreshing || portfolioLoading
-                ? "Fetching latest account data…"
-                : "Loaded from Hyperliquid history"}
+              {refreshing || portfolioLoading ? "Fetching…" : "From Hyperliquid"}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/78 px-4 py-3">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/78 px-4 py-3">
             <div className="flex items-center gap-2 label">
               <Activity className="h-3.5 w-3.5 text-emerald-300" />
               Snapshot
