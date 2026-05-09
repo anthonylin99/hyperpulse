@@ -38,7 +38,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
         )}
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
-          <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-900/75">
+          <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/75">
             <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
               <div className="flex flex-col gap-1">
                 <div>

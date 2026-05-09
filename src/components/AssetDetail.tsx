@@ -194,7 +194,7 @@ export default function AssetDetail({
         : "text-zinc-400";
 
   return (
-    <div className="bg-zinc-900/80 border-t border-b border-zinc-700 animate-fade-in">
+    <div className="bg-zinc-900/80 border-t border-b border-zinc-800 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
@@ -399,10 +399,10 @@ export default function AssetDetail({
                     </div>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <span className="rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-teal-200">
+                    <span className="rounded-full border border-teal-500/25 bg-teal-500/10 px-2.5 py-1 label text-accent">
                       Inferred
                     </span>
-                    <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                    <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 label">
                       {positioningContext.confidence} confidence
                     </span>
                   </div>
@@ -436,7 +436,7 @@ export default function AssetDetail({
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <SectionEyebrow>Actual tape</SectionEyebrow>
-                  <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                  <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 label">
                     Hyperliquid data
                   </span>
                 </div>
@@ -470,7 +470,7 @@ export default function AssetDetail({
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <SectionEyebrow>Why this matters</SectionEyebrow>
-                <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 label">
                   Crowding first · no liquidation-map claim
                 </span>
               </div>
@@ -504,7 +504,7 @@ function TapeMetric({
 }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+      <div className="label">{label}</div>
       <div className="mt-1 font-mono text-sm text-zinc-100">{value}</div>
       {helper ? <div className="mt-0.5 text-[10px] text-zinc-600">{helper}</div> : null}
     </div>

@@ -92,7 +92,7 @@ export function IconActionButton({
 }
 
 export function SectionEyebrow({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("text-[11px] uppercase tracking-[0.18em] text-zinc-500", className)}>{children}</div>;
+  return <div className={cn("label", className)}>{children}</div>;
 }
 
 export function CompactStat({
