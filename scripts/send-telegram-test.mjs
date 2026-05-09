@@ -19,6 +19,9 @@ function loadEnv(file) {
 loadEnv(".env.local");
 loadEnv(".env");
 loadEnv("workers/momentum-alerts/.env");
+for (const arg of process.argv.slice(2)) {
+  if (arg.startsWith("--env=")) loadEnv(arg.slice("--env=".length));
+}
 
 function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^["']|["']$/g, "");
@@ -26,10 +29,15 @@ function cleanEnv(value) {
 
 const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 const chatId = cleanEnv(process.env.TELEGRAM_CHAT_ID);
-const text = process.argv.slice(2).join(" ") || [
-  "🧪 HyperPulse momentum alert smoke test",
-  "This proves Telegram delivery through the same TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID env path.",
-  `Time: ${new Date().toISOString()}`,
+const customText = process.argv.slice(2).filter((arg) => !arg.startsWith("--env=")).join(" ");
+const text = customText || [
+  "HYPERPULSE · TEST",
+  "ZEC LONG · BREAKOUT",
+  "Now: $602.10 · 1h +2.8% · 4h +4.7%",
+  "Broke: $594.03",
+  "Trim: $612.28 · Invalid < $569.20",
+  "Context: vol 2.6x · funding rich +99.1%",
+  "Chart: https://hyperpulsehl.com/markets?asset=ZEC",
 ].join("\n");
 
 if (!token || !chatId) {
