@@ -42,14 +42,14 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
               <div className="flex flex-col gap-1">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">Markets</div>
+                  <div className="label text-accent/80">Markets</div>
                   <div className="mt-1 text-lg font-semibold text-zinc-100">Market directory</div>
                   <div className="mt-1 text-sm text-zinc-400">
-                    Search, filter, and inspect Hyperliquid perps plus available RWA spot markets.
+                    Hyperliquid perps and spot markets — search, filter, inspect.
                   </div>
                   <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-[11px] text-zinc-400">
-                    <MousePointerClick className="h-3.5 w-3.5 text-teal-300" />
-                    Click any asset row to open the chart and detail view.
+                    <MousePointerClick className="h-3.5 w-3.5 text-accent" />
+                    Select an asset to view details.
                   </div>
                 </div>
               </div>
