@@ -3,34 +3,14 @@
 import { useMemo } from "react";
 import { useWallet } from "@/context/WalletContext";
 import { formatUSD, cn } from "@/lib/format";
+import { StatTile } from "@/components/ui";
 
-interface RiskCardProps {
-  label: string;
-  value: string;
-  helper: string;
-  tone?: "default" | "warning" | "danger";
-}
-
-function RiskCard({ label, value, helper, tone = "default" }: RiskCardProps) {
-  return (
-    <div className="rounded-[22px] border border-zinc-800 bg-zinc-950/85 px-4 py-4">
-      <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</div>
-      <div
-        className={cn(
-          "mt-3 text-xl font-semibold tracking-tight",
-          tone === "danger"
-            ? "text-red-400"
-            : tone === "warning"
-              ? "text-amber-300"
-              : "text-zinc-100",
-        )}
-      >
-        {value}
-      </div>
-      <div className="mt-2 text-xs leading-5 text-zinc-500">{helper}</div>
-    </div>
-  );
-}
+type Tone = "neutral" | "warning" | "danger";
+const toneToState: Record<Tone, "neutral" | "warning" | "danger"> = {
+  neutral: "neutral",
+  warning: "warning",
+  danger: "danger",
+};
 
 export default function RiskStrip({ density = "compact" }: { density?: "compact" | "roomy" }) {
   const { accountState } = useWallet();
@@ -77,40 +57,42 @@ export default function RiskStrip({ density = "compact" }: { density?: "compact"
 
   if (!accountState || !metrics) return null;
 
+  const marginTone: Tone = metrics.marginPct > 80 ? "danger" : metrics.marginPct > 60 ? "warning" : "neutral";
+  const levTone: Tone = metrics.avgLeverage > 10 ? "danger" : metrics.avgLeverage > 5 ? "warning" : "neutral";
+  const liqTone: Tone =
+    metrics.nearestDist !== null && metrics.nearestDist < 10
+      ? "danger"
+      : metrics.nearestDist !== null && metrics.nearestDist < 20
+        ? "warning"
+        : "neutral";
+
   return (
     <section className={cn("grid gap-3 md:grid-cols-2 xl:grid-cols-4", density === "roomy" && "gap-4")}>
-      <RiskCard
-        label="Margin Used"
+      <StatTile
+        label="Margin %"
         value={`${metrics.marginPct.toFixed(1)}%`}
-        helper="How much of account equity is currently tied up in active margin."
-        tone={metrics.marginPct > 80 ? "danger" : metrics.marginPct > 60 ? "warning" : "default"}
+        sub="Equity used by open positions."
+        state={toneToState[marginTone]}
       />
-      <RiskCard
-        label="Buying Power"
+      <StatTile
+        label="Available"
         value={formatUSD(metrics.buyingPower)}
-        helper="Withdrawable balance that can still support new trades or absorb volatility."
+        sub="Unused margin you can deploy."
       />
-      <RiskCard
-        label="Average Leverage"
+      <StatTile
+        label="Avg leverage"
         value={`${metrics.avgLeverage.toFixed(1)}x`}
-        helper={`${metrics.openPositions} open position${metrics.openPositions === 1 ? "" : "s"} contributing to the current book.`}
-        tone={metrics.avgLeverage > 10 ? "danger" : metrics.avgLeverage > 5 ? "warning" : "default"}
+        sub={`${metrics.openPositions} open position${metrics.openPositions === 1 ? "" : "s"}.`}
+        state={toneToState[levTone]}
       />
-      <RiskCard
-        label="Nearest Liquidation"
+      <StatTile
+        label="Nearest liq"
         value={
           metrics.nearestCoin && metrics.nearestDist !== null
             ? `${metrics.nearestCoin} ${metrics.nearestDist.toFixed(1)}%`
             : "--"
         }
-        helper="The closest live position to its liquidation threshold."
-        tone={
-          metrics.nearestDist !== null && metrics.nearestDist < 10
-            ? "danger"
-            : metrics.nearestDist !== null && metrics.nearestDist < 20
-              ? "warning"
-              : "default"
-        }
+        state={toneToState[liqTone]}
       />
     </section>
   );

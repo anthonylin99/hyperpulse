@@ -433,7 +433,7 @@ export default function TradeAnalyzerModal({
         <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 px-6 py-4 backdrop-blur">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.24em] text-teal-400/80">
+              <div className="label text-accent/80">
                 Trade Analyzer
               </div>
               <h2 className="mt-1 text-2xl font-semibold text-zinc-100">
@@ -443,11 +443,11 @@ export default function TradeAnalyzerModal({
                 Review whether this exit was well-timed or whether the market kept paying after you got out.
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 label text-zinc-400">
                   Perp
                 </div>
                 {displayAsset.venue ? (
-                  <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 label">
                     {displayAsset.venue} venue
                   </div>
                 ) : null}
@@ -488,7 +488,7 @@ export default function TradeAnalyzerModal({
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                  <div className="label">
                     Post-Exit Price Path
                   </div>
                   <div className="mt-1 text-sm text-zinc-400">
@@ -590,7 +590,7 @@ export default function TradeAnalyzerModal({
 
             <div className="space-y-4">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                <div className="label">
                   Exit Verdict
                 </div>
                 {analysis ? (
@@ -617,7 +617,7 @@ export default function TradeAnalyzerModal({
               </div>
 
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                <div className="label">
                   Leverage & Liquidation Context
                 </div>
                 {analysis ? (
@@ -666,7 +666,7 @@ export default function TradeAnalyzerModal({
               </div>
 
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                <div className="label">
                   What Happened After Exit
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
@@ -680,7 +680,7 @@ export default function TradeAnalyzerModal({
 
           <section className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+              <div className="label">
                 Max Favorable Excursion After Exit
               </div>
               <div className="mt-2 text-2xl font-semibold text-emerald-300">
@@ -692,7 +692,7 @@ export default function TradeAnalyzerModal({
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+              <div className="label">
                 Max Adverse Excursion After Exit
               </div>
               <div
@@ -715,7 +715,7 @@ export default function TradeAnalyzerModal({
 
           <section className="grid gap-4 lg:grid-cols-3">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+              <div className="label">
                 Your Money In
               </div>
               <div className="mt-2 text-2xl font-semibold text-zinc-100">
@@ -729,7 +729,7 @@ export default function TradeAnalyzerModal({
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+              <div className="label">
                 Leverage Used
               </div>
               <div className="mt-2 text-2xl font-semibold text-zinc-100">
@@ -743,7 +743,7 @@ export default function TradeAnalyzerModal({
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+              <div className="label">
                 Stop / Exit Read
               </div>
               <div className="mt-2 text-2xl font-semibold text-zinc-100">
@@ -779,7 +779,7 @@ function MetricCard({
 }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-      <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+      <div className="label">
         {label}
       </div>
       <div
@@ -799,7 +799,7 @@ function MetricCard({
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{label}</div>
+      <div className="label">{label}</div>
       <div className="mt-2 text-base font-semibold text-zinc-100">{value}</div>
     </div>
   );
@@ -809,7 +809,7 @@ function HorizonCard({ review }: { review: HorizonReview }) {
   const hasValue = review.pctDelta != null && review.pnlDelta != null;
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-      <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+      <div className="label">
         Held {review.label} Longer
       </div>
       {hasValue ? (

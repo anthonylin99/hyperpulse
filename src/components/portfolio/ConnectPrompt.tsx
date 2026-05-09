@@ -68,14 +68,14 @@ export default function ConnectPrompt() {
 
   return (
     <section className="mx-auto max-w-[1240px] px-1 py-2">
-      <div className="rounded-[26px] border border-zinc-800 bg-[linear-gradient(180deg,rgba(12,18,24,0.98),rgba(8,11,16,0.98))] p-5 shadow-[0_0_0_1px_rgba(45,212,191,0.04)]">
+      <div className="rounded-lg border border-zinc-800 bg-[linear-gradient(180deg,rgba(12,18,24,0.98),rgba(8,11,16,0.98))] p-5 shadow-[0_0_0_1px_rgba(45,212,191,0.04)]">
         <div className="flex flex-col gap-4 border-b border-zinc-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.22em] text-emerald-400/80">
+              <span className="label text-emerald-400/75">
                 Portfolio
               </span>
-              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-300">
+              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-2.5 py-1 label text-emerald-300">
                 Read-only
               </span>
             </div>
@@ -89,25 +89,25 @@ export default function ConnectPrompt() {
 
           <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[440px]">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Mode</div>
+              <div className="label">Mode</div>
               <div className="mt-2 text-sm font-medium text-zinc-100">Analytics only</div>
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Access</div>
+              <div className="label">Access</div>
               <div className="mt-2 text-sm font-medium text-zinc-100">Browser or paste</div>
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 px-4 py-3">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Security</div>
+              <div className="label">Security</div>
               <div className="mt-2 text-sm font-medium text-zinc-100">No custody</div>
             </div>
           </div>
         </div>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="rounded-[22px] border border-zinc-800 bg-zinc-950/55 p-4 sm:p-5">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/55 p-4 sm:p-5">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <div>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                <div className="label">
                   Public wallet address
                 </div>
                 <div className="mt-2">
@@ -156,7 +156,7 @@ export default function ConnectPrompt() {
             </div>
           </div>
 
-          <div className="rounded-[22px] border border-zinc-800 bg-zinc-950/55 p-4 sm:p-5">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/55 p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-200">
@@ -169,7 +169,7 @@ export default function ConnectPrompt() {
                   </div>
                 </div>
               </div>
-              <span className="rounded-full border border-zinc-800 bg-[#090d12] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+              <span className="rounded-full border border-zinc-800 bg-[#090d12] px-2 py-1 label">
                 Optional
               </span>
             </div>
@@ -194,9 +194,9 @@ export default function ConnectPrompt() {
         </div>
 
         {remembersWallets && savedWallets.length > 0 ? (
-          <div className="mt-5 rounded-[22px] border border-zinc-800 bg-zinc-950/45 p-4">
+          <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-950/45 p-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Recent wallets</div>
+              <div className="label">Recent wallets</div>
               <button
                 onClick={handleClearSaved}
                 className="text-xs text-zinc-500 transition hover:text-rose-300"

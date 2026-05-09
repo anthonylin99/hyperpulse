@@ -35,7 +35,7 @@ export default function Nav() {
   });
 
   return (
-    <div className="border-b border-[#7dd4c4]/12 bg-[#0a0c10]/92 backdrop-blur-sm">
+    <div className="border-b border-accent/15 bg-[#0a0c10]/92 backdrop-blur-sm">
       <div className="mx-auto flex h-14 max-w-[1480px] items-center justify-between gap-4 px-4 sm:px-6 xl:px-8">
         <Link href="/" className="inline-flex shrink-0 items-center">
           <BrandLogo compact markClassName="h-8 w-8" textClassName="h-5" />

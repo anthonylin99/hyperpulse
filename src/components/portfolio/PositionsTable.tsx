@@ -126,35 +126,30 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
   if (sorted.length === 0) return null;
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
+    <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
       <div className={cn("border-b border-zinc-800", density === "roomy" ? "px-6 py-5" : "px-5 py-4")}>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
-              Positions
-            </div>
-            <div className="mt-2 text-lg font-semibold text-zinc-100">
-              Clean exposure view
-            </div>
-            <div className="mt-1 text-sm text-zinc-500">
-              Entry, live price, return, and risk in one easier-to-scan table.
-            </div>
+            <h3 className="text-heading text-zinc-100">Positions</h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              Entry, live price, return, and risk.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Positions</div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="label">Positions</div>
               <div className="mt-1 font-mono text-zinc-100">{sorted.length}</div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Value</div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="label">Value</div>
               <div className="mt-1 font-mono text-zinc-100">{formatUSD(totals.notional)}</div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Tradeable USDC</div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="label">Available USDC</div>
               <div className="mt-1 font-mono text-zinc-100">{formatUSD(totals.tradeableCapital)}</div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Largest Margin</div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="label">Largest margin</div>
               <div className="mt-1 font-mono text-emerald-300">
                 {totals.largestSizingPct == null
                   ? "n/a"
@@ -180,12 +175,12 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
       <div className="overflow-x-auto">
         <table className={cn("w-full text-sm", density === "roomy" ? "min-w-[1180px]" : "min-w-[1100px]")}>
           <thead className="bg-zinc-950/90">
-            <tr className="border-b border-zinc-800 text-left text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+            <tr className="border-b border-zinc-800 text-left label text-zinc-500">
               <th className="px-5 py-3 font-medium">Asset</th>
               <th className="px-4 py-3 font-medium">Size</th>
               <th className="px-4 py-3 font-medium">Price</th>
-              <th className="px-4 py-3 font-medium">Average Cost</th>
-              <th className="px-4 py-3 font-medium">Total Return</th>
+              <th className="px-4 py-3 font-medium">Avg cost</th>
+              <th className="px-4 py-3 font-medium">Return</th>
               <th className="px-4 py-3 font-medium">Exposure</th>
               <th className="px-4 py-3 font-medium">Risk</th>
               <th className="px-4 py-3 font-medium">Plan</th>
@@ -231,7 +226,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                               {isSpot ? "wallet balance" : `${position.leverage.toFixed(1)}x`}
                             </span>
                             {isHip3Perp && position.dex ? (
-                              <span className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-emerald-300">
+                              <span className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 label text-emerald-300">
                                 {position.dex}
                               </span>
                             ) : null}
@@ -328,7 +323,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                       <td colSpan={8} className="px-5 py-4">
                         <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
                           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 p-4">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
+                            <div className="label text-emerald-400/75">
                               Decision support
                             </div>
                             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -363,7 +358,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                                 },
                               ].map((item) => (
                                 <div key={item.label} className="rounded-xl border border-zinc-800 bg-zinc-950/75 px-3 py-2">
-                                  <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">{item.label}</div>
+                                  <div className="label text-zinc-600">{item.label}</div>
                                   <div
                                     className={cn(
                                       "mt-1 font-mono text-xs text-zinc-200",
@@ -389,7 +384,7 @@ export default function PositionsTable({ density = "compact" }: { density?: "com
                               { field: "review" as const, label: "Review", placeholder: "What should future me remember?" },
                             ].map((item) => (
                               <label key={item.field} className="block">
-                                <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{item.label}</span>
+                                <span className="label text-zinc-500">{item.label}</span>
                                 <textarea
                                   value={note[item.field]}
                                   onChange={(event) => handleNoteChange(noteKey, item.field, event.target.value)}

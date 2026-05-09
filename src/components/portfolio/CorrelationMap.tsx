@@ -38,11 +38,11 @@ export default function CorrelationMap() {
   if (!accountState) return null;
 
   return (
-    <section className="overflow-hidden rounded-[26px] border border-zinc-800 bg-zinc-950/85">
+    <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
       <div className="border-b border-zinc-800 px-5 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
+            <div className="label text-emerald-400/75">
               Correlation Map
             </div>
             <h3 className="mt-2 text-lg font-semibold text-zinc-100">
@@ -53,7 +53,7 @@ export default function CorrelationMap() {
             </p>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-right">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Status</div>
+            <div className="label">Status</div>
             <div className="mt-1 text-xs text-zinc-300">
               {researchLoading ? "Refreshing..." : correlation?.configured === false ? "DB fallback" : "Research layer"}
             </div>
@@ -83,7 +83,7 @@ export default function CorrelationMap() {
               >
                 <div />
                 {assets.map((asset) => (
-                  <div key={asset} className="px-2 py-1 text-center text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                  <div key={asset} className="px-2 py-1 text-center label">
                     {asset}
                   </div>
                 ))}
@@ -110,7 +110,7 @@ export default function CorrelationMap() {
           </div>
 
           <div className="space-y-2">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+            <div className="label">
               Active clusters
             </div>
             {correlation?.clusters.length ? (

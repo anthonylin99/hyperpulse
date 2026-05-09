@@ -128,25 +128,25 @@ export default function DashboardHeader() {
   };
 
   return (
-    <section className="rounded-[22px] border border-emerald-900/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.05),transparent_18%),linear-gradient(180deg,rgba(8,14,12,0.98),rgba(6,10,9,0.98))] p-4">
+    <section className="rounded-lg border border-emerald-900/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.05),transparent_18%),linear-gradient(180deg,rgba(8,14,12,0.98),rgba(6,10,9,0.98))] p-4">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-400/75">
+              <div className="label text-emerald-400/75">
                 Portfolio
               </div>
               {isReadOnly ? (
-                <span className="rounded-full border border-emerald-900/30 bg-emerald-500/[0.08] px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-300">
+                <span className="rounded-full border border-emerald-900/30 bg-emerald-500/[0.08] px-2.5 py-1 label text-emerald-300">
                   Read-only
                 </span>
               ) : null}
             </div>
-            <h1 className="mt-2 text-[1.08rem] font-semibold tracking-tight text-zinc-50 sm:text-[1.18rem]">
-              Portfolio review workspace
+            <h1 className="mt-2 text-lg font-semibold tracking-tight text-zinc-50">
+              Portfolio
             </h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-400">
-              Review positions, realized performance, and journal quality without enabling trading permissions.
+              Positions, realized performance, and trade journal — read-only.
             </p>
           </div>
 
@@ -200,7 +200,7 @@ export default function DashboardHeader() {
                   )}
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                    <div className="flex items-center gap-2 label">
                       <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
                       Wallet identity
                     </div>
@@ -225,7 +225,7 @@ export default function DashboardHeader() {
               ) : (
                 <div className="flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                    <div className="flex items-center gap-2 label">
                       <Wallet2 className="h-3.5 w-3.5 text-emerald-300" />
                       Wallet identity
                     </div>
@@ -236,7 +236,7 @@ export default function DashboardHeader() {
                       </span>
                     </div>
                   </div>
-                  <div className="rounded-full border border-zinc-800 bg-zinc-900/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                  <div className="rounded-full border border-zinc-800 bg-zinc-900/70 px-2.5 py-1 label">
                     Session only
                   </div>
                 </div>
@@ -246,7 +246,7 @@ export default function DashboardHeader() {
             {remembersWallets && showSwitcher ? (
               <div className="absolute left-0 top-full z-50 mt-2 w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/30">
                 <div className="border-b border-zinc-800 px-4 py-4">
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  <div className="label">
                     Current Wallet
                   </div>
                   {editing ? (
@@ -314,7 +314,7 @@ export default function DashboardHeader() {
 
                 {otherWallets.length > 0 ? (
                   <div className="px-4 py-4">
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                    <div className="label">
                       Switch Wallet
                     </div>
                     <div className="mt-3 space-y-1.5">
@@ -375,7 +375,7 @@ export default function DashboardHeader() {
           </div>
 
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/78 px-4 py-3">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+            <div className="flex items-center gap-2 label">
               <RefreshCw className="h-3.5 w-3.5 text-emerald-300" />
               Refresh
             </div>
@@ -390,7 +390,7 @@ export default function DashboardHeader() {
           </div>
 
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/78 px-4 py-3">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+            <div className="flex items-center gap-2 label">
               <Activity className="h-3.5 w-3.5 text-emerald-300" />
               Snapshot
             </div>

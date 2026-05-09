@@ -145,7 +145,7 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
 
         <div className="px-6 pb-4">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+            <div className="label">
               Price Chart
             </div>
             <div className="rounded-full border border-zinc-700 bg-zinc-800/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400">
@@ -178,7 +178,7 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
 
         {/* Cumulative P&L mini chart (text-based) */}
         <div className="px-6 pb-3">
-          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
+          <div className="label mb-2">
             Cumulative P&L
           </div>
           <div className="flex items-end gap-px h-12">
@@ -202,7 +202,7 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
 
         {/* Trade History Table */}
         <div className="px-6 pb-6">
-          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
+          <div className="label mb-2">
             All {coin} Trades
           </div>
           <div className="overflow-x-auto">
@@ -243,7 +243,7 @@ function StatCard({
 }) {
   return (
     <div className="bg-zinc-800/50 rounded-lg px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">
+      <div className="label mb-0.5">
         {label}
       </div>
       <div className={cn("text-sm font-medium", color || "text-zinc-200")}>

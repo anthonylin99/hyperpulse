@@ -11,10 +11,21 @@
   --text-muted: #8ca7a2;
   --positive: #7dd4c4;
   --negative: #ef4444;
-  --warning: #7dd4c4;
-  --oi-spike: #7dd4c4;
   --accent: #7dd4c4;
   --accent-deep: #24786d;
+  --state-success: #7dd4c4;
+  --state-danger: #ef4444;
+  --state-warning: #fb7185;
+  --state-info: #38bdf8;
+}
+
+.label {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 * {

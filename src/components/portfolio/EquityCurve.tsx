@@ -38,7 +38,7 @@ function EquityTooltip({
 
   return (
     <div className="min-w-[160px] rounded-2xl border border-zinc-800/90 bg-[#070b09]/95 px-3 py-2.5 shadow-[0_10px_35px_rgba(0,0,0,0.35)] backdrop-blur-sm">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+      <div className="label">
         {formatEasternDate(label, true)}
       </div>
       <div className="mt-1.5 text-lg font-semibold text-zinc-50">{formatUSD(value)}</div>
@@ -111,7 +111,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
 
   if (loading && equityCurve.length === 0) {
     return (
-      <section className="rounded-[28px] border border-zinc-800 bg-zinc-950/85 p-5">
+      <section className="rounded-lg border border-zinc-800 bg-zinc-950/85 p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="skeleton h-3 w-28 rounded mb-2" />
@@ -124,7 +124,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
             ))}
           </div>
         </div>
-        <div className="mt-5 skeleton h-[360px] w-full rounded-[22px]" />
+        <div className="mt-5 skeleton h-[360px] w-full rounded-lg" />
       </section>
     );
   }
@@ -132,12 +132,12 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
   if (chartData.length < 2) return null;
 
   return (
-    <section className="overflow-hidden rounded-[30px] border border-emerald-900/25 bg-[linear-gradient(180deg,rgba(7,14,12,0.98),rgba(5,10,9,0.98))]">
+    <section className="overflow-hidden rounded-lg border border-emerald-900/25 bg-[linear-gradient(180deg,rgba(7,14,12,0.98),rgba(5,10,9,0.98))]">
       <div className="border-b border-zinc-800 px-5 py-5 sm:px-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
-              Portfolio Performance
+            <div className="label text-emerald-400/75">
+              Equity curve
             </div>
             <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
               <div className="text-4xl font-semibold tracking-tight text-zinc-50">
@@ -150,7 +150,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
                 )}
               >
                 {changeInView >= 0 ? "+" : ""}
-                {formatUSD(changeInView)} net change in view
+                {formatUSD(changeInView)} in view
               </div>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
@@ -177,9 +177,9 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
                 key={value}
                 onClick={() => setRange(value)}
                 className={cn(
-                  "rounded-full border px-3.5 py-2 text-xs font-medium uppercase tracking-[0.14em] transition-colors",
+                  "rounded-full border px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors",
                   range === value
-                    ? "border-emerald-900/30 bg-emerald-500/[0.10] text-emerald-200"
+                    ? "border-accent/30 bg-accent/10 text-accent"
                     : "border-zinc-800 bg-zinc-950/80 text-zinc-500 hover:text-zinc-200",
                 )}
               >

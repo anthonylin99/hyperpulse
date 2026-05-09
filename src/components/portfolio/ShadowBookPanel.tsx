@@ -35,7 +35,7 @@ export default function ShadowBookPanel() {
 
   if (trades.length === 0) {
     return (
-      <section className="rounded-[28px] border border-zinc-800 bg-zinc-950/85 p-8 text-center">
+      <section className="rounded-lg border border-zinc-800 bg-zinc-950/85 p-8 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-200">
           <BookOpenCheck className="h-5 w-5" />
         </div>
@@ -49,10 +49,10 @@ export default function ShadowBookPanel() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-[28px] border border-emerald-900/30 bg-[linear-gradient(180deg,rgba(7,16,14,0.96),rgba(9,9,11,0.9))] p-5">
+      <div className="rounded-lg border border-emerald-900/30 bg-[linear-gradient(180deg,rgba(7,16,14,0.96),rgba(9,9,11,0.9))] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-emerald-300">
+            <div className="flex items-center gap-2 label text-emerald-300">
               <BookOpenCheck className="h-4 w-4" />
               Shadow Book
             </div>
@@ -80,8 +80,8 @@ export default function ShadowBookPanel() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
-        <div className="border-b border-zinc-800 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
+        <div className="border-b border-zinc-800 px-4 py-3 label">
           Paper trade ledger
         </div>
         <div className="divide-y divide-zinc-800">
@@ -113,7 +113,7 @@ function SummaryCard({
 }) {
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/75 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+      <div className="label text-zinc-600">{label}</div>
       <div
         className={cn(
           "mt-2 font-mono text-xl font-semibold",
@@ -222,7 +222,7 @@ function Metric({
 }) {
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+      <div className="label text-zinc-600">{label}</div>
       <div
         className={cn(
           "mt-1 font-mono text-sm text-zinc-100",

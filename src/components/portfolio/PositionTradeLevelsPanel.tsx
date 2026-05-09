@@ -235,7 +235,7 @@ function planForPosition(position: Position, state: LevelState) {
 function PlanPill({ label, value, tone }: { label: string; value: string; tone: "green" | "red" | "neutral" }) {
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">{label}</div>
+      <div className="label text-zinc-600">{label}</div>
       <div
         className={cn(
           "mt-1 font-mono text-xs",
@@ -337,11 +337,11 @@ export default function PositionTradeLevelsPanel() {
   if (positions.length === 0) return null;
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
+    <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
       <div className="border-b border-zinc-800 px-5 py-4">
         <div className="flex items-center gap-2">
           <Crosshair className="h-4 w-4 text-emerald-300" />
-          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">Buy / Sell Levels</div>
+          <div className="font-mono label text-emerald-400/75">Buy / Sell Levels</div>
         </div>
         <div className="mt-2 text-sm text-zinc-500">
           Closed-candle support and resistance mapped onto your live holdings. Treat these as review levels, not auto-trade instructions.
@@ -368,7 +368,7 @@ export default function PositionTradeLevelsPanel() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-zinc-100">{position.coin}</span>
-                    <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-zinc-400">{side}</span>
+                    <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 label text-zinc-400">{side}</span>
                   </div>
                   <div className="mt-1 font-mono text-xs text-zinc-500">Mark {formatUSD(position.markPx, position.markPx < 1 ? 5 : 2)}</div>
                 </div>

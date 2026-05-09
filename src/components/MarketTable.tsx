@@ -402,10 +402,10 @@ export default function MarketTable({
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
             <input
               type="text"
-              placeholder={mode === "perps" ? "Search perps..." : "Search RWA spot..."}
+              placeholder="Search…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-7 pr-2 py-1 w-[160px] text-[11px] font-mono bg-zinc-900 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-[#7dd4c4]/70"
+              className="pl-7 pr-2 py-1 w-40 sm:w-48 text-[11px] font-mono bg-zinc-900 border border-zinc-800 rounded text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-accent/70"
             />
           </div>
 
@@ -414,7 +414,7 @@ export default function MarketTable({
               onClick={() => setMode("perps")}
               className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
                 mode === "perps"
-                  ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
+                  ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/35"
                   : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
               }`}
             >
@@ -425,11 +425,11 @@ export default function MarketTable({
                 onClick={() => setMode("spot")}
                 className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
                   mode === "spot"
-                    ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
+                    ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/35"
                     : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                 }`}
               >
-                RWA Spot
+                Spot
               </button>
             )}
           </div>
@@ -441,7 +441,7 @@ export default function MarketTable({
                   onClick={() => setCategoryFilter("All")}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                     categoryFilter === "All"
-                      ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
+                      ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/35"
                       : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                   }`}
                 >
@@ -453,7 +453,7 @@ export default function MarketTable({
                     onClick={() => setCategoryFilter(cat)}
                     className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                       categoryFilter === cat
-                        ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
+                        ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/35"
                         : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                     }`}
                   >
@@ -470,8 +470,8 @@ export default function MarketTable({
                     onChange={(e) => setHideSmallCaps(e.target.checked)}
                     className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 accent-[#7dd4c4]"
                   />
-                  <span className="text-[10px] text-zinc-500 whitespace-nowrap">
-                    &gt;$10M OI
+                  <span className="text-[11px] text-zinc-500 whitespace-nowrap">
+                    $10M+ open interest
                   </span>
                 </label>
               </div>
@@ -484,7 +484,7 @@ export default function MarketTable({
                   onClick={() => setSpotFilter(cat)}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded-full whitespace-nowrap transition-colors ${
                     spotFilter === cat
-                      ? "bg-[#7dd4c4]/20 text-[#b9ece2] border border-[#7dd4c4]/35"
+                      ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/35"
                       : "bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300"
                   }`}
                 >
@@ -495,9 +495,6 @@ export default function MarketTable({
           )}
         </div>
 
-        <div className="flex-shrink-0 border-b border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-500">
-          Tip: select a row like <span className="font-mono text-zinc-300">BTC</span> or <span className="font-mono text-zinc-300">ETH</span> to open its chart, funding context, and tape details.
-        </div>
 
         <div className="flex-1 overflow-auto">
           {mode === "perps" ? (
@@ -519,7 +516,7 @@ export default function MarketTable({
                     >
                       {col.label}
                       {perpSortKey === col.key && (
-                        <span className="ml-1 text-[#7dd4c4]">
+                        <span className="ml-1 text-accent">
                           {perpSortAsc ? "↑" : "↓"}
                         </span>
                       )}
@@ -585,7 +582,7 @@ export default function MarketTable({
                     >
                       {col.label}
                       {spotSortKey === col.key && (
-                        <span className="ml-1 text-[#7dd4c4]">
+                        <span className="ml-1 text-accent">
                           {spotSortAsc ? "↑" : "↓"}
                         </span>
                       )}
@@ -596,8 +593,7 @@ export default function MarketTable({
                 </tr>
               </thead>
               <tbody>
-                {spotFiltered.map((asset, index) => {
-                  const rowBg = index % 2 === 0 ? "bg-zinc-950" : "bg-zinc-900/50";
+                {spotFiltered.map((asset) => {
                   const priceColor =
                     asset.priceChange24h > 0
                       ? "text-green-500"
@@ -609,7 +605,7 @@ export default function MarketTable({
                   return (
                     <tr
                       key={asset.marketIndex}
-                      className={`h-8 border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors text-xs font-mono ${rowBg}`}
+                      className="h-9 border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors text-xs font-mono"
                     >
                       <td className="px-2.5 py-0.5 text-zinc-50 font-medium whitespace-nowrap">{asset.symbol}</td>
                       <td className="px-2.5 py-0.5 text-right text-zinc-50 whitespace-nowrap">
@@ -641,9 +637,9 @@ export default function MarketTable({
 
           {mode === "spot" && spotFiltered.length === 0 && (
             <div className="flex h-32 flex-col items-center justify-center gap-1 px-4 text-center font-mono text-sm text-zinc-600">
-              <div>No RWA spot markets match your filters</div>
+              <div>No spot markets match your filters</div>
               <div className="max-w-xl text-[11px] font-sans text-zinc-500">
-                HyperPulse only lists stocks, indices/ETFs, metals, energy, and commodity spot markets when Hyperliquid exposes them.
+                HyperPulse lists stocks, indices/ETFs, metals, energy, and commodity spot markets when Hyperliquid exposes them.
               </div>
             </div>
           )}
@@ -653,12 +649,12 @@ export default function MarketTable({
           {mode === "perps" ? (
             <>
               <span>{perpsFiltered.length} of {assets.length} perps</span>
-              <span>Total OI: {formatCompact(perpsTotalOI)}</span>
+              <span>Open interest: {formatCompact(perpsTotalOI)}</span>
             </>
           ) : (
             <>
-              <span>{spotFiltered.length} of {rwaSpotAssets.length} RWA spot assets</span>
-              <span>Total Mkt Cap: {formatCompact(spotTotalMcap)}</span>
+              <span>{spotFiltered.length} of {rwaSpotAssets.length} spot assets</span>
+              <span>Market cap: {formatCompact(spotTotalMcap)}</span>
             </>
           )}
         </div>
