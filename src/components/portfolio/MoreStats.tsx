@@ -14,11 +14,11 @@ interface StatCardProps {
 
 function StatCard({ label, value, subValue, positive, tooltip }: StatCardProps) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4" title={tooltip}>
-      <div className="text-xs text-zinc-500 mb-1">{label}</div>
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-4" title={tooltip}>
+      <div className="label mb-1">{label}</div>
       <div
         className={cn(
-          "text-xl font-bold",
+          "text-stat tabular-nums",
           typeof value === "string" && positive === true && "text-emerald-400",
           typeof value === "string" && positive === false && "text-red-400",
           typeof value === "string" && positive === null && "text-zinc-100"
@@ -26,7 +26,7 @@ function StatCard({ label, value, subValue, positive, tooltip }: StatCardProps) 
       >
         {value}
       </div>
-      {subValue && <div className="text-xs text-zinc-500 mt-0.5">{subValue}</div>}
+      {subValue && <div className="mt-1 text-xs text-zinc-500">{subValue}</div>}
     </div>
   );
 }
@@ -85,14 +85,14 @@ export default function MoreStats() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-zinc-400">More Stats</h3>
-        <span className="text-[10px] text-zinc-600">for deeper review</span>
+      <div className="flex items-end justify-between">
+        <h3 className="text-heading text-zinc-100">More stats</h3>
+        <span className="label text-zinc-600">Deeper review</span>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
-          label="Avg Win vs Avg Loss"
+          label="Avg win / loss"
           value={
             <span>
               <span className="text-emerald-400">{formatUSD(stats.avgWin)}</span>
@@ -105,21 +105,21 @@ export default function MoreStats() {
           tooltip="Are your winning trades bigger than your losing trades? If not, you're giving back profits."
         />
         <StatCard
-          label="Max Drawdown"
+          label="Max drawdown"
           value={`${(stats.maxDrawdown * 100).toFixed(1)}%`}
           subValue={stats.maxDrawdown > 0.3 ? "high risk — consider smaller size" : stats.maxDrawdown < 0.1 ? "well controlled" : "moderate"}
           positive={stats.maxDrawdown < 0.15 ? true : stats.maxDrawdown > 0.3 ? false : null}
           tooltip="Largest peak-to-trough decline. Above 30% is dangerous for account longevity."
         />
         <StatCard
-          label="Funding P&L"
+          label="Funding"
           value={formatUSD(stats.totalFundingNet)}
           subValue={`earned ${formatUSD(derived.fundingEarned)} / paid ${formatUSD(Math.abs(derived.fundingPaid))}`}
           positive={stats.totalFundingNet > 0 ? true : stats.totalFundingNet < -5 ? false : null}
           tooltip="Net funding payments. Positive = you earned funding by being on the less crowded side."
         />
         <StatCard
-          label="Biggest Win / Loss"
+          label="Biggest win / loss"
           value={
             <span>
               <span className="text-emerald-400">{formatUSD(stats.largestWin)}</span>
@@ -142,7 +142,7 @@ export default function MoreStats() {
           tooltip="Number of fills that were liquidations. Even one means your risk management needs work."
         />
         <StatCard
-          label="Long vs Short P&L"
+          label="Long / short P&L"
           value={
             <span>
               <span className={derived.longPnl >= 0 ? "text-emerald-400" : "text-red-400"}>{formatUSD(derived.longPnl)}</span>
@@ -155,14 +155,14 @@ export default function MoreStats() {
           tooltip="P&L split by direction. If one side is consistently negative, consider trading only your profitable direction."
         />
         <StatCard
-          label="Best Asset"
+          label="Best asset"
           value={derived.bestAsset ? `${derived.bestAsset.coin} ${formatUSD(derived.bestAsset.pnl)}` : "—"}
           subValue={derived.bestAsset ? `${derived.bestAsset.trades} trades, ${(derived.bestAsset.winRate * 100).toFixed(0)}% win` : ""}
           positive={derived.bestAsset && derived.bestAsset.pnl > 0 ? true : null}
           tooltip="The coin you're most profitable on. Focus your edge here."
         />
         <StatCard
-          label="Worst Asset"
+          label="Worst asset"
           value={derived.worstAsset ? `${derived.worstAsset.coin} ${formatUSD(derived.worstAsset.pnl)}` : "—"}
           subValue={derived.worstAsset ? `${derived.worstAsset.trades} trades, ${(derived.worstAsset.winRate * 100).toFixed(0)}% win` : ""}
           positive={derived.worstAsset && derived.worstAsset.pnl < 0 ? false : null}
@@ -172,7 +172,7 @@ export default function MoreStats() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
-          label="Avg Hold Time"
+          label="Avg hold time"
           value={`${formatDuration(stats.avgWinDuration)} W / ${formatDuration(stats.avgLossDuration)} L`}
           subValue={
             stats.avgLossDuration > stats.avgWinDuration * 1.5

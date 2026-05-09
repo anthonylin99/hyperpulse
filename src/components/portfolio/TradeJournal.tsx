@@ -226,7 +226,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
 
   if (loading && trades.length === 0) {
     return (
-      <div className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
+      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
         <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
           <div className="skeleton h-4 w-32 rounded" />
           <div className="flex items-center gap-2">
@@ -255,11 +255,11 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
   const COL_COUNT = 13; // 11 data columns + analyze button + note icon column
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-zinc-800 bg-zinc-950/85">
+    <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
       <div className={cn("border-b border-zinc-800", density === "roomy" ? "px-6 py-6" : "px-5 py-5")}>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
+            <div className="label text-emerald-400/75">
               Trade Journal
             </div>
             <h3 className="mt-2 text-xl font-semibold text-zinc-100">
@@ -297,7 +297,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                 key={item.label}
                 className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-4 py-3"
               >
-                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                <div className="label">
                   {item.label}
                 </div>
                 <div

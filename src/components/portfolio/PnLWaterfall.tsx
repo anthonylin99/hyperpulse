@@ -10,25 +10,25 @@ export default function PnLWaterfall() {
 
   const items = [
     {
-      label: "Gross Profit",
+      label: "Gross profit",
       value: stats.grossProfit,
       detail: `${stats.winners} winning trades`,
       color: "bg-emerald-500",
     },
     {
-      label: "Gross Loss",
+      label: "Gross loss",
       value: -stats.grossLoss,
       detail: `${stats.losers} losing trades`,
       color: "bg-red-500",
     },
     {
-      label: "Trading Fees",
+      label: "Trading fees",
       value: -stats.totalFeesPaid,
       detail: `${((stats.totalFeesPaid / (stats.grossProfit + stats.grossLoss || 1)) * 100).toFixed(1)}% of volume`,
       color: "bg-orange-500",
     },
     {
-      label: "Funding Payments",
+      label: "Funding",
       value: stats.totalFundingNet,
       detail: stats.totalFundingNet >= 0 ? "earned from funding" : "paid in funding",
       color: stats.totalFundingNet >= 0 ? "bg-emerald-500" : "bg-purple-500",
@@ -49,10 +49,10 @@ export default function PnLWaterfall() {
     : [];
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-      <h3 className="text-sm font-medium text-zinc-400 mb-1">Where Your Money Went</h3>
-      <p className="text-xs text-zinc-600 mb-4">
-        Breaking down every dollar of P&L
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-4">
+      <h3 className="text-heading text-zinc-100 mb-1">Where your money went</h3>
+      <p className="text-xs text-zinc-500 mb-4">
+        Every dollar of P&L, broken down.
       </p>
 
       <div className="space-y-3">
@@ -64,7 +64,7 @@ export default function PnLWaterfall() {
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-zinc-300">{item.label}</span>
-                  <span className="text-[10px] text-zinc-600">{item.detail}</span>
+                  <span className="text-[11px] text-zinc-500">{item.detail}</span>
                 </div>
                 <span
                   className={cn(
@@ -87,7 +87,7 @@ export default function PnLWaterfall() {
         })}
 
         {/* Net result */}
-        <div className="border-t border-zinc-700 pt-3 mt-3">
+        <div className="border-t border-zinc-800 pt-3 mt-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-zinc-200">Net P&L</span>
             <span
@@ -144,8 +144,8 @@ export default function PnLWaterfall() {
               return (
                 <div key={item.label} className="flex items-center gap-1.5">
                   <div className={cn("w-2 h-2 rounded-full", dots[i])} />
-                  <span className="text-[10px] text-zinc-500">{item.label}</span>
-                  <span className={cn("text-[10px] font-mono", colors[i])}>
+                  <span className="text-[11px] text-zinc-500">{item.label}</span>
+                  <span className={cn("text-[11px] font-mono", colors[i])}>
                     {item.pct.toFixed(0)}%
                   </span>
                 </div>

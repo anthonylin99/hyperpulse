@@ -14,10 +14,10 @@ interface RailMetric {
 
 function RailSkeleton() {
   return (
-    <div className="overflow-hidden rounded-[26px] border border-zinc-800 bg-zinc-950/85">
+    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
       <div className="grid gap-px bg-zinc-900/80 md:grid-cols-3 xl:grid-cols-6">
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="bg-zinc-950/85 px-4 py-4">
+          <div key={index} className="bg-zinc-950/85 p-4">
             <div className="skeleton h-3 w-20 rounded mb-3" />
             <div className="skeleton h-6 w-24 rounded mb-2" />
             <div className="skeleton h-3 w-28 rounded" />
@@ -46,45 +46,45 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
 
     return [
       {
-        label: "Account Equity",
+        label: "Equity",
         value: formatUSD(accountValue),
-        subValue: `Perps ${formatUSD(perpsValue)} • Spot wallet ${formatUSD(spotWalletValue)}`,
+        subValue: `Perps ${formatUSD(perpsValue)} · Spot ${formatUSD(spotWalletValue)}`,
         tone: "neutral",
       },
       {
         label: "Net P&L",
         value: formatUSD(netPnl),
         subValue: stats
-          ? `Trading ${formatUSD(stats.totalPnl)} • Funding ${formatUSD(stats.totalFundingNet)}`
+          ? `Trading ${formatUSD(stats.totalPnl)} · Funding ${formatUSD(stats.totalFundingNet)}`
           : "Waiting for trade history",
         tone: netPnl > 0 ? "positive" : netPnl < 0 ? "negative" : "neutral",
       },
       {
-        label: "Win Rate",
+        label: "Win rate",
         value: stats ? `${(stats.winRate * 100).toFixed(1)}%` : "--",
         subValue: stats ? `${stats.winners}W / ${stats.losers}L` : "No closed trades yet",
         tone:
           !stats ? "neutral" : stats.winRate > 0.5 ? "positive" : stats.winRate < 0.4 ? "negative" : "neutral",
       },
       {
-        label: "Open Holdings",
+        label: "Positions",
         value: openPositions.toString(),
         subValue:
           openPositions > 0
-            ? `${perpPositions} perp • ${spotPositions} spot`
-            : "No live perps or spot holdings",
+            ? `${perpPositions} perp · ${spotPositions} spot`
+            : "None open",
         tone: "neutral",
       },
       {
-        label: "Total Fees",
+        label: "Fees",
         value: stats ? formatUSD(stats.totalFeesPaid) : "--",
-        subValue: stats ? `${trades.length} closed trades analyzed` : "Will populate after trading",
+        subValue: stats ? `Across ${trades.length} trades` : "Populates after trading",
         tone: "neutral",
       },
       {
-        label: "Unrealized P&L",
+        label: "Unrealized",
         value: formatUSD(unrealizedPnl),
-        subValue: "Current mark-to-market",
+        subValue: "Mark-to-market",
         tone:
           unrealizedPnl > 0 ? "positive" : unrealizedPnl < 0 ? "negative" : "neutral",
       },
@@ -96,22 +96,21 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
   if (!accountState && !stats) return null;
 
   return (
-    <section className="overflow-hidden rounded-[26px] border border-zinc-800 bg-zinc-950/85">
+    <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
       <div className="grid gap-px bg-zinc-900/80 md:grid-cols-3 xl:grid-cols-6">
         {metrics.map((metric) => (
           <div
             key={metric.label}
             className={cn(
-              "bg-zinc-950/90",
-              density === "roomy" ? "px-5 py-5" : "px-4 py-4",
+              "bg-zinc-950/90 p-4",
+              density === "roomy" && "p-5",
             )}
           >
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-              {metric.label}
-            </div>
+            <div className="label">{metric.label}</div>
             <div
               className={cn(
-                density === "roomy" ? "mt-3 text-[1.9rem] font-semibold tracking-tight" : "mt-3 text-2xl font-semibold tracking-tight",
+                "mt-2 tabular-nums",
+                density === "roomy" ? "text-stat-lg" : "text-stat",
                 metric.tone === "positive"
                   ? "text-emerald-400"
                   : metric.tone === "negative"
@@ -121,12 +120,12 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
             >
               {metric.value}
             </div>
-            <div className="mt-2 text-xs leading-5 text-zinc-500">{metric.subValue}</div>
+            <div className="mt-1 text-xs text-zinc-500">{metric.subValue}</div>
           </div>
         ))}
       </div>
       <div className="border-t border-zinc-800 bg-emerald-500/[0.04] px-4 py-2 text-[11px] text-zinc-500">
-        Equity reflects perps plus the full spot wallet. Staked HYPE remains excluded from this workspace by design.
+        Equity = perps + full spot wallet. Staked HYPE not included.
       </div>
     </section>
   );

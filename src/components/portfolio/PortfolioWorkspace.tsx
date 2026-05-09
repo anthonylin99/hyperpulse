@@ -45,24 +45,20 @@ const TAB_ICONS: Record<PortfolioSubtab, typeof BarChart3> = {
 
 function PortfolioEmptyState({ accountValue }: { accountValue: number }) {
   return (
-    <section className="rounded-[28px] border border-emerald-900/30 bg-[linear-gradient(180deg,rgba(7,13,11,0.96),rgba(6,10,9,0.98))] p-8 text-center">
+    <section className="rounded-lg border border-emerald-900/30 bg-[linear-gradient(180deg,rgba(7,13,11,0.96),rgba(6,10,9,0.98))] p-8 text-center">
       <div className="mx-auto max-w-2xl">
-        <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-400/70">
+        <div className="label text-emerald-400/75">
           Portfolio Overview
         </div>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50">
-          Your workspace is ready. It just needs trading history.
+          No trade history yet.
         </h2>
         <p className="mt-3 text-sm leading-7 text-zinc-400">
-          Once this wallet has Hyperliquid trade history, HyperPulse will populate the chart-first
-          portfolio view, journal, and review tabs automatically.
+          Start trading on Hyperliquid to see analytics and a trade journal here.
         </p>
-        <div className="mt-6 inline-flex items-center gap-3 rounded-2xl border border-emerald-900/30 bg-emerald-500/[0.06] px-5 py-3">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-500">Account Value</span>
-          <span className="text-xl font-semibold text-zinc-100">{formatUSD(accountValue)}</span>
-        </div>
-        <div className="mt-4 text-xs text-zinc-500">
-          Connected successfully. Start trading on Hyperliquid to unlock journal and performance analytics.
+        <div className="mt-6 inline-flex items-center gap-3 rounded-lg border border-emerald-900/30 bg-emerald-500/[0.06] px-5 py-3">
+          <span className="label">Equity</span>
+          <span className="text-xl font-semibold text-zinc-100 tabular-nums">{formatUSD(accountValue)}</span>
         </div>
       </div>
     </section>
@@ -71,10 +67,10 @@ function PortfolioEmptyState({ accountValue }: { accountValue: number }) {
 
 function EmptyPositionsState() {
   return (
-    <div className="rounded-[26px] border border-zinc-800 bg-zinc-950/80 px-6 py-10 text-center">
-      <div className="text-sm font-medium text-zinc-200">No open holdings right now.</div>
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-6 py-10 text-center">
+      <div className="text-sm font-medium text-zinc-200">No open positions.</div>
       <div className="mt-2 text-sm text-zinc-500">
-        This tab will show live perp exposure and non-USDC spot or HIP-3 balances as soon as they exist on the wallet.
+        Your open positions will appear here.
       </div>
     </div>
   );
@@ -82,7 +78,7 @@ function EmptyPositionsState() {
 
 function EmptyJournalState() {
   return (
-    <div className="rounded-[26px] border border-zinc-800 bg-zinc-950/80 px-6 py-10 text-center">
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-6 py-10 text-center">
       <div className="text-sm font-medium text-zinc-200">No closed trades to review yet.</div>
       <div className="mt-2 text-sm text-zinc-500">
         Once trades close, HyperPulse will populate the journal, notes, export, and trade analyzer here.
@@ -105,7 +101,7 @@ function DetailSection({
   return (
     <details
       open={defaultOpen}
-      className="group rounded-[24px] border border-zinc-800 bg-zinc-950/80 open:border-emerald-900/30"
+      className="group rounded-lg border border-zinc-800 bg-zinc-950/80 open:border-emerald-900/30"
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
         <div>
@@ -151,8 +147,8 @@ export default function PortfolioWorkspace() {
             <RiskStrip density={density} />
           </div>
           {hasPositions ? (
-            <section className="rounded-[26px] border border-zinc-800 bg-zinc-950/85 p-5">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
+            <section className="rounded-lg border border-zinc-800 bg-zinc-950/85 p-5">
+              <div className="label text-emerald-400/75">
                 Today&apos;s Account State
               </div>
               <div className="mt-3 space-y-3 text-sm text-zinc-300">
@@ -173,8 +169,8 @@ export default function PortfolioWorkspace() {
               </div>
             </section>
           ) : (
-            <section className="rounded-[26px] border border-zinc-800 bg-zinc-950/85 p-5">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-400/75">
+            <section className="rounded-lg border border-zinc-800 bg-zinc-950/85 p-5">
+              <div className="label text-emerald-400/75">
                 Today&apos;s Account State
               </div>
               <div className="mt-3 text-sm leading-7 text-zinc-400">
@@ -204,7 +200,7 @@ export default function PortfolioWorkspace() {
       ) : (
         <>
           <section className="space-y-4">
-            <div className="rounded-[22px] border border-emerald-900/35 bg-[linear-gradient(180deg,rgba(8,18,16,0.92),rgba(9,9,11,0.9))] p-3 shadow-[0_0_0_1px_rgba(16,185,129,0.06)] sm:p-4">
+            <div className="rounded-lg border border-emerald-900/35 bg-[linear-gradient(180deg,rgba(8,18,16,0.92),rgba(9,9,11,0.9))] p-3 shadow-[0_0_0_1px_rgba(16,185,129,0.06)] sm:p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="px-1">
                   <div className="flex items-center gap-2">
@@ -227,7 +223,7 @@ export default function PortfolioWorkspace() {
                       key={tab.key}
                       onClick={() => setSubtab(tab.key)}
                       className={cn(
-                        "flex min-h-[104px] items-start gap-3 rounded-[18px] border px-4 py-4 text-left transition-all",
+                        "flex min-h-[104px] items-start gap-3 rounded-lg border px-4 py-4 text-left transition-all",
                         subtab === tab.key
                           ? "border-emerald-400/35 bg-emerald-500/[0.13] text-zinc-50 shadow-[0_0_0_1px_rgba(16,185,129,0.22)]"
                           : "border-zinc-800 bg-zinc-950/80 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-950 hover:text-zinc-200",
