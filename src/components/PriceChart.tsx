@@ -20,6 +20,7 @@ import {
   type ReactionOverlayMode,
 } from "@/lib/reactionLevels";
 import { buildTradePlan } from "@/lib/tradePlan";
+import { ReactionMapPanel, type ReactionMapSelectableZone } from "@/components/reaction-map";
 import { SectionEyebrow } from "@/components/trading-ui";
 import type { SupportResistanceLevel } from "@/types";
 
@@ -42,12 +43,12 @@ const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> =
   D: "1d",
 };
 
-const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h"> = {
+const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h" | "4h"> = {
   "5": "5m",
   "15": "15m",
   "60": "1h",
-  "240": "1h",
-  D: "1h",
+  "240": "4h",
+  D: "4h",
 };
 
 const LOOKBACK_MS: Record<TradingInterval, number> = {
@@ -75,9 +76,9 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
 ];
 
 const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
-  { label: "All", value: "all" },
+  { label: "Reaction", value: "all" },
   { label: "Order Book", value: "book" },
-  { label: "OI Holding", value: "oi_holding" },
+  { label: "Positioning", value: "oi_holding" },
   { label: "Stress", value: "stress" },
 ];
 
@@ -393,6 +394,49 @@ type ChartZoneBand = {
   alpha: number;
 };
 
+type ChartZoneTone = {
+  rgb: string;
+  textClass: string;
+  borderClass: string;
+};
+
+function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): ChartZoneTone {
+  const role = level.zoneTooltip?.role;
+  if (level.leverageBucket === "positioning") {
+    if (role === "long_defense") {
+      return { rgb: "45, 212, 191", textClass: "text-teal-200", borderClass: "border-teal-400/35" };
+    }
+    if (role === "short_defense") {
+      return { rgb: "251, 113, 133", textClass: "text-rose-200", borderClass: "border-rose-400/35" };
+    }
+    if (role === "trapped_shorts") {
+      return { rgb: "56, 189, 248", textClass: "text-sky-200", borderClass: "border-sky-400/35" };
+    }
+    if (role === "trapped_longs") {
+      return { rgb: "251, 191, 36", textClass: "text-amber-200", borderClass: "border-amber-400/35" };
+    }
+    return { rgb: "148, 163, 184", textClass: "text-slate-200", borderClass: "border-slate-400/35" };
+  }
+  if (level.leverageBucket === "stress") {
+    return { rgb: "161, 161, 170", textClass: "text-zinc-200", borderClass: "border-zinc-500/35" };
+  }
+  return side === "downside"
+    ? { rgb: "20, 184, 166", textClass: "text-teal-200", borderClass: "border-teal-400/35" }
+    : { rgb: "244, 63, 94", textClass: "text-rose-200", borderClass: "border-rose-400/35" };
+}
+
+function panelZoneIdForChartBand(band: ChartZoneBand | null): string | null {
+  if (!band?.id.startsWith("reaction-")) return null;
+  const sourceId = band.id.slice("reaction-".length);
+  return band.level.leverageBucket === "positioning" ? `positioning-${sourceId}` : `reaction-zone-${sourceId}`;
+}
+
+function chartBandIdForPanelZone(zone: ReactionMapSelectableZone): string {
+  if (zone.id.startsWith("positioning-")) return `reaction-${zone.id.slice("positioning-".length)}`;
+  if (zone.id.startsWith("reaction-zone-")) return `reaction-${zone.id.slice("reaction-zone-".length)}`;
+  return zone.id;
+}
+
 export default function PriceChart({
   coin,
   marketType = "perp",
@@ -620,9 +664,9 @@ export default function PriceChart({
 
     const renderLevel = (level: SupportResistanceLevel, index: number, side: "downside" | "upside") => {
       const alpha = levelAlpha(level, index);
-      const color = side === "downside" ? `rgba(20, 184, 166, ${alpha})` : `rgba(244, 63, 94, ${alpha})`;
-      const edgeColor =
-        side === "downside" ? `rgba(20, 184, 166, ${Math.max(0.18, alpha * 0.34)})` : `rgba(244, 63, 94, ${Math.max(0.18, alpha * 0.34)})`;
+      const tone = chartToneForLevel(level, side);
+      const color = `rgba(${tone.rgb}, ${alpha})`;
+      const edgeColor = `rgba(${tone.rgb}, ${Math.max(0.18, alpha * 0.34)})`;
       const lineWidth = levelLineWidth(level, index);
 
       candleSeries.createPriceLine({
@@ -725,7 +769,7 @@ export default function PriceChart({
 
   const levelSourceNote =
     oiHoldingHidden
-      ? "OI Holding zones are warming up from current ingested flow."
+      ? "Positioning zones are warming up from current public flow."
       : orderBookWarming
         ? "Order Book shelves are still collecting from recent public depth."
       : latestLevelTimeMs != null
@@ -734,7 +778,7 @@ export default function PriceChart({
         ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
         : "Reaction Map";
   const levelAvailabilityMessage = oiHoldingHidden
-    ? "OI Holding zones need enough recent flow before they appear. Large near-spot zones are allowed when the ingested flow is strong enough."
+    ? "Positioning needs enough recent flow and positive OI change before zones appear. Missing zones are hidden rather than forced."
     : orderBookWarming
       ? "Order Book levels need a few clean depth samples before they appear."
     : reactionSupported
@@ -764,7 +808,7 @@ export default function PriceChart({
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Thin bands mark nearby pressure zones. Details stay below the chart so candles remain readable.</div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Reaction combines book shelves, inferred positioning, and price behavior. Acceptance or rejection matters more than a red or green line.</div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
@@ -841,13 +885,22 @@ export default function PriceChart({
           )}
         </div>
         <div className="mt-2 text-[11px] leading-5 text-zinc-500">{levelSourceNote}</div>
-        <ZoneDetailPanel
-          bands={zoneBands}
-          activeBand={activeZoneBand}
-          currentPrice={currentPrice}
-          onHover={setHoveredZoneId}
-          onSelect={setSelectedZoneId}
-        />
+        {reactionPayload ? (
+          <ReactionMapPanel
+            payload={reactionPayload}
+            selectedZoneId={panelZoneIdForChartBand(activeZoneBand)}
+            onSelectZone={(zone) => setSelectedZoneId(chartBandIdForPanelZone(zone))}
+            className="mt-3"
+          />
+        ) : (
+          <ZoneDetailPanel
+            bands={zoneBands}
+            activeBand={activeZoneBand}
+            currentPrice={currentPrice}
+            onHover={setHoveredZoneId}
+            onSelect={setSelectedZoneId}
+          />
+        )}
         {showReactionProgress ? (
           <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">
             <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-sky-400/70" />
@@ -858,7 +911,7 @@ export default function PriceChart({
       {!loading && !error && candles.length > 0 ? (
         <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
           <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
-            Reaction zones are inferred market pressure, not complete trader-position truth or a promise that price must hold.
+            Order book shelves are real resting liquidity. Positioning zones are inferred from public trades and OI changes.
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1005,8 +1058,11 @@ function ZoneMetric({ label, value, tone = "neutral" }: { label: string; value: 
 }
 
 function zoneRoleLabel(band: ChartZoneBand): string {
-  if (band.side === "downside") return "Downside support";
-  return "Upside resistance";
+  const role = band.level.zoneTooltip?.roleLabel;
+  if (role) return role;
+  if (band.level.leverageBucket === "book") return band.side === "downside" ? "Bid shelf" : "Ask shelf";
+  if (band.side === "downside") return "Downside reaction";
+  return "Upside reaction";
 }
 
 function distanceFromCurrent(price: number, currentPrice: number | null): number | null {
@@ -1022,12 +1078,19 @@ function formatSignedPct(value: number | null | undefined): string {
 }
 
 function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upside"): string {
-  if (side === "downside") {
-    if (level.exposureSide === "bull") return "Support/long-risk zone; reclaim can fuel bounce.";
-    return "Downside liquidity; fail below can extend lower.";
+  const role = level.zoneTooltip?.role;
+  if (role === "long_defense") return "Buyer build below price. Watch whether buyers defend or lose the zone.";
+  if (role === "trapped_longs") return "Buyer build above price. Bulls need acceptance back through the zone.";
+  if (role === "short_defense") return "Seller build above price. Watch rejection versus clean acceptance above.";
+  if (role === "trapped_shorts") return "Seller build below price. Reclaim can turn it into squeeze fuel.";
+  if (level.leverageBucket === "book") {
+    return side === "downside"
+      ? "Real bid liquidity. Useful only if it stays/refills when tested."
+      : "Real ask liquidity. Useful only if it stays/refills when tested.";
   }
-  if (level.exposureSide === "bear") return "Resistance/short-risk zone; clean hold can squeeze.";
-  return "Upside liquidity; rejection can mark take-profit.";
+  return side === "downside"
+    ? "Downside reaction area; wait for acceptance or rejection."
+    : "Upside reaction area; wait for acceptance or rejection.";
 }
 
 function FlowZoneOverlay({
@@ -1046,11 +1109,9 @@ function FlowZoneOverlay({
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       {bands.map((band) => {
-        const isDownside = band.side === "downside";
         const read = levelReadFor(band.level, band.side);
-        const color = isDownside ? "20, 184, 166" : "244, 63, 94";
-        const textColor = isDownside ? "text-teal-200" : "text-rose-200";
-        const borderColor = isDownside ? "border-teal-400/35" : "border-rose-400/35";
+        const tone = chartToneForLevel(band.level, band.side);
+        const color = tone.rgb;
         const idleBandAlpha = band.alpha * 0.045;
         const idleBorderAlpha = band.alpha * 0.24;
         const active = activeZoneId === band.id;
@@ -1080,7 +1141,7 @@ function FlowZoneOverlay({
 
             <button
               type="button"
-              className={`pointer-events-auto absolute right-2 max-w-[calc(100%_-_1rem)] cursor-crosshair truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-16 sm:max-w-[112px] ${borderColor} ${textColor}`}
+              className={`pointer-events-auto absolute right-2 max-w-[calc(100%_-_1rem)] cursor-crosshair truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-16 sm:max-w-[112px] ${tone.borderClass} ${tone.textClass}`}
               style={{
                 top: Math.max(8, band.centerY - 10),
                 backgroundColor: `rgba(9, 9, 11, ${Math.max(0.74, 0.94 - band.alpha * 0.14)})`,
@@ -1108,16 +1169,16 @@ function FlowZoneOverlay({
 function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
   const read = levelReadFor(band.level, band.side);
   const tooltip = band.level.zoneTooltip;
-  const isDownside = band.side === "downside";
+  const tone = chartToneForLevel(band.level, band.side);
   const flowSize = tooltip?.inferredOiUsd ?? tooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
   const refreshed = tooltip?.refreshedAtMs ? formatTimeMs(tooltip.refreshedAtMs) : null;
-  const sideLabel = tooltip?.side === "bear" ? "Short OI" : tooltip?.side === "bull" ? "Long OI" : zoneRoleLabel(band);
+  const sideLabel = tooltip?.roleLabel ?? (tooltip?.side === "bear" ? "Seller-initiated build" : tooltip?.side === "bull" ? "Buyer-initiated build" : zoneRoleLabel(band));
   const reason = tooltip?.reasonSelected ?? read.reason;
 
   return (
     <div
       className={`pointer-events-none absolute right-3 z-30 w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
-        isDownside ? "border-teal-400/35" : "border-rose-400/35"
+        tone.borderClass
       }`}
       style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}
       role="tooltip"
@@ -1142,7 +1203,7 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
         {reason}
       </div>
       <div className="mt-2 text-[10px] leading-4 text-zinc-500">
-        {refreshed ? `Refreshed ${refreshed}. ` : null}Inferred zone, not exact exchange-wide positions.
+        {refreshed ? `Refreshed ${refreshed}. ` : null}{tooltip?.sourceCaveat ?? "Inferred zone, not exact exchange-wide positions."}
       </div>
     </div>
   );

@@ -2,9 +2,11 @@ import { Pool } from "pg";
 import { getPooledDatabaseUrl } from "@/lib/databaseEnv";
 import {
   buildReactionLevels,
+  withStructuredReactionPayloadSections,
   type ReactionBookBucket,
   type ReactionConfidence,
   type ReactionExposureSide,
+  type ReactionLevel,
   type ReactionLevelsPayload,
   type ReactionMarketContext,
   type ReactionPrimarySource,
@@ -42,7 +44,7 @@ function asNumber(value: unknown): number | null {
 }
 
 function emptyPayload(coin: string, windowMs: number): ReactionLevelsPayload {
-  return {
+  return withStructuredReactionPayloadSections({
     coin,
     currentPrice: null,
     windowMs,
@@ -65,7 +67,7 @@ function emptyPayload(coin: string, windowMs: number): ReactionLevelsPayload {
       oiEntryProfile: [],
       trackedLiquidations: [],
     },
-  };
+  });
 }
 
 function normalizeBookBucket(row: Record<string, unknown>): ReactionBookBucket | null {
@@ -124,7 +126,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
       from reaction_exposure_zones_current
       where asset = $1
         and window_ms = $2
-        and status <> 'retired'
+        and status = 'active'
       order by side asc, rank asc
       `,
       [asset, windowMs],
@@ -138,6 +140,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
     );
     const levels = result.rows.map((row) => {
       const side = normalizeSide(row.side);
+      const status = String(row.status ?? "active");
       const rank = Math.max(Math.round(asNumber(row.rank) ?? 0), 1);
       const tradeNotionalUsd = Math.max(asNumber(row.trade_notional_usd) ?? 0, 0);
       const inferredOiUsd = Math.max(asNumber(row.inferred_oi_notional_usd) ?? 0, 0);
@@ -150,12 +153,12 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
       const reasonSelected =
         typeof row.tooltip?.reasonSelected === "string"
           ? row.tooltip.reasonSelected
-          : `Top ${side} OI holding zone`;
+          : `Top ${side === "bull" ? "buyer-initiated" : "seller-initiated"} inferred OI build`;
       const evidence = [
         `${distancePct >= 0 ? "+" : ""}${distancePct.toFixed(1)}%`,
         `${compactUsd(tradeNotionalUsd)} recent flow`,
-        `${compactUsd(inferredOiUsd)} inferred OI`,
-        side === "bull" ? "Long OI holding zone" : "Short OI holding zone",
+        `${compactUsd(inferredOiUsd)} inferred OI build`,
+        side === "bull" ? "Buyer-initiated inferred build" : "Seller-initiated inferred build",
         reasonSelected,
         "Not exact open positions",
       ];
@@ -184,6 +187,17 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
           sellNotionalUsd,
           reasonSelected,
           refreshedAtMs: asNumber(row.refreshed_at) ?? updatedAt,
+          sourceCaveat: "Inferred from public Hyperliquid streams, not exact open positions.",
+          windowMs,
+          hiddenReason: status === "stale" ? "stale" as const : undefined,
+        },
+        windowMs,
+        ageMs: Math.max(updatedAt - (asNumber(row.refreshed_at) ?? updatedAt), 0),
+        hiddenReason: status === "stale" ? "stale" as const : undefined,
+        sourceCaveat: {
+          exactPositions: false as const,
+          source: "worker_exposure_zones" as const,
+          text: "Worker-built zones are inferred from public Hyperliquid trades plus OI changes. They are not exact exchange-wide positions.",
         },
         components: {
           bookDepthUsd: Math.max(asNumber(row.book_notional_usd) ?? 0, 0),
@@ -199,13 +213,13 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
           shortLiqNotionalUsd: 0,
           uniqueTraderCount: Math.max(Math.round(asNumber(row.wallet_count) ?? 0), 0),
         },
-      };
+      } satisfies ReactionLevel;
     });
     const bull = levels.filter((level) => level.zoneSide === "bull").sort((a, b) => (a.zoneRank ?? 0) - (b.zoneRank ?? 0));
     const bear = levels.filter((level) => level.zoneSide === "bear").sort((a, b) => (a.zoneRank ?? 0) - (b.zoneRank ?? 0));
     const sorted = [...bull, ...bear].sort((a, b) => a.price - b.price);
 
-    return {
+    return withStructuredReactionPayloadSections({
       coin: asset,
       currentPrice,
       windowMs,
@@ -237,7 +251,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
         })),
         trackedLiquidations: [],
       },
-    };
+    });
   } catch (error) {
     if (typeof error === "object" && error != null && "code" in error && error.code === "42P01") return null;
     throw error;
@@ -262,7 +276,7 @@ function mergeCurrentZonesWithStreamPayload(
     return a.price - b.price;
   });
 
-  return {
+  return withStructuredReactionPayloadSections({
     ...streamPayload,
     currentPrice: currentZones.currentPrice ?? streamPayload.currentPrice,
     updatedAt: Math.max(currentZones.updatedAt, streamPayload.updatedAt),
@@ -270,7 +284,7 @@ function mergeCurrentZonesWithStreamPayload(
       marketStreams: currentZones.coverage.marketStreams || streamPayload.coverage.marketStreams,
       trackedWalletSample: currentZones.coverage.trackedWalletSample || streamPayload.coverage.trackedWalletSample,
       exactPositions: false,
-      note: "Reaction Map combines worker-built OI Holding zones with raw public-stream book shelves. It does not claim exact exchange-wide positions.",
+      note: "Reaction Map combines worker-built inferred positioning zones with raw public-stream book shelves. It does not claim exact exchange-wide positions.",
     },
     levels,
     overlayLevels: currentZones.overlayLevels,
@@ -281,7 +295,7 @@ function mergeCurrentZonesWithStreamPayload(
           ? currentZones.overlays.oiEntryProfile
           : streamPayload.overlays.oiEntryProfile,
     },
-  };
+  });
 }
 
 export async function getReactionLevelMap(args: {

@@ -373,3 +373,19 @@
 - What helped: checking for `market_candles` with `to_regclass` made beta history optional without reintroducing warehouse tables.
 - Friction or missing capability: external old-code surfaces are still recreating auxiliary tables until redeployed or stopped, so table hygiene remains a deploy follow-through item.
 - Recommendation: use this pattern for any remaining optional warehouse readers before the next cleanup pass.
+
+## 2026-05-08
+
+- Request summary: create a big-task plan to redesign Reaction Map/OI Holdings around real order-book data, inferred positioning, and clearer trade context.
+- Skills used: `prompt-master`, `brainstorming`, `verification-gate`, `planning-with-files`, `implementation-plan`, `big-task-orchestrator`, `visual-first-product-thinking`.
+- What helped: official Hyperliquid docs and local Reaction Map health output clarified the difference between real book shelves and inferred OI positioning.
+- Friction or missing capability: Context7 was not exposed in this Codex tool surface, so official Hyperliquid docs were checked directly.
+- Recommendation: before implementation, approve the tab name and default positioning windows so copy and payload fields do not churn.
+
+## 2026-05-09
+
+- Request summary: implement the planned Reaction Map/OI Holdings redesign with multiple agents.
+- Skills used: `spin-up-agent-team`, `coding-discipline`, `repo-execution`, `large-output-discipline`, `webapp-testing`, `browser-use:browser`.
+- What helped: splitting API/model, worker/health, and UI work let the implementation land in parallel, while the final Docker image build caught stricter payload enum mismatches before browser verification.
+- Friction or missing capability: Browser Use plugin metadata pointed to an older alpha path in project guidance, but the installed alpha2 path worked after discovery. External old-code services are still recreating auxiliary Neon tables.
+- Recommendation: keep the challenger-review pass for future trading-logic changes and add a follow-up deploy/cleanup task for old external services plus longer 4h positioning warm-up validation.

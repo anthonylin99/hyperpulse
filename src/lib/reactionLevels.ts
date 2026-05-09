@@ -15,6 +15,98 @@ export type ReactionConfidence = "low" | "medium" | "high";
 export type ReactionPrimarySource = "book" | "positioning" | "stress" | "mixed";
 export type ReactionOverlayMode = "all" | "book" | "oi_holding" | "stress";
 export type ReactionExposureSide = "bull" | "bear";
+export type ReactionOrderBookSide = "bid" | "ask";
+export type ReactionPositioningAggressorSide = "buyer_initiated" | "seller_initiated" | "mixed";
+export type ReactionPositioningRole =
+  | "long_defense"
+  | "trapped_longs"
+  | "short_defense"
+  | "trapped_shorts"
+  | "unknown"
+  | "stale";
+export type ReactionHiddenReason =
+  | "low_confidence"
+  | "stale"
+  | "too_close_noisy"
+  | "insufficient_oi_change"
+  | "insufficient_flow"
+  | "not_available";
+
+export interface ReactionSourceCaveat {
+  exactPositions: false;
+  source: "hyperliquid_public_streams" | "worker_exposure_zones" | "combined";
+  text: string;
+}
+
+export interface ReactionOrderBookShelf {
+  id: string;
+  side: ReactionOrderBookSide;
+  price: number;
+  zoneLow: number;
+  zoneHigh: number;
+  distancePct: number;
+  notionalUsd: number;
+  peakNotionalUsd: number;
+  sampleCount: number;
+  confidence: ReactionConfidence;
+  ageMs: number | null;
+  windowMs: number;
+  sourceCaveat: ReactionSourceCaveat;
+  hiddenReason?: ReactionHiddenReason;
+}
+
+export interface ReactionPositioningZone {
+  id: string;
+  levelId: string;
+  rank: number;
+  side: ReactionExposureSide;
+  aggressorSide: ReactionPositioningAggressorSide;
+  inferenceType: "buyer_initiated_oi_build" | "seller_initiated_oi_build" | "mixed_oi_build";
+  role: ReactionPositioningRole;
+  roleLabel: string;
+  price: number;
+  zoneLow: number;
+  zoneHigh: number;
+  distancePct: number;
+  inferredOiUsd: number;
+  tradeNotionalUsd: number;
+  buyNotionalUsd: number;
+  sellNotionalUsd: number;
+  confidence: ReactionConfidence;
+  confidenceReason: string;
+  ageMs: number | null;
+  windowMs: number;
+  sourceCaveat: ReactionSourceCaveat;
+  hiddenReason?: ReactionHiddenReason;
+}
+
+export interface ReactionPositioningHiddenSlot {
+  aggressorSide: Exclude<ReactionPositioningAggressorSide, "mixed">;
+  rank: number;
+  hiddenReason: ReactionHiddenReason;
+  detail: string;
+  windowMs: number;
+  sourceCaveat: ReactionSourceCaveat;
+}
+
+export interface ReactionZone {
+  id: string;
+  levelId: string;
+  price: number;
+  zoneLow: number;
+  zoneHigh: number;
+  distancePct: number;
+  directionBias: ReactionDirectionBias;
+  confidence: ReactionConfidence;
+  confidenceReason: string;
+  score: number;
+  primarySource: ReactionPrimarySource;
+  ageMs: number | null;
+  windowMs: number;
+  sourceCaveat: ReactionSourceCaveat;
+  evidence: string[];
+  hiddenReason?: ReactionHiddenReason;
+}
 
 export const REACTION_MAP_ASSETS = [
   "BTC",
@@ -88,7 +180,30 @@ export interface ReactionLevel {
     sellNotionalUsd?: number;
     reasonSelected?: string;
     refreshedAtMs?: number;
+    aggressorSide?: ReactionPositioningAggressorSide;
+    role?: ReactionPositioningRole;
+    roleLabel?: string;
+    confidenceReason?: string;
+    sourceCaveat?: string;
+    ageMs?: number | null;
+    windowMs?: number;
+    hiddenReason?: ReactionHiddenReason;
   };
+  positioning?: {
+    inferenceType: ReactionPositioningZone["inferenceType"];
+    aggressorSide: ReactionPositioningAggressorSide;
+    role: ReactionPositioningRole;
+    roleLabel: string;
+    confidenceReason: string;
+    ageMs: number | null;
+    windowMs: number;
+    sourceCaveat: ReactionSourceCaveat;
+    hiddenReason?: ReactionHiddenReason;
+  };
+  ageMs?: number | null;
+  windowMs?: number;
+  sourceCaveat?: ReactionSourceCaveat;
+  hiddenReason?: ReactionHiddenReason;
   components: {
     bookDepthUsd: number;
     tradeNotionalUsd: number;
@@ -117,6 +232,26 @@ export interface ReactionLevelsPayload {
     note: string;
   };
   levels: ReactionLevel[];
+  orderBook: {
+    bidShelves: ReactionOrderBookShelf[];
+    askShelves: ReactionOrderBookShelf[];
+    hidden: Array<{
+      side: ReactionOrderBookSide;
+      rank: number;
+      hiddenReason: ReactionHiddenReason;
+      detail: string;
+      windowMs: number;
+      sourceCaveat: ReactionSourceCaveat;
+    }>;
+    sourceCaveat: ReactionSourceCaveat;
+  };
+  positioning: {
+    buyerInitiatedBuilds: ReactionPositioningZone[];
+    sellerInitiatedBuilds: ReactionPositioningZone[];
+    hidden: ReactionPositioningHiddenSlot[];
+    sourceCaveat: ReactionSourceCaveat;
+  };
+  reactionZones: ReactionZone[];
   overlayLevels: {
     oiHolding: ReactionLevel[];
     oiHoldingBull: ReactionLevel[];
@@ -151,8 +286,28 @@ const MIN_REACTION_SCORE = 8;
 const MAX_REACTION_LEVELS_PER_SIDE = 4;
 const MAX_REACTION_LEVELS = MAX_REACTION_LEVELS_PER_SIDE * 2;
 const MAX_OI_HOLDING_ZONES_PER_SIDE = 5;
+const MAX_ORDER_BOOK_SHELVES_PER_SIDE = 5;
 const OI_HOLDING_CLUSTER_WIDTH_PCT = 0.8;
 const MIN_OI_HOLDING_TRADE_NOTIONAL_USD = 250_000;
+const POSITIONING_STALE_MULTIPLIER = 2;
+
+const MARKET_STREAM_CAVEAT: ReactionSourceCaveat = {
+  exactPositions: false,
+  source: "hyperliquid_public_streams",
+  text: "Uses public Hyperliquid book, trade, and OI data. Resting liquidity can move and positioning is inferred, not exact trader positions.",
+};
+
+const WORKER_ZONE_CAVEAT: ReactionSourceCaveat = {
+  exactPositions: false,
+  source: "worker_exposure_zones",
+  text: "Uses worker-built zones inferred from public Hyperliquid trades plus OI changes. It does not locate exact exchange-wide positions.",
+};
+
+const COMBINED_CAVEAT: ReactionSourceCaveat = {
+  exactPositions: false,
+  source: "combined",
+  text: "Combines public Hyperliquid streams with inferred worker zones. Treat this as reaction context, not a standalone trade signal.",
+};
 
 type LevelAccumulator = {
   price: number;
@@ -210,6 +365,102 @@ function normalize(value: number, max: number): number {
 
 function maxOf(values: number[]): number {
   return values.reduce((max, value) => (Number.isFinite(value) && value > max ? value : max), 0);
+}
+
+function caveatForLevel(level: ReactionLevel): ReactionSourceCaveat {
+  if (level.sourceCaveat) return level.sourceCaveat;
+  if (level.primarySource === "positioning") return WORKER_ZONE_CAVEAT;
+  if (level.primarySource === "mixed") return COMBINED_CAVEAT;
+  return MARKET_STREAM_CAVEAT;
+}
+
+function zoneAgeMs(level: ReactionLevel, updatedAt: number): number | null {
+  if (level.ageMs != null) return level.ageMs;
+  const refreshedAtMs = level.tooltip?.refreshedAtMs;
+  if (refreshedAtMs == null || !Number.isFinite(refreshedAtMs)) return null;
+  return Math.max(updatedAt - refreshedAtMs, 0);
+}
+
+function isStaleZone(level: ReactionLevel, updatedAt: number, windowMs: number): boolean {
+  if (level.hiddenReason === "stale" || level.positioning?.role === "stale") return true;
+  const ageMs = zoneAgeMs(level, updatedAt);
+  return ageMs != null && ageMs > windowMs * POSITIONING_STALE_MULTIPLIER;
+}
+
+function zonePriceLocation(args: {
+  zoneLow: number;
+  zoneHigh: number;
+  currentPrice: number | null;
+}): "below" | "above" | "inside" | "unknown" {
+  const { zoneLow, zoneHigh, currentPrice } = args;
+  if (currentPrice == null || currentPrice <= 0) return "unknown";
+  if (zoneHigh < currentPrice) return "below";
+  if (zoneLow > currentPrice) return "above";
+  return "inside";
+}
+
+function positioningAggressorFor(level: ReactionLevel): ReactionPositioningAggressorSide {
+  if (level.positioning?.aggressorSide) return level.positioning.aggressorSide;
+  if (level.zoneSide === "bull") return "buyer_initiated";
+  if (level.zoneSide === "bear") return "seller_initiated";
+  const buy = level.components.buyNotionalUsd;
+  const sell = level.components.sellNotionalUsd;
+  if (buy > sell * 1.1) return "buyer_initiated";
+  if (sell > buy * 1.1) return "seller_initiated";
+  return "mixed";
+}
+
+function positioningInferenceType(
+  aggressorSide: ReactionPositioningAggressorSide,
+): ReactionPositioningZone["inferenceType"] {
+  if (aggressorSide === "buyer_initiated") return "buyer_initiated_oi_build";
+  if (aggressorSide === "seller_initiated") return "seller_initiated_oi_build";
+  return "mixed_oi_build";
+}
+
+function positioningRoleFor(args: {
+  aggressorSide: ReactionPositioningAggressorSide;
+  zoneLow: number;
+  zoneHigh: number;
+  currentPrice: number | null;
+  stale: boolean;
+}): ReactionPositioningRole {
+  if (args.stale) return "stale";
+  const location = zonePriceLocation(args);
+  if (location === "inside" || location === "unknown" || args.aggressorSide === "mixed") return "unknown";
+  if (args.aggressorSide === "buyer_initiated") {
+    return location === "below" ? "long_defense" : "trapped_longs";
+  }
+  return location === "above" ? "short_defense" : "trapped_shorts";
+}
+
+function positioningRoleLabel(role: ReactionPositioningRole): string {
+  switch (role) {
+    case "long_defense":
+      return "Long defense";
+    case "trapped_longs":
+      return "Trapped longs";
+    case "short_defense":
+      return "Short defense";
+    case "trapped_shorts":
+      return "Trapped shorts";
+    case "stale":
+      return "Stale inferred zone";
+    case "unknown":
+      return "Unclear positioning";
+  }
+}
+
+function confidenceReasonForPositioning(level: ReactionLevel, role: ReactionPositioningRole): string {
+  if (role === "stale") return "Zone is older than the selected positioning window.";
+  if (level.components.oiEntryNotionalUsd <= 0) return "No positive OI build is available for this bucket.";
+  if (level.components.tradeNotionalUsd < MIN_OI_HOLDING_TRADE_NOTIONAL_USD) {
+    return "Recent public flow is below the minimum used for positioning zones.";
+  }
+  const totalFlow = level.components.buyNotionalUsd + level.components.sellNotionalUsd;
+  const skew = totalFlow > 0 ? Math.abs(level.components.buyNotionalUsd - level.components.sellNotionalUsd) / totalFlow : 0;
+  if (skew < 0.1) return "Buyer-initiated and seller-initiated flow are too mixed for a one-sided read.";
+  return `${positioningRoleLabel(role)} inferred from public trade direction, positive OI change, and zone freshness.`;
 }
 
 function createAccumulator(price: number, bucketSize: number): LevelAccumulator {
@@ -489,11 +740,15 @@ function zoneFromCluster(
     },
   );
   const clusterWidthPct = ((zoneHigh - zoneLow) / currentPrice) * 100;
+  const aggressorSide: ReactionPositioningAggressorSide = side === "bull" ? "buyer_initiated" : "seller_initiated";
+  const role = positioningRoleFor({ aggressorSide, zoneLow, zoneHigh, currentPrice, stale: false });
+  const roleLabel = positioningRoleLabel(role);
   const evidence = [
     formatDistance(distancePct),
     `${compactUsd(components.tradeNotionalUsd)} recent flow`,
     `${formatSignedUsd(components.oiEntryNotionalUsd)} inferred OI build`,
-    `${side === "bull" ? "Long" : "Short"} OI holding zone`,
+    `${aggressorSide === "buyer_initiated" ? "Buyer-initiated" : "Seller-initiated"} inferred build`,
+    roleLabel,
     `${cluster.length} clustered bucket${cluster.length === 1 ? "" : "s"} across ${clusterWidthPct.toFixed(2)}%`,
     "Not exact open positions",
   ];
@@ -521,8 +776,25 @@ function zoneFromCluster(
       inferredOiUsd: components.oiEntryNotionalUsd,
       buyNotionalUsd: components.buyNotionalUsd,
       sellNotionalUsd: components.sellNotionalUsd,
-      reasonSelected: `Top ${side === "bull" ? "long" : "short"} inferred OI zone from ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`,
+      aggressorSide,
+      role,
+      roleLabel,
+      confidenceReason: confidenceReasonForPositioning(dominant, role),
+      sourceCaveat: MARKET_STREAM_CAVEAT.text,
+      windowMs: dominant.windowMs,
+      reasonSelected: `Top ${aggressorSide === "buyer_initiated" ? "buyer-initiated" : "seller-initiated"} inferred OI build from ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`,
     },
+    positioning: {
+      inferenceType: positioningInferenceType(aggressorSide),
+      aggressorSide,
+      role,
+      roleLabel,
+      confidenceReason: confidenceReasonForPositioning(dominant, role),
+      ageMs: dominant.ageMs ?? null,
+      windowMs: dominant.windowMs ?? 0,
+      sourceCaveat: MARKET_STREAM_CAVEAT,
+    },
+    sourceCaveat: MARKET_STREAM_CAVEAT,
     components,
   };
 }
@@ -575,7 +847,7 @@ function buildEvidence(args: {
   const evidence: string[] = [formatDistance(args.distancePct)];
   if (args.oiEntryNotionalUsd > 0) {
     evidence.push(
-      `${formatSignedUsd(args.oiEntryNotionalUsd)} inferred ${args.flowBias >= 0 ? "long" : "short"} build`,
+      `${formatSignedUsd(args.oiEntryNotionalUsd)} inferred ${args.flowBias >= 0 ? "buyer-initiated" : "seller-initiated"} OI build`,
     );
   } else if (args.oiDeltaUsd <= 0 && args.tradeNotionalUsd > 0) {
     evidence.push("OI flat/down, confidence reduced");
@@ -596,6 +868,277 @@ function buildEvidence(args: {
   if (args.uniqueTraderCount > 0) evidence.push(`${args.uniqueTraderCount} public trader ids`);
   evidence.push(labelText(args.label));
   return evidence;
+}
+
+function buildOrderBookShelf(args: {
+  bucket: ReactionBookBucket;
+  side: ReactionOrderBookSide;
+  currentPrice: number;
+  windowMs: number;
+}): ReactionOrderBookShelf {
+  const { bucket, side, currentPrice, windowMs } = args;
+  const notionalUsd = side === "bid" ? bucket.bidDepthUsd : bucket.askDepthUsd;
+  const peakNotionalUsd = side === "bid" ? bucket.peakBidDepthUsd : bucket.peakAskDepthUsd;
+  const halfRange = Math.max(bucket.bucketSize / 2, currentPrice * 0.0004);
+  const distancePct = ((bucket.price - currentPrice) / currentPrice) * 100;
+  const confidence: ReactionConfidence =
+    bucket.sampleCount >= 8 && peakNotionalUsd > 0
+      ? "high"
+      : bucket.sampleCount >= 3
+        ? "medium"
+        : "low";
+
+  return {
+    id: `book-${side}-${levelKey(bucket.price)}`,
+    side,
+    price: bucket.price,
+    zoneLow: Number((bucket.price - halfRange).toFixed(bucket.price >= 100 ? 0 : 4)),
+    zoneHigh: Number((bucket.price + halfRange).toFixed(bucket.price >= 100 ? 0 : 4)),
+    distancePct,
+    notionalUsd,
+    peakNotionalUsd,
+    sampleCount: bucket.sampleCount,
+    confidence,
+    ageMs: 0,
+    windowMs,
+    sourceCaveat: MARKET_STREAM_CAVEAT,
+  };
+}
+
+function buildBookHiddenSlots(args: {
+  side: ReactionOrderBookSide;
+  count: number;
+  windowMs: number;
+}): ReactionLevelsPayload["orderBook"]["hidden"] {
+  const hidden: ReactionLevelsPayload["orderBook"]["hidden"] = [];
+  for (let index = args.count; index < MAX_ORDER_BOOK_SHELVES_PER_SIDE; index += 1) {
+    hidden.push({
+      side: args.side,
+      rank: index + 1,
+      hiddenReason: "not_available",
+      detail: `No additional ${args.side} shelf cleared the book-depth window.`,
+      windowMs: args.windowMs,
+      sourceCaveat: MARKET_STREAM_CAVEAT,
+    });
+  }
+  return hidden;
+}
+
+function buildOrderBookSection(args: {
+  bookBuckets: ReactionBookBucket[];
+  currentPrice: number | null;
+  windowMs: number;
+}): ReactionLevelsPayload["orderBook"] {
+  const { bookBuckets, currentPrice, windowMs } = args;
+  if (currentPrice == null || currentPrice <= 0) {
+    return {
+      bidShelves: [],
+      askShelves: [],
+      hidden: [
+        ...buildBookHiddenSlots({ side: "bid", count: 0, windowMs }),
+        ...buildBookHiddenSlots({ side: "ask", count: 0, windowMs }),
+      ],
+      sourceCaveat: MARKET_STREAM_CAVEAT,
+    };
+  }
+
+  const bidShelves = bookBuckets
+    .filter((bucket) => bucket.bidDepthUsd > 0 && bucket.price <= currentPrice)
+    .sort((a, b) => b.bidDepthUsd - a.bidDepthUsd)
+    .slice(0, MAX_ORDER_BOOK_SHELVES_PER_SIDE)
+    .map((bucket) => buildOrderBookShelf({ bucket, side: "bid", currentPrice, windowMs }));
+  const askShelves = bookBuckets
+    .filter((bucket) => bucket.askDepthUsd > 0 && bucket.price >= currentPrice)
+    .sort((a, b) => b.askDepthUsd - a.askDepthUsd)
+    .slice(0, MAX_ORDER_BOOK_SHELVES_PER_SIDE)
+    .map((bucket) => buildOrderBookShelf({ bucket, side: "ask", currentPrice, windowMs }));
+
+  return {
+    bidShelves,
+    askShelves,
+    hidden: [
+      ...buildBookHiddenSlots({ side: "bid", count: bidShelves.length, windowMs }),
+      ...buildBookHiddenSlots({ side: "ask", count: askShelves.length, windowMs }),
+    ],
+    sourceCaveat: MARKET_STREAM_CAVEAT,
+  };
+}
+
+function positioningHiddenDetail(aggressorSide: Exclude<ReactionPositioningAggressorSide, "mixed">): string {
+  return `No additional ${
+    aggressorSide === "buyer_initiated" ? "buyer-initiated" : "seller-initiated"
+  } inferred OI build cleared the confidence, freshness, and flow filters.`;
+}
+
+function buildPositioningHiddenSlots(args: {
+  aggressorSide: Exclude<ReactionPositioningAggressorSide, "mixed">;
+  count: number;
+  windowMs: number;
+  sourceCaveat: ReactionSourceCaveat;
+}): ReactionPositioningHiddenSlot[] {
+  const hidden: ReactionPositioningHiddenSlot[] = [];
+  for (let index = args.count; index < MAX_OI_HOLDING_ZONES_PER_SIDE; index += 1) {
+    hidden.push({
+      aggressorSide: args.aggressorSide,
+      rank: index + 1,
+      hiddenReason: "low_confidence",
+      detail: positioningHiddenDetail(args.aggressorSide),
+      windowMs: args.windowMs,
+      sourceCaveat: args.sourceCaveat,
+    });
+  }
+  return hidden;
+}
+
+function positioningZoneFromLevel(args: {
+  level: ReactionLevel;
+  currentPrice: number | null;
+  windowMs: number;
+  updatedAt: number;
+}): ReactionPositioningZone {
+  const { level, currentPrice, windowMs, updatedAt } = args;
+  const zoneLow = level.zoneLow ?? level.price;
+  const zoneHigh = level.zoneHigh ?? level.price;
+  const ageMs = zoneAgeMs(level, updatedAt);
+  const stale = isStaleZone(level, updatedAt, windowMs);
+  const aggressorSide = positioningAggressorFor(level);
+  const role = positioningRoleFor({ aggressorSide, zoneLow, zoneHigh, currentPrice, stale });
+  const sourceCaveat = caveatForLevel(level);
+  const confidenceReason = level.positioning?.confidenceReason ?? level.tooltip?.confidenceReason ?? confidenceReasonForPositioning(level, role);
+
+  return {
+    id: `positioning-${level.id}`,
+    levelId: level.id,
+    rank: level.zoneRank ?? level.tooltip?.rank ?? 1,
+    side: level.zoneSide ?? (aggressorSide === "seller_initiated" ? "bear" : "bull"),
+    aggressorSide,
+    inferenceType: positioningInferenceType(aggressorSide),
+    role,
+    roleLabel: positioningRoleLabel(role),
+    price: level.price,
+    zoneLow,
+    zoneHigh,
+    distancePct: level.distancePct,
+    inferredOiUsd: level.components.oiEntryNotionalUsd,
+    tradeNotionalUsd: level.components.tradeNotionalUsd,
+    buyNotionalUsd: level.components.buyNotionalUsd,
+    sellNotionalUsd: level.components.sellNotionalUsd,
+    confidence: level.confidence,
+    confidenceReason,
+    ageMs,
+    windowMs,
+    sourceCaveat,
+    hiddenReason: stale ? "stale" : level.hiddenReason,
+  };
+}
+
+function buildPositioningSection(args: {
+  levels: ReactionLevel[];
+  currentPrice: number | null;
+  windowMs: number;
+  updatedAt: number;
+}): ReactionLevelsPayload["positioning"] {
+  const zones = args.levels
+    .filter((level) => level.primarySource === "positioning")
+    .map((level) => positioningZoneFromLevel({ ...args, level }));
+  const buyerInitiatedBuilds = zones
+    .filter((zone) => zone.aggressorSide === "buyer_initiated")
+    .sort((a, b) => a.rank - b.rank || b.tradeNotionalUsd - a.tradeNotionalUsd)
+    .slice(0, MAX_OI_HOLDING_ZONES_PER_SIDE);
+  const sellerInitiatedBuilds = zones
+    .filter((zone) => zone.aggressorSide === "seller_initiated")
+    .sort((a, b) => a.rank - b.rank || b.tradeNotionalUsd - a.tradeNotionalUsd)
+    .slice(0, MAX_OI_HOLDING_ZONES_PER_SIDE);
+  const sourceCaveat = zones.some((zone) => zone.sourceCaveat.source === "worker_exposure_zones")
+    ? WORKER_ZONE_CAVEAT
+    : MARKET_STREAM_CAVEAT;
+
+  return {
+    buyerInitiatedBuilds,
+    sellerInitiatedBuilds,
+    hidden: [
+      ...buildPositioningHiddenSlots({
+        aggressorSide: "buyer_initiated",
+        count: buyerInitiatedBuilds.length,
+        windowMs: args.windowMs,
+        sourceCaveat,
+      }),
+      ...buildPositioningHiddenSlots({
+        aggressorSide: "seller_initiated",
+        count: sellerInitiatedBuilds.length,
+        windowMs: args.windowMs,
+        sourceCaveat,
+      }),
+    ],
+    sourceCaveat,
+  };
+}
+
+function buildReactionZoneSection(args: {
+  levels: ReactionLevel[];
+  currentPrice: number | null;
+  windowMs: number;
+  updatedAt: number;
+}): ReactionZone[] {
+  return args.levels
+    .filter((level) => {
+      const hasBook = level.components.bookDepthUsd > 0;
+      const hasPositioning = level.components.tradeNotionalUsd > 0 || level.components.oiEntryNotionalUsd > 0;
+      const hasStress = level.components.trackedLiqNotionalUsd > 0;
+      return level.primarySource === "mixed" || hasStress || (hasBook && hasPositioning);
+    })
+    .map((level) => {
+    const zoneLow = level.zoneLow ?? level.price;
+    const zoneHigh = level.zoneHigh ?? level.price;
+    const ageMs = zoneAgeMs(level, args.updatedAt);
+    const sourceCaveat = level.primarySource === "mixed" ? COMBINED_CAVEAT : caveatForLevel(level);
+    return {
+      id: `reaction-zone-${level.id}`,
+      levelId: level.id,
+      price: level.price,
+      zoneLow,
+      zoneHigh,
+      distancePct: level.distancePct,
+      directionBias: level.directionBias,
+      confidence: level.confidence,
+      confidenceReason:
+        level.primarySource === "positioning"
+          ? "Positioning-only zone. Require price acceptance or rejection before treating it as a reaction."
+          : "Reaction zone scored from confluence across available public-stream inputs.",
+      score: level.score,
+      primarySource: level.primarySource,
+      ageMs,
+      windowMs: args.windowMs,
+      sourceCaveat,
+      evidence: level.evidence,
+      hiddenReason: isStaleZone(level, args.updatedAt, args.windowMs) ? "stale" : level.hiddenReason,
+    };
+  });
+}
+
+type ReactionLevelsPayloadBase = Omit<ReactionLevelsPayload, "orderBook" | "positioning" | "reactionZones">;
+
+export function withStructuredReactionPayloadSections(payload: ReactionLevelsPayloadBase): ReactionLevelsPayload {
+  return {
+    ...payload,
+    orderBook: buildOrderBookSection({
+      bookBuckets: payload.overlays.bookLiquidity,
+      currentPrice: payload.currentPrice,
+      windowMs: payload.windowMs,
+    }),
+    positioning: buildPositioningSection({
+      levels: payload.overlayLevels.oiHolding,
+      currentPrice: payload.currentPrice,
+      windowMs: payload.windowMs,
+      updatedAt: payload.updatedAt,
+    }),
+    reactionZones: buildReactionZoneSection({
+      levels: payload.levels,
+      currentPrice: payload.currentPrice,
+      windowMs: payload.windowMs,
+      updatedAt: payload.updatedAt,
+    }),
+  };
 }
 
 export function buildReactionLevels({
@@ -737,6 +1280,15 @@ export function buildReactionLevels({
           longLiqNotionalUsd: level.longLiqNotionalUsd,
           shortLiqNotionalUsd: level.shortLiqNotionalUsd,
         }),
+        tooltip: {
+          refreshedAtMs: updatedAt,
+          sourceCaveat: MARKET_STREAM_CAVEAT.text,
+          ageMs: 0,
+          windowMs,
+        },
+        ageMs: 0,
+        windowMs,
+        sourceCaveat: MARKET_STREAM_CAVEAT,
         components: {
           bookDepthUsd,
           tradeNotionalUsd,
@@ -772,7 +1324,7 @@ export function buildReactionLevels({
             : ("mixed" as const),
     }));
 
-  return {
+  return withStructuredReactionPayloadSections({
     coin,
     currentPrice,
     windowMs,
@@ -795,7 +1347,7 @@ export function buildReactionLevels({
       oiEntryProfile,
       trackedLiquidations,
     },
-  };
+  });
 }
 
 function reactionKind(level: ReactionLevel, currentPrice: number): "support" | "resistance" {
@@ -926,6 +1478,15 @@ export function reactionLevelsToSupportResistanceLevels(
   return sourceLevels
     .map((level, index) => {
       const kind = reactionKind(level, currentPrice);
+      const positioning =
+        level.primarySource === "positioning"
+          ? positioningZoneFromLevel({
+              level,
+              currentPrice,
+              windowMs: payload.windowMs,
+              updatedAt: payload.updatedAt,
+            })
+          : null;
       const halfRange = Math.max(level.price * 0.0009, currentPrice * 0.00055);
       const zoneLow = level.zoneLow ?? Number((level.price - halfRange).toFixed(level.price >= 100 ? 0 : 4));
       const zoneHigh = level.zoneHigh ?? Number((level.price + halfRange).toFixed(level.price >= 100 ? 0 : 4));
@@ -957,18 +1518,23 @@ export function reactionLevelsToSupportResistanceLevels(
               ).toFixed(2),
             )
           : null;
+      const zoneTooltip = {
+        ...level.tooltip,
+        aggressorSide: positioning?.aggressorSide ?? level.tooltip?.aggressorSide,
+        role: positioning?.role ?? level.tooltip?.role,
+        roleLabel: positioning?.roleLabel ?? level.tooltip?.roleLabel,
+        confidenceReason: positioning?.confidenceReason ?? level.tooltip?.confidenceReason,
+        sourceCaveat: positioning?.sourceCaveat.text ?? level.tooltip?.sourceCaveat,
+        ageMs: positioning?.ageMs ?? level.tooltip?.ageMs,
+        windowMs: positioning?.windowMs ?? level.tooltip?.windowMs,
+        hiddenReason: positioning?.hiddenReason ?? level.tooltip?.hiddenReason,
+      };
 
       return {
         id: `reaction-${level.id}`,
         label:
           level.primarySource === "positioning"
-            ? level.zoneSide === "bull"
-              ? "Long OI holding zone"
-              : level.zoneSide === "bear"
-                ? "Short OI holding zone"
-                : level.components.buyNotionalUsd >= level.components.sellNotionalUsd
-                  ? "Likely long holding"
-                  : "Likely short holding"
+            ? positioning?.roleLabel ?? "Inferred positioning zone"
             : reactionLabelForChart(level.reactionLabel),
         kind,
         source: "leverage_liquidation",
@@ -1004,7 +1570,7 @@ export function reactionLevelsToSupportResistanceLevels(
         inferredOiUsd: level.components.oiEntryNotionalUsd,
         buyNotionalUsd: level.components.buyNotionalUsd,
         sellNotionalUsd: level.components.sellNotionalUsd,
-        zoneTooltip: level.tooltip,
+        zoneTooltip,
       } satisfies SupportResistanceLevel;
     });
 }

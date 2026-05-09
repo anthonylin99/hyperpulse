@@ -7,10 +7,10 @@ The worker expects the Neon schema to already be migrated. Run migrations from t
 ## Runtime contract
 
 ```text
-Linux worker -> public Hyperliquid streams -> Neon reaction tables -> frontend /api/market/reaction-levels -> OI Holding chips
+Linux worker -> public Hyperliquid streams -> Neon reaction tables -> frontend /api/market/reaction-levels -> positioning + reaction panels
 ```
 
-The worker writes compact current OI Holding zones into Neon. The frontend picks up new top OI Holding levels only when the frontend host also has Neon env access, preferably `NEON_DATABASE_URL_POOLING`, pointed at the same Neon project and branch.
+The worker writes compact inferred positioning zones into Neon. The frontend picks up new buyer/seller-initiated builds only when the frontend host also has Neon env access, preferably `NEON_DATABASE_URL_POOLING`, pointed at the same Neon project and branch.
 
 ## Required env
 
@@ -24,7 +24,7 @@ REACTION_MAP_BUCKET_MS=60000
 REACTION_MAP_FLUSH_MS=15000
 REACTION_MAP_BOOK_LEVEL_LIMIT=40
 REACTION_MAP_WIDE_BOOK_N_SIG_FIGS=3,2
-REACTION_MAP_ZONE_WINDOWS=5m,15m,1h
+REACTION_MAP_ZONE_WINDOWS=5m,15m,1h,4h
 REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT=0.8
 REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD=250000
 REACTION_MAP_CLEANUP_RANGE_MIN_PCT=2
@@ -101,4 +101,4 @@ After the worker flushes rows, check the frontend against the same Neon project:
 curl -fsS "https://hyperpulsehl.com/api/market/reaction-levels?coin=BTC&window=15m" | head -c 500
 ```
 
-The response should include `levels` and OI Holding overlay entries once the worker has flushed fresh buckets for the configured major assets. If the Linux worker is healthy but the frontend stays stale, check the frontend deploy env first: it needs `NEON_DATABASE_URL_POOLING` for runtime reads.
+The response should include `orderBook`, `positioning`, and `reactionZones` sections once the worker has flushed fresh buckets for the configured major assets. If the Linux worker is healthy but the frontend stays stale, check the frontend deploy env first: it needs `NEON_DATABASE_URL_POOLING` for runtime reads.

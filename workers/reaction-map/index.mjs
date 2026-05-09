@@ -36,7 +36,7 @@ const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "main
 const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, ["BTC", "ETH", "SOL"]).map((asset) =>
   asset.toUpperCase(),
 );
-const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["5m", "15m", "1h"])
+const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["5m", "15m", "1h", "4h"])
   .map(windowMsFromLabel)
   .filter((value) => value != null);
 const WIDE_BOOK_N_SIG_FIGS = parseList(process.env.REACTION_MAP_WIDE_BOOK_N_SIG_FIGS, ["3", "2"])
@@ -653,8 +653,8 @@ function buildZoneFromCluster(cluster, side, currentPrice) {
         Math.min(12, Math.abs(buyNotionalUsd - sellNotionalUsd) / Math.max(tradeNotionalUsd, 1) * 12),
     ),
   );
-  const holdingSideLabel = side === "bull" ? "long" : "short";
-  const reasonSelected = `Top ${holdingSideLabel} OI zone from ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`;
+  const buildSideLabel = side === "bull" ? "buyer-initiated" : "seller-initiated";
+  const reasonSelected = `Top ${buildSideLabel} inferred OI build from ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`;
 
   return {
     side,
@@ -720,11 +720,18 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones) {
         const tooltip = {
           rank,
           side,
+          windowMs,
           range: `${zone.zoneLow.toFixed(asset === "BTC" ? 0 : 2)}-${zone.zoneHigh.toFixed(asset === "BTC" ? 0 : 2)}`,
           totalRecentFlowUsd: zone.tradeNotionalUsd,
           inferredOiUsd: zone.inferredOiNotionalUsd,
           buyNotionalUsd: zone.buyNotionalUsd,
           sellNotionalUsd: zone.sellNotionalUsd,
+          aggressorSkew:
+            zone.tradeNotionalUsd > 0
+              ? (zone.buyNotionalUsd - zone.sellNotionalUsd) / zone.tradeNotionalUsd
+              : 0,
+          candidateCount: zone.candidateCount,
+          clusterWidthPct: zone.clusterWidthPct,
           distancePct: zone.distancePct,
           reasonSelected: zone.reasonSelected,
           refreshedAtMs: now,
@@ -802,7 +809,13 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones) {
             zone.askDepthUsd,
             zone.walletCount,
             JSON.stringify(tooltip),
-            JSON.stringify({ source: "hyperliquid_ws", clusterWidthPct: ZONE_CLUSTER_WIDTH_PCT }),
+            JSON.stringify({
+              source: "hyperliquid_ws",
+              inferenceType: "public_trade_flow_plus_positive_oi_delta",
+              windowMs,
+              clusterWidthPct: ZONE_CLUSTER_WIDTH_PCT,
+              minTradeNotionalUsd: ZONE_MIN_TRADE_NOTIONAL_USD,
+            }),
           ],
         );
 

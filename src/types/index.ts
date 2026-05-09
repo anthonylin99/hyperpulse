@@ -342,6 +342,14 @@ export interface SupportResistanceLevel {
     sellNotionalUsd?: number;
     reasonSelected?: string;
     refreshedAtMs?: number;
+    aggressorSide?: "buyer_initiated" | "seller_initiated" | "mixed";
+    role?: "long_defense" | "trapped_longs" | "short_defense" | "trapped_shorts" | "unknown" | "stale";
+    roleLabel?: string;
+    confidenceReason?: string;
+    sourceCaveat?: string;
+    ageMs?: number | null;
+    windowMs?: number;
+    hiddenReason?: string;
   };
 }
 

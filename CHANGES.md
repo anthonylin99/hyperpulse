@@ -312,3 +312,17 @@
 - Attempted: reproduced the missing-table condition through the Reaction-only health state, then guarded `/api/market/radar` with a `to_regclass('public.market_candles')` check before querying beta history.
 - Decision: keep beta history optional. If `market_candles` is absent, radar falls back to live market scoring without logging a Postgres `42P01` stack trace or recreating auxiliary tables.
 - Result: `docker compose build web` passed, `web` restarted on port `3004`, and `GET /api/market/radar` returned `200` with no fresh `market-radar`, `market_candles`, or `42P01` log entries.
+
+## 2026-05-08
+
+- Request: plan the larger Reaction Map/OI Holdings redesign using GPT Pro's critique of real data vs inferred positioning.
+- Attempted: fetched latest remote, rebased local `main`, verified Hyperliquid docs for `l2Book`, `trades`, and `activeAssetCtx`, reviewed current Reaction Map worker/API/chart surfaces, and created a named long-task memory plan.
+- Decision: split the future work into real Order Book shelves, inferred OI Positioning, and confluence-based Reaction zones; OI must show up to five zones per side with confidence and missing-slot explanations, not forced support/resistance lines.
+- Result: saved the baseline plan under `.codex/task-memory/reaction-map-positioning-redesign/` with implementation, findings, orchestration, ownership, integration, and verification artifacts.
+
+## 2026-05-09
+
+- Request: implement the Reaction Map/OI Holdings redesign with multiple agents from the saved plan.
+- Attempted: split API/model, worker/health, and UI work across agents, integrated their outputs, added structured `orderBook`, `positioning`, and `reactionZones` payload sections, added a dedicated Reaction Map panel, widened worker defaults to `5m,15m,1h,4h`, updated health reporting, and ran a challenger pass against the first integration.
+- Decision: keep order-book shelves as real liquidity, positioning as inferred buyer/seller-initiated OI builds with source caveats, and reaction zones as confluence/context. Do not color or label positioning purely by whether it is above or below spot.
+- Result: fixed challenger blockers for real 4h routing, duplicate hidden slots, confluence-only `reactionZones` that require book/stress overlap with positioning, role-aware positioning colors, live `l2Book` top-5 fallback shelves, panel/chart selection mapping, and stale naming. Docker lint, typecheck, production build, rebuilt `web` and `reaction-map` images, API smoke, health script, browser verification, and runtime logs passed. BTC/ETH/SOL now serve 5 bid shelves + 5 ask shelves; positioning returns buyer/seller builds plus hidden-slot reasons.
