@@ -45,6 +45,12 @@ function asIso(value) {
   return Number.isFinite(parsed) && parsed > 0 ? new Date(parsed).toISOString() : null;
 }
 
+function ageMinutes(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round((Date.now() - parsed) / 60_000);
+}
+
 try {
   console.log("\nMomentum runtime config");
   console.table([{
@@ -65,6 +71,7 @@ try {
   console.log("\nMomentum worker runs");
   console.table(runs.rows.map((row) => ({
     started: asIso(row.started_at),
+    ageMin: ageMinutes(row.started_at),
     completed: asIso(row.completed_at),
     status: row.status,
     dryRun: row.payload?.dryRun,
@@ -76,6 +83,16 @@ try {
     selected: Array.isArray(row.payload?.selected) ? row.payload.selected.join(",") : "",
     message: row.message,
   })));
+
+  const latestRun = runs.rows[0];
+  const latestAge = ageMinutes(latestRun?.started_at);
+  if (latestAge == null) {
+    console.warn("\nALERT: no momentum worker runs found.");
+  } else if (latestAge > 15) {
+    console.warn(`\nALERT: latest momentum worker run is stale (${latestAge} minutes ago). Railway/worker is likely stopped.`);
+  } else {
+    console.log(`\nWorker freshness: latest run ${latestAge} minutes ago.`);
+  }
 
   const alerts = await pool.query(
     `select asset, created_at, alert_price, score, severity, route_href

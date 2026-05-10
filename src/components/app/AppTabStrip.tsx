@@ -10,7 +10,7 @@ import { useAppConfig } from "@/context/AppConfigContext";
 export default function AppTabStrip() {
   const pathname = usePathname();
   const [recentAlertCount, setRecentAlertCount] = useState(0);
-  const { factorsEnabled } = useAppConfig();
+  const { agentDevEnabled, factorsEnabled } = useAppConfig();
 
   useEffect(() => {
     let mounted = true;
@@ -27,6 +27,7 @@ export default function AppTabStrip() {
     };
   }, []);
   const tabs = APP_TABS.filter((tab) => {
+    if (!agentDevEnabled && tab.key === "agent") return false;
     if (!factorsEnabled && tab.key === "factors") return false;
     return true;
   });

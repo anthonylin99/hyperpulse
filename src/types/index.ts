@@ -424,20 +424,6 @@ export interface PressureBatchPayload {
   assets: Record<string, PressurePayload>;
 }
 
-// ─── Activity Types ─────────────────────────────────────────────
-
-export type ActivityType = "liquidation" | "whale" | "oi-spike";
-
-export interface ActivityEntry {
-  id: string;
-  type: ActivityType;
-  message: string;
-  coin: string;
-  timestamp: number;
-  notional?: number;
-  count?: number;
-}
-
 // ─── Factor Types ───────────────────────────────────────────────
 
 export interface FactorHolding {

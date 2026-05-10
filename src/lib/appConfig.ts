@@ -1,6 +1,7 @@
 export const ENABLE_TRADING_DEFAULT = false;
 export const ENABLE_FACTORS_DEFAULT = false;
 export const ENABLE_FACTORS_PROD_DEFAULT = false;
+export const ENABLE_AGENT_DEV_DEFAULT = process.env.NODE_ENV !== "production";
 
 function readEnvFlag(value: string | undefined): boolean | null {
   if (value === "true") return true;
@@ -37,6 +38,16 @@ export function isFactorsEnabled() {
     resolveFlag(
       readEnvFlag(process.env.ENABLE_FACTORS),
       readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_FACTORS),
+    ) ?? defaultValue
+  );
+}
+
+export function isAgentDevEnabled() {
+  const defaultValue = isPublicProduction() ? false : ENABLE_AGENT_DEV_DEFAULT;
+  return (
+    resolveFlag(
+      readEnvFlag(process.env.ENABLE_AGENT_DEV),
+      readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_AGENT_DEV),
     ) ?? defaultValue
   );
 }

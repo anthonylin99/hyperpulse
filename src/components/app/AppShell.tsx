@@ -19,6 +19,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/markets/") ||
     pathname === "/alerts" ||
     pathname.startsWith("/alerts/") ||
+    pathname === "/agent" ||
+    pathname.startsWith("/agent/") ||
     pathname === "/portfolio" ||
     pathname.startsWith("/portfolio/") ||
     pathname === "/docs" ||

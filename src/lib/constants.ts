@@ -25,7 +25,6 @@ export const MARKET_ENRICHMENT_INTERVAL_MS =
   process.env.NEXT_PUBLIC_VERCEL_ENV === "production" ? 10 * 60_000 : 5 * 60_000;
 export const POLL_INTERVAL_PORTFOLIO = 300_000; // 5m
 export const WS_DEBOUNCE_MS = 1_000;
-export const WHALE_THRESHOLD_USD = 500_000;
 export const OI_SPIKE_THRESHOLD_PCT = 5;
 export const MIN_OI_USD = 10_000_000; // $10M minimum OI filter
 

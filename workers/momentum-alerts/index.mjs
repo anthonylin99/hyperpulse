@@ -43,8 +43,12 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-if (!envFlag("ENABLE_MOMENTUM_ALERTS")) {
-  console.log("[momentum-alerts] disabled; set ENABLE_MOMENTUM_ALERTS=true to run this legacy alert worker.");
+const ENABLE_MOMENTUM_ALERTS_ENV = cleanEnv(process.env.ENABLE_MOMENTUM_ALERTS).toLowerCase();
+const MOMENTUM_ALERTS_ENABLED =
+  ENABLE_MOMENTUM_ALERTS_ENV === "" ? true : envFlag("ENABLE_MOMENTUM_ALERTS");
+
+if (!MOMENTUM_ALERTS_ENABLED) {
+  console.log("[momentum-alerts] disabled; ENABLE_MOMENTUM_ALERTS=false");
   process.exit(0);
 }
 
@@ -1044,6 +1048,15 @@ async function main() {
     runCycle().catch((error) => console.error("[momentum-alerts] cycle failed", error));
   }, LOOP_INTERVAL_MS);
 }
+
+process.on("unhandledRejection", (error) => {
+  console.error("[momentum-alerts] unhandled rejection", error);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("[momentum-alerts] uncaught exception", error);
+  process.exit(1);
+});
 
 main().catch(async (error) => {
   console.error("[momentum-alerts] fatal", error);

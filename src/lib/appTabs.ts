@@ -1,9 +1,10 @@
-export type AppTabKey = "home" | "markets" | "alerts" | "factors" | "portfolio" | "docs";
+export type AppTabKey = "home" | "markets" | "alerts" | "agent" | "factors" | "portfolio" | "docs";
 
 export const APP_TABS: Array<{ key: AppTabKey; label: string; href: string; match: string[] }> = [
   { key: "home", label: "Home", href: "/", match: ["/"] },
   { key: "markets", label: "Markets", href: "/markets", match: ["/markets"] },
   { key: "alerts", label: "Alerts", href: "/alerts", match: ["/alerts"] },
+  { key: "agent", label: "Agent", href: "/agent", match: ["/agent"] },
   { key: "factors", label: "Factors", href: "/factors", match: ["/factors"] },
   { key: "portfolio", label: "Portfolio", href: "/portfolio", match: ["/portfolio"] },
   { key: "docs", label: "Docs", href: "/docs", match: ["/docs"] },
