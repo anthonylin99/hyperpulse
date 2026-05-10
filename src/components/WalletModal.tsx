@@ -17,6 +17,9 @@ interface WalletModalProps {
   onClose: () => void;
 }
 
+const LAST_READONLY_ADDR = "hp_last_readonly_address";
+const MAIN_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
 export default function WalletModal({ onClose }: WalletModalProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -45,6 +48,18 @@ export default function WalletModal({ onClose }: WalletModalProps) {
       router.push("/portfolio");
     }
   };
+
+  useEffect(() => {
+    if (connectedAddress) {
+      setAddress(connectedAddress);
+      return;
+    }
+
+    const storedAddress = localStorage.getItem(LAST_READONLY_ADDR);
+    if (storedAddress && MAIN_ADDRESS_REGEX.test(storedAddress)) {
+      setAddress(storedAddress);
+    }
+  }, [connectedAddress]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
