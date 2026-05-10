@@ -65,22 +65,12 @@ function MoverRow({
 }: {
   mover: TopMover;
   maxAbs: number;
-  tone: "gain" | "loss" | "lag";
+  tone: "gain" | "loss";
   onSelect: (coin: string, e: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const widthPct = maxAbs > 0 ? Math.min(100, (Math.abs(mover.pctChange) / maxAbs) * 100) : 0;
-  const barColor =
-    tone === "gain"
-      ? "bg-emerald-500/75"
-      : tone === "loss"
-        ? "bg-rose-500/75"
-        : "bg-zinc-500/55";
-  const valueColor =
-    tone === "gain"
-      ? "text-emerald-300"
-      : tone === "loss"
-        ? "text-rose-300"
-        : "text-zinc-300";
+  const barColor = tone === "gain" ? "bg-emerald-500/75" : "bg-rose-500/75";
+  const valueColor = tone === "gain" ? "text-emerald-300" : "text-rose-300";
 
   return (
     <Link
@@ -141,12 +131,13 @@ export default function TopMoversPanel() {
     };
   }, [range]);
 
-  const maxAbs = useMemo(() => {
+  const gainerMaxAbs = useMemo(() => {
     if (!data) return 0;
-    let m = 0;
-    for (const row of data.gainers) m = Math.max(m, Math.abs(row.pctChange));
-    for (const row of data.losers) m = Math.max(m, Math.abs(row.pctChange));
-    return m;
+    return data.gainers.reduce((max, row) => Math.max(max, Math.abs(row.pctChange)), 0);
+  }, [data]);
+  const loserMaxAbs = useMemo(() => {
+    if (!data) return 0;
+    return data.losers.reduce((max, row) => Math.max(max, Math.abs(row.pctChange)), 0);
   }, [data]);
 
   const handleSelect = (coin: string, event: MouseEvent<HTMLAnchorElement>) => {
@@ -209,7 +200,7 @@ export default function TopMoversPanel() {
                 <MoverRow
                   key={`g-${mover.coin}`}
                   mover={mover}
-                  maxAbs={maxAbs}
+                  maxAbs={gainerMaxAbs}
                   tone="gain"
                   onSelect={handleSelect}
                 />
@@ -221,18 +212,24 @@ export default function TopMoversPanel() {
 
           <div>
             <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">
-              {range === "7d" ? "7D Laggards" : "Top Losers"}
+              Top Losers
             </div>
             <div className="space-y-0.5">
-              {data.losers.map((mover) => (
-                <MoverRow
-                  key={`l-${mover.coin}`}
-                  mover={mover}
-                  maxAbs={maxAbs}
-                  tone={mover.pctChange < 0 ? "loss" : "lag"}
-                  onSelect={handleSelect}
-                />
-              ))}
+              {data.losers.length > 0 ? (
+                data.losers.map((mover) => (
+                  <MoverRow
+                    key={`l-${mover.coin}`}
+                    mover={mover}
+                    maxAbs={loserMaxAbs}
+                    tone="loss"
+                    onSelect={handleSelect}
+                  />
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/40 px-2 py-2 text-[11px] leading-4 text-zinc-500">
+                  {range === "7d" ? "No other liquid perps are negative over 7D." : "No liquid perps are negative right now."}
+                </div>
+              )}
             </div>
           </div>
         </div>

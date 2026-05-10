@@ -129,7 +129,7 @@ export default function AlertsPage() {
                 Momentum alert blotter.
               </h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-                Dense event log for liquid perp momentum. Each row stores the exact alert price and timestamp.
+                Dense event log for liquid perp momentum. Strict breakout alert rules mean not every top mover qualifies; each row stores the exact alert price and timestamp.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs">

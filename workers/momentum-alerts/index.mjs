@@ -648,21 +648,25 @@ function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direc
   const d24h = directionalReturn(direction, features.return24h);
   const structureBreak = direction === "short" ? features.breakdown : features.breakout;
   const nearExtreme = direction === "short" ? features.nearLow : features.nearHigh;
-  const volumeConfirmed = volumeVs >= 1.5;
-  const oiConfirmed = oiChangePct != null && oiChangePct >= 2.5;
+  const volumeConfirmed = volumeVs >= 1.2;
   const liquidityOk = asset.liquidityQualified || isLargeCapLike(asset);
   const highQualityScore = score.score >= HIGH_SCORE_THRESHOLD;
-  const strongIntradayBreakout = d1h >= 2.5 && d4h >= 5.0;
-  const continuation = d4h >= 7.0 && d1h >= 0.8 && nearExtreme;
-  const trendDayBreakout = d24h >= 10.0 && d4h >= 4.0 && d1h >= 1.0;
-  const exceptionalFollowThrough = d24h >= EXCEPTIONAL_MOVE_PCT && d4h >= 1.5 && d1h >= -0.5 && nearExtreme;
-  const massiveMove = strongIntradayBreakout || continuation || trendDayBreakout || exceptionalFollowThrough;
-  const confirmedMove = massiveMove && (structureBreak || nearExtreme);
-  const confirmedParticipation = volumeConfirmed || oiConfirmed || exceptionalFollowThrough;
+  const confirmedMove = structureBreak || nearExtreme;
+  const strictLongBreakout =
+    direction === "long" &&
+    d24h >= 10 &&
+    d24h <= 22 &&
+    d4h >= 4 &&
+    d1h >= 0.8;
+  const strictShortBreakdown =
+    direction === "short" &&
+    d24h >= 6 &&
+    d4h >= 3 &&
+    d1h >= 0.6;
   const fundingPenalty = direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65;
   const fundingOk = !fundingPenalty || score.score >= HIGH_SCORE_THRESHOLD + 8;
 
-  return liquidityOk && highQualityScore && confirmedMove && confirmedParticipation && fundingOk;
+  return liquidityOk && highQualityScore && confirmedMove && volumeConfirmed && fundingOk && (strictLongBreakout || strictShortBreakdown);
 }
 
 function isStoredTelegramQualityAlert(alert) {
@@ -673,17 +677,20 @@ function isStoredTelegramQualityAlert(alert) {
   const volumeVs = Number(alert.volumeVsBaseline);
   const structureBreak = direction === "short" ? Boolean(alert.payload?.breakdown) : Boolean(alert.payload?.breakout);
   const nearExtreme = direction === "short" ? Boolean(alert.payload?.nearLow) : Boolean(alert.payload?.nearHigh);
-  const strongIntradayBreakout = d1h >= 2.5 && d4h >= 5.0;
-  const continuation = d4h >= 7.0 && d1h >= 0.8 && nearExtreme;
-  const trendDayBreakout = d24h >= 10.0 && d4h >= 4.0 && d1h >= 1.0;
-  const exceptionalFollowThrough = d24h >= EXCEPTIONAL_MOVE_PCT && d4h >= 1.5 && d1h >= -0.5 && nearExtreme;
-  const massiveMove = strongIntradayBreakout || continuation || trendDayBreakout || exceptionalFollowThrough;
-  const confirmedMove = massiveMove && (structureBreak || nearExtreme);
-  const confirmedParticipation =
-    volumeVs >= 1.5 ||
-    (alert.openInterestChangePct != null && alert.openInterestChangePct >= 2.5) ||
-    exceptionalFollowThrough;
-  return alert.score >= HIGH_SCORE_THRESHOLD && confirmedMove && confirmedParticipation;
+  const confirmedMove = structureBreak || nearExtreme;
+  const strictLongBreakout =
+    direction === "long" &&
+    d24h >= 10 &&
+    d24h <= 22 &&
+    d4h >= 4 &&
+    d1h >= 0.8;
+  const strictShortBreakdown =
+    direction === "short" &&
+    d24h >= 6 &&
+    d4h >= 3 &&
+    d1h >= 0.6;
+
+  return alert.score >= HIGH_SCORE_THRESHOLD && confirmedMove && volumeVs >= 1.2 && (strictLongBreakout || strictShortBreakdown);
 }
 
 async function buildCandidate(asset) {
@@ -834,8 +841,9 @@ function buildTelegramText(alert) {
   const invalidationLabel = direction === "SHORT" ? "Invalid >" : "Invalid <";
   const lines = [
     `HYPERPULSE · ${severity}`,
+    `Strict breakout alert · not every top mover qualifies`,
     `${alert.asset} ${direction} · ${setupLabel(alert)}`,
-    `Now: ${formatPrice(alert.alertPrice)} · 1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)}`,
+    `Now: ${formatPrice(alert.alertPrice)} · 1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`,
     triggerLevelLine(alert),
     `Trim: ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`,
     `Context: vol ${formatMultiple(alert.volumeVsBaseline)} · ${fundingTag(alert.fundingApr)}`,

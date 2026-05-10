@@ -167,7 +167,7 @@ export async function GET(req: NextRequest) {
       .slice(0, TOP_N)
       .map(toMover);
     const losers = scored
-      .filter((s) => (range === "7d" ? Number.isFinite(s.pctChange) : s.pctChange < 0))
+      .filter((s) => s.pctChange < 0)
       .sort((a, b) => a.pctChange - b.pctChange)
       .slice(0, TOP_N)
       .map(toMover);
