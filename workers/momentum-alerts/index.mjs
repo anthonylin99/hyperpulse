@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { Pool } from "pg";
 
+const PG_SSL_MODES_TO_PIN = new Set(["prefer", "require", "verify-ca"]);
+
 function loadLocalEnv() {
   for (const file of [".env.local", ".env", "workers/momentum-alerts/.env"]) {
     if (!existsSync(file)) continue;
@@ -25,13 +27,33 @@ function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^["']|["']$/g, "");
 }
 
+function normalizeDatabaseUrl(value) {
+  const cleaned = cleanEnv(value);
+  if (!cleaned) return "";
+
+  try {
+    const url = new URL(cleaned);
+    if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return cleaned;
+
+    const sslMode = url.searchParams.get("sslmode")?.toLowerCase();
+    if (sslMode && PG_SSL_MODES_TO_PIN.has(sslMode)) {
+      url.searchParams.set("sslmode", "verify-full");
+      return url.toString();
+    }
+  } catch {
+    return cleaned;
+  }
+
+  return cleaned;
+}
+
 function envFlag(name, fallback = false) {
   const value = cleanEnv(process.env[name]).toLowerCase();
   if (!value) return fallback;
   return value === "true" || value === "1" || value === "yes";
 }
 
-const DATABASE_URL = cleanEnv(
+const DATABASE_URL = normalizeDatabaseUrl(
   process.env.NEON_DATABASE_URL_POOLING ??
     process.env.NEON_DATABASE_URL ??
     process.env.DATABASE_URL ??

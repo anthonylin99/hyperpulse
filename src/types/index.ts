@@ -295,7 +295,8 @@ export interface SupportResistanceLevel {
     | "swing_pivot"
     | "structure_pivot"
     | "structure_trendline"
-    | "leverage_liquidation";
+    | "leverage_liquidation"
+    | "reaction_map";
   price: number;
   zoneLow?: number;
   zoneHigh?: number;

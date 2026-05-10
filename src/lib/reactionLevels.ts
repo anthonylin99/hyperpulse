@@ -13,7 +13,7 @@ export type ReactionLabel =
 export type ReactionDirectionBias = "up" | "down" | "two_way";
 export type ReactionConfidence = "low" | "medium" | "high";
 export type ReactionPrimarySource = "book" | "positioning" | "stress" | "mixed";
-export type ReactionOverlayMode = "all" | "book" | "oi_holding" | "stress";
+export type ReactionOverlayMode = "confluence" | "book" | "oi_holding" | "stress";
 export type ReactionExposureSide = "bull" | "bear";
 export type ReactionOrderBookSide = "bid" | "ask";
 export type ReactionPositioningAggressorSide = "buyer_initiated" | "seller_initiated" | "mixed";
@@ -116,7 +116,19 @@ export const REACTION_MAP_ASSETS = [
   "XRP",
   "DOGE",
   "ZEC",
+  "TON",
+  "SUI",
+  "ONDO",
   "AAVE",
+  "LINK",
+  "BNB",
+  "AVAX",
+  "LTC",
+  "ADA",
+  "TRX",
+  "UNI",
+  "ENA",
+  "WIF",
 ] as const;
 
 const DEFAULT_REACTION_ASSETS = new Set<string>(REACTION_MAP_ASSETS);
@@ -224,7 +236,11 @@ export interface ReactionLevelsPayload {
   coin: string;
   currentPrice: number | null;
   windowMs: number;
+  sourceWindowMs: number;
   updatedAt: number;
+  generatedAt: number;
+  source: "empty" | "stream_buckets" | "worker_promoted" | "worker_promoted_plus_stream_buckets";
+  algorithmVersion: string;
   coverage: {
     marketStreams: boolean;
     trackedWalletSample: boolean;
@@ -283,6 +299,7 @@ type BuildReactionLevelsArgs = {
 const MIN_REACTION_DISTANCE_PCT = 0.45;
 const MIN_REACTION_SPACING_PCT = 0.55;
 const MIN_REACTION_SCORE = 8;
+const MIN_POSITIONING_DISPLAY_DISTANCE_PCT = 0.45;
 const MAX_REACTION_LEVELS_PER_SIDE = 4;
 const MAX_REACTION_LEVELS = MAX_REACTION_LEVELS_PER_SIDE * 2;
 const MAX_OI_HOLDING_ZONES_PER_SIDE = 5;
@@ -290,6 +307,7 @@ const MAX_ORDER_BOOK_SHELVES_PER_SIDE = 5;
 const OI_HOLDING_CLUSTER_WIDTH_PCT = 0.8;
 const MIN_OI_HOLDING_TRADE_NOTIONAL_USD = 250_000;
 const POSITIONING_STALE_MULTIPLIER = 2;
+const REACTION_ALGORITHM_VERSION = "reaction-map-v2.1.0";
 
 const MARKET_STREAM_CAVEAT: ReactionSourceCaveat = {
   exactPositions: false,
@@ -385,6 +403,11 @@ function isStaleZone(level: ReactionLevel, updatedAt: number, windowMs: number):
   if (level.hiddenReason === "stale" || level.positioning?.role === "stale") return true;
   const ageMs = zoneAgeMs(level, updatedAt);
   return ageMs != null && ageMs > windowMs * POSITIONING_STALE_MULTIPLIER;
+}
+
+function isPositioningDisplayable(level: ReactionLevel, updatedAt: number, windowMs: number): boolean {
+  if (level.hiddenReason != null || isStaleZone(level, updatedAt, windowMs)) return false;
+  return Math.abs(level.distancePct) >= MIN_POSITIONING_DISPLAY_DISTANCE_PCT;
 }
 
 function zonePriceLocation(args: {
@@ -1039,7 +1062,7 @@ function buildPositioningSection(args: {
   updatedAt: number;
 }): ReactionLevelsPayload["positioning"] {
   const zones = args.levels
-    .filter((level) => level.primarySource === "positioning")
+    .filter((level) => level.primarySource === "positioning" && isPositioningDisplayable(level, args.updatedAt, args.windowMs))
     .map((level) => positioningZoneFromLevel({ ...args, level }));
   const buyerInitiatedBuilds = zones
     .filter((zone) => zone.aggressorSide === "buyer_initiated")
@@ -1085,7 +1108,10 @@ function buildReactionZoneSection(args: {
       const hasBook = level.components.bookDepthUsd > 0;
       const hasPositioning = level.components.tradeNotionalUsd > 0 || level.components.oiEntryNotionalUsd > 0;
       const hasStress = level.components.trackedLiqNotionalUsd > 0;
-      return level.primarySource === "mixed" || hasStress || (hasBook && hasPositioning);
+      const farEnough = Math.abs(level.distancePct) >= MIN_REACTION_DISTANCE_PCT;
+      if (level.primarySource === "positioning") return hasStress || (hasBook && farEnough);
+      if (level.primarySource === "book") return hasBook && farEnough;
+      return level.primarySource === "mixed" || hasStress || (hasBook && hasPositioning && farEnough);
     })
     .map((level) => {
     const zoneLow = level.zoneLow ?? level.price;
@@ -1102,9 +1128,7 @@ function buildReactionZoneSection(args: {
       directionBias: level.directionBias,
       confidence: level.confidence,
       confidenceReason:
-        level.primarySource === "positioning"
-          ? "Positioning-only zone. Require price acceptance or rejection before treating it as a reaction."
-          : "Reaction zone scored from confluence across available public-stream inputs.",
+        "Reaction zone scored from confluence across available public-stream inputs.",
       score: level.score,
       primarySource: level.primarySource,
       ageMs,
@@ -1116,11 +1140,19 @@ function buildReactionZoneSection(args: {
   });
 }
 
-type ReactionLevelsPayloadBase = Omit<ReactionLevelsPayload, "orderBook" | "positioning" | "reactionZones">;
+type ReactionLevelsPayloadBase = Omit<
+  ReactionLevelsPayload,
+  "orderBook" | "positioning" | "reactionZones" | "sourceWindowMs" | "generatedAt" | "algorithmVersion"
+> &
+  Partial<Pick<ReactionLevelsPayload, "sourceWindowMs" | "generatedAt" | "algorithmVersion">>;
 
 export function withStructuredReactionPayloadSections(payload: ReactionLevelsPayloadBase): ReactionLevelsPayload {
+  const generatedAt = payload.generatedAt ?? payload.updatedAt ?? Date.now();
   return {
     ...payload,
+    sourceWindowMs: payload.sourceWindowMs ?? payload.windowMs,
+    generatedAt,
+    algorithmVersion: payload.algorithmVersion ?? REACTION_ALGORITHM_VERSION,
     orderBook: buildOrderBookSection({
       bookBuckets: payload.overlays.bookLiquidity,
       currentPrice: payload.currentPrice,
@@ -1328,7 +1360,11 @@ export function buildReactionLevels({
     coin,
     currentPrice,
     windowMs,
+    sourceWindowMs: windowMs,
     updatedAt,
+    generatedAt: updatedAt,
+    source: "stream_buckets",
+    algorithmVersion: REACTION_ALGORITHM_VERSION,
     coverage: {
       marketStreams: bookBuckets.length > 0 || tradeBuckets.length > 0,
       trackedWalletSample: trackedLiquidations.length > 0,
@@ -1465,15 +1501,20 @@ export function buildReactionSetupSignal(payload: ReactionLevelsPayload): Market
 
 export function reactionLevelsToSupportResistanceLevels(
   payload: ReactionLevelsPayload,
-  overlay: ReactionOverlayMode = "all",
+  overlay: ReactionOverlayMode = "confluence",
 ): SupportResistanceLevel[] {
   const currentPrice = payload.currentPrice;
   if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return [];
 
+  const reactionZoneLevelIds = new Set((payload.reactionZones ?? []).map((zone) => zone.levelId));
   const sourceLevels =
-    overlay === "oi_holding"
-      ? payload.overlayLevels?.oiHolding ?? []
-      : payload.levels.filter((level) => overlay === "all" || level.primarySource === overlay);
+    overlay === "confluence"
+      ? payload.levels.filter((level) => reactionZoneLevelIds.has(level.id))
+      : overlay === "oi_holding"
+        ? (payload.overlayLevels?.oiHolding ?? []).filter((level) =>
+            isPositioningDisplayable(level, payload.updatedAt, payload.windowMs),
+          )
+        : payload.levels.filter((level) => level.primarySource === overlay);
 
   return sourceLevels
     .map((level, index) => {
@@ -1537,7 +1578,7 @@ export function reactionLevelsToSupportResistanceLevels(
             ? positioning?.roleLabel ?? "Inferred positioning zone"
             : reactionLabelForChart(level.reactionLabel),
         kind,
-        source: "leverage_liquidation",
+        source: "reaction_map",
         price: level.price,
         zoneLow,
         zoneHigh,
@@ -1565,7 +1606,7 @@ export function reactionLevelsToSupportResistanceLevels(
         leverageBucket: level.primarySource,
         walletCount: level.components.uniqueTraderCount,
         pressureSide: kind === "support" ? "long_liq" : "short_liq",
-        pressureSource: undefined,
+        pressureSource: "market_inferred",
         exposureSide: level.zoneSide,
         inferredOiUsd: level.components.oiEntryNotionalUsd,
         buyNotionalUsd: level.components.buyNotionalUsd,

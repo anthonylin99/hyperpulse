@@ -76,10 +76,9 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
 ];
 
 const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
-  { label: "Reaction", value: "all" },
+  { label: "Reaction", value: "confluence" },
   { label: "Order Book", value: "book" },
   { label: "Positioning", value: "oi_holding" },
-  { label: "Stress", value: "stress" },
 ];
 
 const CANDLE_FETCH_TIMEOUT_MS = 10_000;
@@ -258,8 +257,8 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
     return {
       label: "Pivot",
       summary: likelyLong
-        ? "Top inferred long holding. It can defend on retest, but a clean break can turn into sell pressure."
-        : "Top inferred short holding. It can reject on retest, but a clean hold above can turn into buy pressure.",
+        ? "Top inferred long positioning. It can defend on retest, but a clean break can turn into sell pressure."
+        : "Top inferred short positioning. It can reject on retest, but a clean hold above can turn into buy pressure.",
       reason: "Ranked from public trade concentration allocated against positive OI change. This is not exact trader-position data.",
       className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
     };
@@ -453,7 +452,7 @@ export default function PriceChart({
   const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
-  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("all");
+  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("confluence");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [candleRetryNonce, setCandleRetryNonce] = useState(0);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
@@ -769,7 +768,7 @@ export default function PriceChart({
 
   const levelSourceNote =
     oiHoldingHidden
-      ? "Positioning zones are warming up from current public flow."
+      ? "No inferred positioning zone is far enough from spot to matter yet."
       : orderBookWarming
         ? "Order Book shelves are still collecting from recent public depth."
       : latestLevelTimeMs != null
@@ -778,7 +777,7 @@ export default function PriceChart({
         ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
         : "Reaction Map";
   const levelAvailabilityMessage = oiHoldingHidden
-    ? "Positioning needs enough recent flow and positive OI change before zones appear. Missing zones are hidden rather than forced."
+    ? "Fresh OI builds are too close to spot right now, so HyperPulse hides them instead of pretending they are useful support or resistance."
     : orderBookWarming
       ? "Order Book levels need a few clean depth samples before they appear."
     : reactionSupported

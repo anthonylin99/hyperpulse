@@ -322,7 +322,30 @@
 
 ## 2026-05-09
 
+- Request: stop Reaction and Positioning from rendering the same levels, and widen live flow ingestion so more coins get useful levels.
+- Attempted: expanded Reaction Map defaults to 20 liquid perps, made positioning thresholds adaptive by asset/window flow, kept top-5 bid/ask shelves live from `l2Book`, separated Reaction overlays from positioning-only zones, and guarded the worker against overlapping DB write cycles after widening ingestion.
+- Decision: Positioning may show inferred OI/flow zones by itself, but Reaction should only show non-positioning confluence/stress zones; when confluence is absent, the Reaction view should not duplicate the Positioning chart.
+- Result: Docker typecheck, lint, production web build, reaction-map rebuild, health script, API smoke, and runtime logs passed. BTC/TON/SUI/ONDO health shows 5 bid shelves + 5 ask shelves; TON API smoke returned separate Reaction and Positioning IDs.
+
+## 2026-05-09
+
+- Request: remove the Node `pg-connection-string` SSL mode warning for Postgres URLs using `sslmode=require` or related aliases.
+- Attempted: refreshed Agent OS, fetched/pulled `main`, traced all `pg` Pool entry points, added shared URL normalization for app/scripts, normalized worker DB URLs before Pool construction, and rebuilt the Docker images for `web`, `migrate`, `market-collector`, `momentum-alerts`, and `reaction-map`.
+- Decision: preserve the current secure behavior by converting `sslmode=prefer`, `sslmode=require`, and `sslmode=verify-ca` to explicit `sslmode=verify-full` before passing connection strings to `pg`.
+- Result: `docker compose exec web npm run lint`, Docker image builds, worker syntax checks, and URL normalization smoke checks passed. Fresh `migrate` logs no longer show the SSL warning, but local Compose migration remains blocked by pre-existing checksum drift on `0007_reaction_only_cleanup.sql`; `web` was restarted with `--no-deps` on port `3004` because `3000` is occupied by `efiterminal-next`.
+
+## 2026-05-09
+
 - Request: implement the Reaction Map/OI Holdings redesign with multiple agents from the saved plan.
 - Attempted: split API/model, worker/health, and UI work across agents, integrated their outputs, added structured `orderBook`, `positioning`, and `reactionZones` payload sections, added a dedicated Reaction Map panel, widened worker defaults to `5m,15m,1h,4h`, updated health reporting, and ran a challenger pass against the first integration.
 - Decision: keep order-book shelves as real liquidity, positioning as inferred buyer/seller-initiated OI builds with source caveats, and reaction zones as confluence/context. Do not color or label positioning purely by whether it is above or below spot.
 - Result: fixed challenger blockers for real 4h routing, duplicate hidden slots, confluence-only `reactionZones` that require book/stress overlap with positioning, role-aware positioning colors, live `l2Book` top-5 fallback shelves, panel/chart selection mapping, and stale naming. Docker lint, typecheck, production build, rebuilt `web` and `reaction-map` images, API smoke, health script, browser verification, and runtime logs passed. BTC/ETH/SOL now serve 5 bid shelves + 5 ask shelves; positioning returns buyer/seller builds plus hidden-slot reasons.
+
+## 2026-05-09
+
+- Request: fix Reaction Map levels clustering around current price and make the data source clearer after GPT Pro's critique.
+- Attempted: refreshed Agent OS, fetched/pulled `main`, traced the worker/API/chart path, removed the API's live top-of-book shelf overwrite, made worker-promoted/current zones the API source of truth, changed chart mode `all` to internal `confluence`, hid the unwired Stress tab, relabeled chart copy toward inferred positioning, added response metadata and algorithm versioning, widened cleanup retention, and added trade dedupe by `coin:time:tid`.
+- Decision: keep raw near-spot trade/OI buckets in the payload for diagnostics, but only promote positioning zones to the chart when they are fresh and far enough from spot. Reaction now renders far persisted book shelves/confluence, not the latest top-of-book ticks.
+- Result: Docker production build passed and rebuilt `web` plus `reaction-map`. Local Compose root restart is still blocked by the pre-existing `0007_reaction_only_cleanup.sql` checksum drift, so rebuilt services were started with `--no-deps` on port `3004`. API smoke for BTC returned `worker_promoted_plus_stream_buckets`, `reaction-map-v2.1.0`, far Reaction zones at roughly `78000` through `85000`, empty chartable positioning when the only OI build was at spot, and persisted book shelves instead of live top-of-book rows. Browser Use and Playwright were unavailable in this session, so UI verification used page/API smoke and source checks.
+- Follow-up: after the worker added volatility-aware retention, a `0.25%` zone cluster width, `0.3%` minimum zone distance, and top-10 stored zones per side, Compose was updated so Docker no longer overrides the worker's new defaults with the old `0.12%` cluster width. `docker compose config` confirms the worker environment now resolves to the intended values, but Docker Desktop was stopped before the worker could be rebuilt/restarted.
+- Follow-up: `upsertExposureZones()` was changed from "retire everything, then recreate only zones seen in the current window" into a persistent top-10 leaderboard per side. Fresh zones now compete against carried-forward active zones, and inferred zones are not removed just because the recent time window no longer contains the original flow bucket. Zones leave the current set by falling out of the top 10, moving too close to spot, or being marked stale by the volatility-aware range sweep.

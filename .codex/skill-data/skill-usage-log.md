@@ -384,8 +384,48 @@
 
 ## 2026-05-09
 
+- Request summary: separate Reaction from Positioning and expand Reaction Map ingestion beyond the initial coins.
+- Skills used: `prompt-master`, `brainstorming`, `verification-gate`, `repo-execution`, `coding-discipline`, `webapp-testing`.
+- What helped: health output made the flat `$250K` threshold problem obvious for smaller coins, and API smoke confirmed Reaction IDs no longer mirror Positioning IDs.
+- Friction or missing capability: Browser Use could not open the rebuilt localhost URL due a client-side block, so final UI verification relied on prior browser smoke plus Docker/API checks.
+- Recommendation: tune `REACTION_MAP_FLUSH_MS` or split promotion work by asset if skipped flush warnings become operationally noisy with 20 assets.
+
+## 2026-05-09
+
+- Request summary: remove the Node Postgres SSL mode warning from `pg-connection-string`.
+- Skills used: `prompt-master`, `verification-gate`, `coding-discipline`, `large-output-discipline`, `docker-compose-runtime-discovery`.
+- What helped: tracing all `pg` Pool callers exposed both Next server stores and standalone worker/script entry points, while bounded Compose logs confirmed the warning disappeared after rebuilding the `migrate` image.
+- Friction or missing capability: root `docker compose up -d web` is still blocked by historical migration checksum drift, and port `3000` is owned by `efiterminal-next`, so the rebuilt web service was started with `--no-deps` on `3004`.
+- Recommendation: add a migration hygiene task to resolve local checksum drift so normal Compose restarts work again.
+
+## 2026-05-09
+
 - Request summary: implement the planned Reaction Map/OI Holdings redesign with multiple agents.
 - Skills used: `spin-up-agent-team`, `coding-discipline`, `repo-execution`, `large-output-discipline`, `webapp-testing`, `browser-use:browser`.
 - What helped: splitting API/model, worker/health, and UI work let the implementation land in parallel, while the final Docker image build caught stricter payload enum mismatches before browser verification.
 - Friction or missing capability: Browser Use plugin metadata pointed to an older alpha path in project guidance, but the installed alpha2 path worked after discovery. External old-code services are still recreating auxiliary Neon tables.
 - Recommendation: keep the challenger-review pass for future trading-logic changes and add a follow-up deploy/cleanup task for old external services plus longer 4h positioning warm-up validation.
+
+## 2026-05-09
+
+- Request summary: stop Reaction Map from promoting only near-spot levels and make inferred positioning/book/confluence data more auditable.
+- Skills used: `prompt-master`, `diagnosis-loop`, `verification-gate`, `coding-discipline`, `large-output-discipline`, `ui-ux-pro-max`, `webapp-testing`.
+- What helped: comparing raw API payloads before/after the change exposed the real issue: the API was overwriting persisted shelf zones with live top-of-book rows, while near-spot OI buckets were being treated as chartable positioning.
+- Friction or missing capability: Browser Use plugin files were missing from the cache and Playwright was not installed in the REPL or container, so final UI verification used page/API smoke plus source checks instead of a browser click-through.
+- Recommendation: add a small repo-native browser smoke dependency or restore the Browser Use plugin cache so future chart work can verify visual overlays without relying on API-only evidence.
+
+## 2026-05-10
+
+- Request summary: review the worker-side volatility-aware retention change and confirm whether the old 2% pruning bug was seen.
+- Skills used: `verification-gate`, `coding-discipline`.
+- What helped: grepping worker and Compose defaults exposed that cleanup was now widened to `12/45`, but Compose still forced the old `0.12%` cluster width over the worker's new `0.25%` default.
+- Friction or missing capability: Docker Desktop was stopped, so the worker could not be rebuilt/restarted after the Compose correction.
+- Recommendation: after Docker is running, restart `reaction-map` and confirm the worker env plus API levels under the new clustering defaults.
+
+## 2026-05-10
+
+- Request summary: encode the Claude-style lesson into Agent OS and fix remaining time-window pruning in Reaction Map current zones.
+- Skills used: `prompt-master`, `diagnosis-loop`, `verification-gate`, `coding-discipline`.
+- What helped: inspecting `upsertExposureZones()` exposed the remaining time-pruning behavior: every active current zone was retired on each promotion unless rediscovered in the current window.
+- Friction or missing capability: `git pull --ff-only` for HyperPulse is blocked by existing local edits that would be overwritten; Agent OS updated cleanly through its own lifecycle.
+- Recommendation: keep algorithm survival rules explicit in future market tools: what data enters, what line can drop it, what state can persist, and what signal is allowed to invalidate it.

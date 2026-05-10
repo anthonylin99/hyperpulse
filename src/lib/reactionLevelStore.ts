@@ -44,11 +44,16 @@ function asNumber(value: unknown): number | null {
 }
 
 function emptyPayload(coin: string, windowMs: number): ReactionLevelsPayload {
+  const now = Date.now();
   return withStructuredReactionPayloadSections({
     coin,
     currentPrice: null,
     windowMs,
-    updatedAt: Date.now(),
+    sourceWindowMs: windowMs,
+    updatedAt: now,
+    generatedAt: now,
+    source: "empty",
+    algorithmVersion: "reaction-map-v2.1.0",
     coverage: {
       marketStreams: false,
       trackedWalletSample: false,
@@ -120,6 +125,8 @@ function compactUsd(value: number | null | undefined): string {
 
 async function readCurrentExposureZones(client: Pool, asset: string, windowMs: number): Promise<ReactionLevelsPayload | null> {
   try {
+    // Worker stores up to 10 zones per side so emerging levels can climb the rankings;
+    // we only display the top 5 per side here.
     const result = await client.query(
       `
       select *
@@ -127,6 +134,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
       where asset = $1
         and window_ms = $2
         and status = 'active'
+        and rank <= 5
       order by side asc, rank asc
       `,
       [asset, windowMs],
@@ -223,7 +231,11 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
       coin: asset,
       currentPrice,
       windowMs,
+      sourceWindowMs: windowMs,
       updatedAt,
+      generatedAt: updatedAt,
+      source: "worker_promoted",
+      algorithmVersion: "reaction-map-v2.1.0",
       coverage: {
         marketStreams: true,
         trackedWalletSample: false,
@@ -280,6 +292,9 @@ function mergeCurrentZonesWithStreamPayload(
     ...streamPayload,
     currentPrice: currentZones.currentPrice ?? streamPayload.currentPrice,
     updatedAt: Math.max(currentZones.updatedAt, streamPayload.updatedAt),
+    generatedAt: Date.now(),
+    source: "worker_promoted_plus_stream_buckets",
+    algorithmVersion: currentZones.algorithmVersion || streamPayload.algorithmVersion || "reaction-map-v2.1.0",
     coverage: {
       marketStreams: currentZones.coverage.marketStreams || streamPayload.coverage.marketStreams,
       trackedWalletSample: currentZones.coverage.trackedWalletSample || streamPayload.coverage.trackedWalletSample,

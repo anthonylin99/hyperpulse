@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { existsSync, readFileSync } from "node:fs";
+import { getPooledDatabaseUrl } from "./database-url.mjs";
 
 function loadLocalEnv() {
   for (const file of [".env.local", ".env"]) {
@@ -19,12 +20,7 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const DATABASE_URL =
-  process.env.NEON_DATABASE_URL_POOLING ??
-  process.env.NEON_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL ??
-  "";
+const DATABASE_URL = getPooledDatabaseUrl();
 const HYPERLIQUID_INFO_URL = process.env.HYPERLIQUID_INFO_URL ?? "https://api.hyperliquid.xyz/info";
 const INTERVAL_MS = Math.max(Number(process.env.PORTFOLIO_CAPTURE_INTERVAL_MS ?? 300_000), 60_000);
 const WALLET_LIMIT = Math.min(Math.max(Number(process.env.PORTFOLIO_CAPTURE_WALLET_LIMIT ?? 100), 1), 500);

@@ -1,10 +1,14 @@
+const PG_SSL_MODES_TO_PIN = new Set(["prefer", "require", "verify-ca"]);
+
 export const DATABASE_ENV_NAMES =
   "NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL";
 
-const PG_SSL_MODES_TO_PIN = new Set(["prefer", "require", "verify-ca"]);
+export function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
 
-export function normalizeDatabaseUrl(value: string | undefined): string {
-  const cleaned = String(value ?? "").trim().replace(/^["']|["']$/g, "");
+export function normalizeDatabaseUrl(value) {
+  const cleaned = cleanEnv(value);
   if (!cleaned) return "";
 
   try {
@@ -23,22 +27,22 @@ export function normalizeDatabaseUrl(value: string | undefined): string {
   return cleaned;
 }
 
-export function getPooledDatabaseUrl(): string {
+export function getPooledDatabaseUrl() {
   return normalizeDatabaseUrl(
     process.env.NEON_DATABASE_URL_POOLING ??
-    process.env.NEON_DATABASE_URL ??
-    process.env.DATABASE_URL ??
-    process.env.POSTGRES_URL ??
-    ""
+      process.env.NEON_DATABASE_URL ??
+      process.env.DATABASE_URL ??
+      process.env.POSTGRES_URL ??
+      "",
   );
 }
 
-export function getDirectDatabaseUrl(): string {
+export function getDirectDatabaseUrl() {
   return normalizeDatabaseUrl(
     process.env.NEON_DATABASE_URL ??
-    process.env.DATABASE_URL ??
-    process.env.POSTGRES_URL ??
-    process.env.NEON_DATABASE_URL_POOLING ??
-    ""
+      process.env.DATABASE_URL ??
+      process.env.POSTGRES_URL ??
+      process.env.NEON_DATABASE_URL_POOLING ??
+      "",
   );
 }
