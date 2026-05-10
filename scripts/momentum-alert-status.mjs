@@ -79,6 +79,7 @@ try {
     candidates: row.payload?.candidates,
     inserted: row.payload?.inserted,
     queued: row.payload?.queued,
+    requeued: row.payload?.requeued,
     sent: row.payload?.sent,
     selected: Array.isArray(row.payload?.selected) ? row.payload.selected.join(",") : "",
     message: row.message,

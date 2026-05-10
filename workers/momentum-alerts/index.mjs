@@ -75,8 +75,8 @@ const TELEGRAM_QUEUE_MAX_AGE_MS = envNumber("MOMENTUM_ALERT_QUEUE_MAX_AGE_MS", 6
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
-const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 72);
-const HIGH_SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_HIGH_SCORE_THRESHOLD", 82);
+const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 68);
+const HIGH_SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_HIGH_SCORE_THRESHOLD", 78);
 const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 const TELEGRAM_CHAT_ID = cleanEnv(process.env.TELEGRAM_CHAT_ID);
@@ -93,7 +93,17 @@ const DRY_RUN =
 if (DRY_RUN_REQUESTED && !DRY_RUN) {
   console.warn("[momentum-alerts] ignoring MOMENTUM_ALERT_DRY_RUN=true because Telegram/prod delivery is enabled");
 }
-const RAW_APP_URL = cleanEnv(process.env.NEXT_PUBLIC_APP_URL) || cleanEnv(process.env.APP_URL) || "https://hyperpulsehl.com";
+function normalizeAppUrl(value) {
+  const raw = cleanEnv(value) || "https://hyperpulsehl.com";
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    return new URL(withProtocol).origin;
+  } catch {
+    return "https://hyperpulsehl.com";
+  }
+}
+
+const RAW_APP_URL = normalizeAppUrl(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL);
 const APP_URL = RAW_APP_URL.includes("hyperpulse-gold.vercel.app") ? "https://hyperpulsehl.com" : RAW_APP_URL;
 const CONFIGURED_ASSETS = parseList(process.env.MOMENTUM_ALERT_ASSETS);
 const DEBUG = envFlag("MOMENTUM_ALERT_DEBUG");
@@ -795,7 +805,7 @@ function fundingTag(value) {
 }
 
 function buildTelegramText(alert) {
-  const link = new URL(alert.routeHref, APP_URL).toString();
+  const link = new URL(alert.routeHref || `/markets?asset=${encodeURIComponent(alert.asset)}`, APP_URL).toString();
   const severity = alert.severity === "high" ? "HIGH" : "MED";
   const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
   const invalidationLabel = direction === "SHORT" ? "Invalid >" : "Invalid <";
@@ -809,6 +819,32 @@ function buildTelegramText(alert) {
     `Chart: ${link}`,
   ];
   return lines.join("\n");
+}
+
+function dbRowToAlert(row) {
+  return {
+    id: row.id,
+    asset: row.asset,
+    createdAt: Number(row.created_at),
+    alertPrice: parseNumber(row.alert_price),
+    currentPriceAtEval: parseNumber(row.current_price_at_eval),
+    return1hPct: parseNumber(row.return_1h_pct),
+    return4hPct: parseNumber(row.return_4h_pct),
+    return24hPct: parseNumber(row.return_24h_pct),
+    openInterestUsd: parseNumber(row.open_interest_usd),
+    openInterestChangePct: row.open_interest_change_pct == null ? null : parseNumber(row.open_interest_change_pct),
+    volume24hUsd: parseNumber(row.volume_24h_usd),
+    volumeVsBaseline: parseNumber(row.volume_vs_baseline),
+    fundingApr: parseNumber(row.funding_apr),
+    triggerKind: row.trigger_kind,
+    score: parseNumber(row.score),
+    severity: row.severity,
+    reason: row.reason,
+    invalidationPrice: parseNumber(row.invalidation_price),
+    targetPrice: parseNumber(row.target_price),
+    routeHref: row.route_href || `/markets?asset=${encodeURIComponent(row.asset)}`,
+    payload: row.payload ?? {},
+  };
 }
 
 function normalizeTelegramText(text) {
@@ -959,6 +995,60 @@ async function flushTelegramQueue() {
   return sent;
 }
 
+async function recoverTelegramNotifications(now) {
+  if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || DRY_RUN) return 0;
+
+  const dailyRemaining = Math.max(TELEGRAM_DAILY_CAP - await countQueuedOrSentToday(easternDateKey(now)), 0);
+  const hourlyRemaining = Math.max(TELEGRAM_HOURLY_CAP - await countQueuedOrSentSince(now - 60 * 60 * 1000), 0);
+  const limit = Math.min(MAX_TELEGRAM_PER_CYCLE, dailyRemaining, hourlyRemaining);
+  if (limit <= 0) return 0;
+
+  const result = await pool.query(
+    `select mea.*, nq.id as queue_id
+     from momentum_alert_events mea
+     left join notification_queue nq
+       on nq.event_type = 'momentum_alert'
+      and nq.event_id = mea.id
+      and nq.channel = 'telegram'
+     where mea.created_at >= $1
+       and (nq.id is null or nq.status = 'disabled')
+       and coalesce(mea.payload->>'telegramEligible', 'true') <> 'false'
+     order by mea.created_at desc
+     limit $2`,
+    [now - TELEGRAM_QUEUE_MAX_AGE_MS, limit],
+  );
+  if (result.rows.length === 0) return 0;
+
+  let recovered = 0;
+  for (const row of result.rows) {
+    const alert = dbRowToAlert(row);
+    const message = buildTelegramText(alert);
+    await pool.query(
+      `insert into notification_queue (id, event_type, event_id, channel, status, created_at, message_hash, last_error, payload)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       on conflict (event_type, event_id, channel)
+       do update set
+         status = 'queued',
+         message_hash = excluded.message_hash,
+         last_error = null,
+         payload = excluded.payload`,
+      [
+        `telegram:momentum_alert:${alert.id}`,
+        "momentum_alert",
+        alert.id,
+        "telegram",
+        "queued",
+        alert.createdAt || now,
+        createHash("sha256").update(message).digest("hex"),
+        null,
+        JSON.stringify({ text: message, routeHref: alert.routeHref, asset: alert.asset }),
+      ],
+    );
+    recovered += 1;
+  }
+  return recovered;
+}
+
 async function runCycle() {
   await assertTablesReady();
   const runId = await startRun({
@@ -1019,18 +1109,20 @@ async function runCycle() {
       bucketCounts.set(bucket, bucketCount + 1);
       remaining -= 1;
     }
+    const requeued = await recoverTelegramNotifications(now);
     const sent = await flushTelegramQueue();
     await finishRun(runId, "success", null, {
       scanned: universe.length,
       candidates: candidates.length,
       inserted,
       queued,
+      requeued,
       sent,
       selected,
       buckets: Object.fromEntries(bucketCounts.entries()),
       easternDate,
     });
-    console.log(`[momentum-alerts] success scanned=${universe.length} candidates=${candidates.length} inserted=${inserted} queued=${queued} sent=${sent}`);
+    console.log(`[momentum-alerts] success scanned=${universe.length} candidates=${candidates.length} inserted=${inserted} queued=${queued} requeued=${requeued} sent=${sent}`);
   } catch (error) {
     await finishRun(runId, "failed", error instanceof Error ? error.message : String(error), { stack: error?.stack });
     throw error;
