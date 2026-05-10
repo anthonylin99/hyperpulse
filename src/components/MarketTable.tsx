@@ -268,7 +268,7 @@ export default function MarketTable({
       arr = arr.filter((a) => getAssetCategory(a.coin) === categoryFilter);
     }
 
-    if (hideSmallCaps) {
+    if (hideSmallCaps && !search) {
       arr = arr.filter((a) => a.openInterest >= MIN_OI_USD);
     }
 
