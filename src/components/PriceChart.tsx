@@ -14,7 +14,6 @@ import {
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick, formatEasternDateTime } from "@/lib/time";
 import {
-  isDefaultReactionAsset,
   reactionLevelsToSupportResistanceLevels,
   type ReactionLevelsPayload,
   type ReactionOverlayMode,
@@ -460,8 +459,35 @@ export default function PriceChart({
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
-  const reactionSupported = marketType === "perp" && isDefaultReactionAsset(coin);
+  const reactionSupported = marketType === "perp";
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
+  const overlayAvailability = useMemo(() => {
+    if (!reactionPayload) {
+      return {
+        all: true,
+        book: false,
+        oi_holding: false,
+        stress: false,
+      } satisfies Record<ReactionOverlayMode, boolean>;
+    }
+
+    const hasBook =
+      reactionPayload.levels.some((level) => level.primarySource === "book") ||
+      (reactionPayload.orderBook?.bidShelves?.length ?? 0) > 0 ||
+      (reactionPayload.orderBook?.askShelves?.length ?? 0) > 0;
+    const hasPositioning =
+      (reactionPayload.overlayLevels?.oiHolding?.length ?? 0) > 0 ||
+      (reactionPayload.positioning?.buyerInitiatedBuilds?.length ?? 0) > 0 ||
+      (reactionPayload.positioning?.sellerInitiatedBuilds?.length ?? 0) > 0;
+    const hasStress = reactionPayload.levels.some((level) => level.primarySource === "stress");
+
+    return {
+      all: true,
+      book: hasBook,
+      oi_holding: hasPositioning,
+      stress: hasStress,
+    } satisfies Record<ReactionOverlayMode, boolean>;
+  }, [reactionPayload]);
   const levels = useMemo(
     () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, overlayMode) : []),
     [overlayMode, reactionPayload, reactionSupported],
@@ -512,6 +538,12 @@ export default function PriceChart({
       setSelectedZoneId(null);
     }
   }, [selectedZoneId, zoneBands]);
+
+  useEffect(() => {
+    if (!overlayAvailability[overlayMode]) {
+      setOverlayMode("all");
+    }
+  }, [overlayAvailability, overlayMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -813,20 +845,29 @@ export default function PriceChart({
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
               <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
-                {OVERLAY_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setOverlayMode(option.value)}
-                    className={`rounded-full px-2 py-0.5 transition ${
-                      overlayMode === option.value
-                        ? "bg-sky-500/15 text-sky-200"
-                        : "text-zinc-500 hover:text-zinc-200"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+                {OVERLAY_OPTIONS.map((option) => {
+                  const available = overlayAvailability[option.value];
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={!available}
+                      title={available ? `${option.label} overlay` : `${option.label} data is still warming up for ${coin}`}
+                      onClick={() => {
+                        if (available) setOverlayMode(option.value);
+                      }}
+                      className={`rounded-full px-2 py-0.5 transition ${
+                        overlayMode === option.value
+                          ? "bg-sky-500/15 text-sky-200"
+                          : available
+                            ? "text-zinc-500 hover:text-zinc-200"
+                            : "cursor-not-allowed text-zinc-700"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
             <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
@@ -888,6 +929,7 @@ export default function PriceChart({
         {reactionPayload ? (
           <ReactionMapPanel
             payload={reactionPayload}
+            mode={overlayMode}
             selectedZoneId={panelZoneIdForChartBand(activeZoneBand)}
             onSelectZone={(zone) => setSelectedZoneId(chartBandIdForPanelZone(zone))}
             className="mt-3"
