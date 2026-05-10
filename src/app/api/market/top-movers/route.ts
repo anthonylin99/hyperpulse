@@ -10,8 +10,8 @@ import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 export const dynamic = "force-dynamic";
 
 const MIN_VOLUME_USD = 1_000_000;
-const TOP_N = 10;
-const SEVEN_DAY_CANDIDATE_LIMIT = 80;
+const TOP_N = 5;
+const SEVEN_DAY_CANDIDATE_LIMIT = 220;
 
 type Range = "1d" | "7d";
 
@@ -127,24 +127,23 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const sortedDesc = [...scored].sort((a, b) => b.pctChange - a.pctChange);
-    const gainers = sortedDesc.slice(0, TOP_N).map<TopMover>((s) => ({
+    const toMover = (s: { asset: ParsedAsset; pctChange: number }): TopMover => ({
       coin: s.asset.coin,
       pctChange: s.pctChange,
       markPx: s.asset.markPx,
       prevPx: s.asset.prevDayPx,
       iconUrl: iconUrlFor(s.asset.coin),
-    }));
-    const losers = sortedDesc
-      .slice(-TOP_N)
-      .reverse()
-      .map<TopMover>((s) => ({
-        coin: s.asset.coin,
-        pctChange: s.pctChange,
-        markPx: s.asset.markPx,
-        prevPx: s.asset.prevDayPx,
-        iconUrl: iconUrlFor(s.asset.coin),
-      }));
+    });
+    const gainers = scored
+      .filter((s) => s.pctChange > 0)
+      .sort((a, b) => b.pctChange - a.pctChange)
+      .slice(0, TOP_N)
+      .map(toMover);
+    const losers = scored
+      .filter((s) => s.pctChange < 0)
+      .sort((a, b) => a.pctChange - b.pctChange)
+      .slice(0, TOP_N)
+      .map(toMover);
 
     return jsonSuccess(
       { gainers, losers, range, asOf: Date.now() },
