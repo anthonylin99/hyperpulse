@@ -159,7 +159,7 @@ export default function TopMoversPanel() {
         <div className="min-w-0">
           <SectionEyebrow>Top Movers</SectionEyebrow>
           <div className="mt-1 text-sm font-medium text-zinc-100">Crypto price change</div>
-          <div className="mt-0.5 font-mono text-[10px] text-zinc-600">Perps · vol &gt; $1M</div>
+          <div className="mt-0.5 font-mono text-[10px] text-zinc-600">Perps · OI &gt; $10M</div>
         </div>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-300">
           {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <TrendingUp className="h-4 w-4" />}

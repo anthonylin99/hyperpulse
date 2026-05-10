@@ -6,6 +6,7 @@ import {
   logServerError,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
+import { MIN_OI_USD } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ type ParsedAsset = {
   prevDayPx: number;
   priceChange24h: number;
   dayVolumeUsd: number;
+  openInterestUsd: number;
 };
 
 function parseAssets(data: unknown): ParsedAsset[] {
@@ -47,12 +49,17 @@ function parseAssets(data: unknown): ParsedAsset[] {
       const prevDayPx = Number(ctx.prevDayPx);
       if (!Number.isFinite(markPx) || markPx <= 0) return null;
       if (!Number.isFinite(prevDayPx) || prevDayPx <= 0) return null;
+      const openInterestSize = Number(ctx.openInterest);
+      const openInterestUsd = Number.isFinite(openInterestSize)
+        ? openInterestSize * markPx
+        : 0;
       return {
         coin: asset.name,
         markPx,
         prevDayPx,
         priceChange24h: ((markPx - prevDayPx) / prevDayPx) * 100,
         dayVolumeUsd: Number(ctx.dayNtlVlm) || 0,
+        openInterestUsd,
       };
     })
     .filter((a): a is ParsedAsset => a !== null);
@@ -105,7 +112,7 @@ export async function GET(req: NextRequest) {
   try {
     const info = getInfoClient(resolveNetworkFromRequest(url));
     const assets = parseAssets(await info.metaAndAssetCtxs()).filter(
-      (a) => a.dayVolumeUsd >= MIN_VOLUME_USD,
+      (a) => a.openInterestUsd >= MIN_OI_USD && a.dayVolumeUsd >= MIN_VOLUME_USD,
     );
 
     let scored: Array<{ asset: ParsedAsset; pctChange: number }> = [];

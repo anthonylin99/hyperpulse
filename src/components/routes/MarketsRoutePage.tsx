@@ -62,7 +62,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             />
           </section>
 
-          <div className="space-y-4 xl:sticky xl:top-[96px]">
+          <div className="space-y-4">
             <MarketRadarPanel variant="rail" />
             <TopMoversPanel />
           </div>
