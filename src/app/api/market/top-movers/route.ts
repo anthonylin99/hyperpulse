@@ -33,6 +33,12 @@ type ParsedAsset = {
   openInterestUsd: number;
 };
 
+type ScoredMover = {
+  asset: ParsedAsset;
+  pctChange: number;
+  baselinePx?: number;
+};
+
 function parseAssets(data: unknown): ParsedAsset[] {
   const [meta, assetCtxs] = data as [
     { universe?: Array<{ name: string; isDelisted?: boolean }> },
@@ -72,26 +78,38 @@ function iconUrlFor(coin: string): string {
 async function compute7dChange(
   info: ReturnType<typeof getInfoClient>,
   coin: string,
-): Promise<number | null> {
+  currentMarkPx: number,
+): Promise<{ pctChange: number; baselinePx: number } | null> {
   const now = Date.now();
-  const start = now - 8 * 24 * 60 * 60 * 1000;
+  const target = now - 7 * 24 * 60 * 60 * 1000;
+  const start = target - 6 * 60 * 60 * 1000;
   try {
     const candles = (await info.candleSnapshot({
       coin,
-      interval: "1d",
+      interval: "1h",
       startTime: start,
       endTime: now,
-    })) as Array<{ c: string | number }> | string;
+    })) as Array<{ t?: string | number; T?: string | number; c: string | number }> | string;
 
     const arr = typeof candles === "string"
-      ? (JSON.parse(candles) as Array<{ c: string | number }>)
+      ? (JSON.parse(candles) as Array<{ t?: string | number; T?: string | number; c: string | number }>)
       : candles;
     if (!Array.isArray(arr) || arr.length < 2) return null;
 
-    const last = Number(arr[arr.length - 1]?.c);
-    const baseline = Number(arr[0]?.c);
-    if (!Number.isFinite(last) || !Number.isFinite(baseline) || baseline <= 0) return null;
-    return ((last - baseline) / baseline) * 100;
+    const baselineCandle =
+      arr
+        .filter((c) => {
+          const t = Number(c.t ?? c.T);
+          return Number.isFinite(t) && t <= target;
+        })
+        .at(-1) ?? arr[0];
+    const baseline = Number(baselineCandle?.c);
+    if (!Number.isFinite(currentMarkPx) || currentMarkPx <= 0) return null;
+    if (!Number.isFinite(baseline) || baseline <= 0) return null;
+    return {
+      pctChange: ((currentMarkPx - baseline) / baseline) * 100,
+      baselinePx: baseline,
+    };
   } catch {
     return null;
   }
@@ -115,7 +133,7 @@ export async function GET(req: NextRequest) {
       (a) => a.openInterestUsd >= MIN_OI_USD && a.dayVolumeUsd >= MIN_VOLUME_USD,
     );
 
-    let scored: Array<{ asset: ParsedAsset; pctChange: number }> = [];
+    let scored: ScoredMover[] = [];
 
     if (range === "1d") {
       scored = assets.map((a) => ({ asset: a, pctChange: a.priceChange24h }));
@@ -123,22 +141,24 @@ export async function GET(req: NextRequest) {
       const candidates = [...assets]
         .sort((a, b) => b.dayVolumeUsd - a.dayVolumeUsd)
         .slice(0, SEVEN_DAY_CANDIDATE_LIMIT);
-      const results = await Promise.all(
+      const results: Array<ScoredMover | null> = await Promise.all(
         candidates.map(async (a) => {
-          const pct = await compute7dChange(info, a.coin);
-          return pct == null ? null : { asset: a, pctChange: pct };
+          const result = await compute7dChange(info, a.coin, a.markPx);
+          return result == null
+            ? null
+            : { asset: a, pctChange: result.pctChange, baselinePx: result.baselinePx };
         }),
       );
       scored = results.filter(
-        (r): r is { asset: ParsedAsset; pctChange: number } => r !== null,
+        (r): r is ScoredMover => r !== null,
       );
     }
 
-    const toMover = (s: { asset: ParsedAsset; pctChange: number }): TopMover => ({
+    const toMover = (s: ScoredMover): TopMover => ({
       coin: s.asset.coin,
       pctChange: s.pctChange,
       markPx: s.asset.markPx,
-      prevPx: s.asset.prevDayPx,
+      prevPx: range === "7d" && s.baselinePx ? s.baselinePx : s.asset.prevDayPx,
       iconUrl: iconUrlFor(s.asset.coin),
     });
     const gainers = scored
@@ -147,7 +167,7 @@ export async function GET(req: NextRequest) {
       .slice(0, TOP_N)
       .map(toMover);
     const losers = scored
-      .filter((s) => s.pctChange < 0)
+      .filter((s) => (range === "7d" ? Number.isFinite(s.pctChange) : s.pctChange < 0))
       .sort((a, b) => a.pctChange - b.pctChange)
       .slice(0, TOP_N)
       .map(toMover);

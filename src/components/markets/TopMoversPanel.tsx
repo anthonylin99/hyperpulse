@@ -65,12 +65,22 @@ function MoverRow({
 }: {
   mover: TopMover;
   maxAbs: number;
-  tone: "gain" | "loss";
+  tone: "gain" | "loss" | "lag";
   onSelect: (coin: string, e: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const widthPct = maxAbs > 0 ? Math.min(100, (Math.abs(mover.pctChange) / maxAbs) * 100) : 0;
-  const barColor = tone === "gain" ? "bg-emerald-500/75" : "bg-rose-500/75";
-  const valueColor = tone === "gain" ? "text-emerald-300" : "text-rose-300";
+  const barColor =
+    tone === "gain"
+      ? "bg-emerald-500/75"
+      : tone === "loss"
+        ? "bg-rose-500/75"
+        : "bg-zinc-500/55";
+  const valueColor =
+    tone === "gain"
+      ? "text-emerald-300"
+      : tone === "loss"
+        ? "text-rose-300"
+        : "text-zinc-300";
 
   return (
     <Link
@@ -211,7 +221,7 @@ export default function TopMoversPanel() {
 
           <div>
             <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">
-              Top Losers
+              {range === "7d" ? "7D Laggards" : "Top Losers"}
             </div>
             <div className="space-y-0.5">
               {data.losers.map((mover) => (
@@ -219,7 +229,7 @@ export default function TopMoversPanel() {
                   key={`l-${mover.coin}`}
                   mover={mover}
                   maxAbs={maxAbs}
-                  tone="loss"
+                  tone={mover.pctChange < 0 ? "loss" : "lag"}
                   onSelect={handleSelect}
                 />
               ))}
