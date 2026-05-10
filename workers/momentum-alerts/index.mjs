@@ -648,19 +648,42 @@ function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direc
   const d24h = directionalReturn(direction, features.return24h);
   const structureBreak = direction === "short" ? features.breakdown : features.breakout;
   const nearExtreme = direction === "short" ? features.nearLow : features.nearHigh;
-  const volumeConfirmed = volumeVs >= 1.25;
-  const oiConfirmed = oiChangePct != null && oiChangePct >= 1.2;
+  const volumeConfirmed = volumeVs >= 1.5;
+  const oiConfirmed = oiChangePct != null && oiChangePct >= 2.5;
   const liquidityOk = asset.liquidityQualified || isLargeCapLike(asset);
   const highQualityScore = score.score >= HIGH_SCORE_THRESHOLD;
-  const strongIntraday = d1h >= 0.8 && d4h >= 3.2;
-  const continuation = d4h >= 5.0 && d1h >= 0.4 && nearExtreme;
+  const strongIntradayBreakout = d1h >= 2.5 && d4h >= 5.0;
+  const continuation = d4h >= 7.0 && d1h >= 0.8 && nearExtreme;
+  const trendDayBreakout = d24h >= 10.0 && d4h >= 4.0 && d1h >= 1.0;
   const exceptionalFollowThrough = d24h >= EXCEPTIONAL_MOVE_PCT && d4h >= 1.5 && d1h >= -0.5 && nearExtreme;
-  const confirmedMove = structureBreak || strongIntraday || continuation || exceptionalFollowThrough;
+  const massiveMove = strongIntradayBreakout || continuation || trendDayBreakout || exceptionalFollowThrough;
+  const confirmedMove = massiveMove && (structureBreak || nearExtreme);
   const confirmedParticipation = volumeConfirmed || oiConfirmed || exceptionalFollowThrough;
   const fundingPenalty = direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65;
   const fundingOk = !fundingPenalty || score.score >= HIGH_SCORE_THRESHOLD + 8;
 
   return liquidityOk && highQualityScore && confirmedMove && confirmedParticipation && fundingOk;
+}
+
+function isStoredTelegramQualityAlert(alert) {
+  const direction = alert.payload?.direction === "short" ? "short" : "long";
+  const d1h = directionalReturn(direction, alert.return1hPct);
+  const d4h = directionalReturn(direction, alert.return4hPct);
+  const d24h = directionalReturn(direction, alert.return24hPct);
+  const volumeVs = Number(alert.volumeVsBaseline);
+  const structureBreak = direction === "short" ? Boolean(alert.payload?.breakdown) : Boolean(alert.payload?.breakout);
+  const nearExtreme = direction === "short" ? Boolean(alert.payload?.nearLow) : Boolean(alert.payload?.nearHigh);
+  const strongIntradayBreakout = d1h >= 2.5 && d4h >= 5.0;
+  const continuation = d4h >= 7.0 && d1h >= 0.8 && nearExtreme;
+  const trendDayBreakout = d24h >= 10.0 && d4h >= 4.0 && d1h >= 1.0;
+  const exceptionalFollowThrough = d24h >= EXCEPTIONAL_MOVE_PCT && d4h >= 1.5 && d1h >= -0.5 && nearExtreme;
+  const massiveMove = strongIntradayBreakout || continuation || trendDayBreakout || exceptionalFollowThrough;
+  const confirmedMove = massiveMove && (structureBreak || nearExtreme);
+  const confirmedParticipation =
+    volumeVs >= 1.5 ||
+    (alert.openInterestChangePct != null && alert.openInterestChangePct >= 2.5) ||
+    exceptionalFollowThrough;
+  return alert.score >= HIGH_SCORE_THRESHOLD && confirmedMove && confirmedParticipation;
 }
 
 async function buildCandidate(asset) {
@@ -1022,6 +1045,7 @@ async function recoverTelegramNotifications(now) {
   let recovered = 0;
   for (const row of result.rows) {
     const alert = dbRowToAlert(row);
+    if (!isStoredTelegramQualityAlert(alert)) continue;
     const message = buildTelegramText(alert);
     await pool.query(
       `insert into notification_queue (id, event_type, event_id, channel, status, created_at, message_hash, last_error, payload)
