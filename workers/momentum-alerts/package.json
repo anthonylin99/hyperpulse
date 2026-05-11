@@ -5,10 +5,12 @@
   "scripts": {
     "start": "node index.mjs",
     "railway:start": "node index.mjs",
-    "once": "node index.mjs --once"
+    "once": "node index.mjs --once",
+    "telegram:chart-test": "node send-chart-test.mjs"
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.32.1",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "sharp": "^0.34.5"
   }
 }

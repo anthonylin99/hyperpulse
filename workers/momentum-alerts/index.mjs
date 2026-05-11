@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { Pool } from "pg";
+import { renderMomentumChartPng } from "./chart.mjs";
 
 function loadLocalEnv() {
   for (const file of [".env.local", ".env", "workers/momentum-alerts/.env"]) {
@@ -85,6 +86,7 @@ const TELEGRAM_ENV = cleanEnv(process.env.TELEGRAM_ENABLED).toLowerCase();
 const TELEGRAM_ENABLED = TELEGRAM_ENV === "false"
   ? false
   : TELEGRAM_ENV === "true" || TELEGRAM_CONFIGURED;
+const TELEGRAM_CHARTS_ENABLED = envFlag("TELEGRAM_CHARTS_ENABLED", true);
 const DRY_RUN_REQUESTED = envFlag("MOMENTUM_ALERT_DRY_RUN");
 const DRY_RUN =
   DRY_RUN_REQUESTED &&
@@ -445,6 +447,13 @@ async function fetchCandles(asset) {
   const endTime = Date.now();
   const startTime = endTime - LOOKBACK_MS;
   const rows = await info.candleSnapshot({ coin: asset.rawName, interval: CANDLE_INTERVAL, startTime, endTime });
+  return rows.map(candleToRow).filter(Boolean).sort((a, b) => a.time - b.time);
+}
+
+async function fetchAlertChartCandles(asset) {
+  const endTime = Date.now();
+  const startTime = endTime - Math.max(LOOKBACK_MS, 30 * 60 * 60 * 1000);
+  const rows = await info.candleSnapshot({ coin: asset, interval: CANDLE_INTERVAL, startTime, endTime });
   return rows.map(candleToRow).filter(Boolean).sort((a, b) => a.time - b.time);
 }
 
@@ -968,7 +977,7 @@ async function persistAlert(candidate, now, options = {}) {
       now,
       createHash("sha256").update(message).digest("hex"),
       lastError,
-      JSON.stringify({ text: message, routeHref: alert.routeHref, asset: alert.asset }),
+      JSON.stringify({ text: message, routeHref: alert.routeHref, asset: alert.asset, alert }),
     ],
   );
   return { alert, inserted: true, queued: canSendTelegram };
@@ -984,6 +993,38 @@ async function sendTelegramMessage(text) {
   if (!response.ok || payload?.ok === false) {
     throw new Error(payload?.description || `Telegram request failed with ${response.status}`);
   }
+}
+
+async function sendTelegramPhoto({ text, alert }) {
+  if (!alert?.asset) throw new Error("Chart alert payload missing asset.");
+  const candles = await fetchAlertChartCandles(alert.asset);
+  const png = await renderMomentumChartPng({ alert, candles });
+  const form = new FormData();
+  form.append("chat_id", TELEGRAM_CHAT_ID);
+  form.append("caption", normalizeTelegramText(text).slice(0, 1024));
+  form.append("photo", new Blob([png], { type: "image/png" }), `hyperpulse-${alert.asset.toLowerCase()}-momentum.png`);
+  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.description || `Telegram photo request failed with ${response.status}`);
+  }
+}
+
+async function sendTelegramNotification(payload) {
+  const text = payload?.text;
+  if (!text) throw new Error("Notification payload missing text.");
+  if (TELEGRAM_CHARTS_ENABLED && payload?.alert) {
+    try {
+      await sendTelegramPhoto({ text, alert: payload.alert });
+      return;
+    } catch (error) {
+      console.warn("[momentum-alerts] telegram chart failed; falling back to text", error instanceof Error ? error.message : error);
+    }
+  }
+  await sendTelegramMessage(text);
 }
 
 async function flushTelegramQueue() {
@@ -1006,9 +1047,7 @@ async function flushTelegramQueue() {
     if (sent >= MAX_TELEGRAM_PER_CYCLE || hourlySent >= TELEGRAM_HOURLY_CAP) break;
 
     try {
-      const text = row.payload?.text;
-      if (!text) throw new Error("Notification payload missing text.");
-      await sendTelegramMessage(text);
+      await sendTelegramNotification(row.payload);
       await pool.query(
         `update notification_queue set status = 'sent', sent_at = $2, attempts = attempts + 1, last_error = null where id = $1`,
         [row.id, Date.now()],
@@ -1073,7 +1112,7 @@ async function recoverTelegramNotifications(now) {
         alert.createdAt || now,
         createHash("sha256").update(message).digest("hex"),
         null,
-        JSON.stringify({ text: message, routeHref: alert.routeHref, asset: alert.asset }),
+        JSON.stringify({ text: message, routeHref: alert.routeHref, asset: alert.asset, alert }),
       ],
     );
     recovered += 1;
@@ -1091,6 +1130,7 @@ async function runCycle() {
     maxAlertsPerCycle: MAX_ALERTS_PER_CYCLE,
     telegramConfigured: TELEGRAM_CONFIGURED,
     telegramEnabled: TELEGRAM_ENABLED,
+    telegramChartsEnabled: TELEGRAM_CHARTS_ENABLED,
     storeDailyCap: STORE_DAILY_CAP,
     telegramDailyCap: TELEGRAM_DAILY_CAP,
     telegramHourlyCap: TELEGRAM_HOURLY_CAP,
@@ -1162,7 +1202,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegramHourly=${TELEGRAM_HOURLY_CAP}/hour maxCycle=${MAX_ALERTS_PER_CYCLE} maxTelegramCycle=${MAX_TELEGRAM_PER_CYCLE} telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
+  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegramHourly=${TELEGRAM_HOURLY_CAP}/hour maxCycle=${MAX_ALERTS_PER_CYCLE} maxTelegramCycle=${MAX_TELEGRAM_PER_CYCLE} telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} charts=${TELEGRAM_CHARTS_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
   await runCycle();
   if (RUN_ONCE) {
     await pool.end();
