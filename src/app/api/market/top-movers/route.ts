@@ -161,16 +161,9 @@ export async function GET(req: NextRequest) {
       prevPx: range === "7d" && s.baselinePx ? s.baselinePx : s.asset.prevDayPx,
       iconUrl: iconUrlFor(s.asset.coin),
     });
-    const gainers = scored
-      .filter((s) => s.pctChange > 0)
-      .sort((a, b) => b.pctChange - a.pctChange)
-      .slice(0, TOP_N)
-      .map(toMover);
-    const losers = scored
-      .filter((s) => s.pctChange < 0)
-      .sort((a, b) => a.pctChange - b.pctChange)
-      .slice(0, TOP_N)
-      .map(toMover);
+    const byPerf = [...scored].sort((a, b) => b.pctChange - a.pctChange);
+    const gainers = byPerf.slice(0, TOP_N).map(toMover);
+    const losers = byPerf.slice(-TOP_N).reverse().map(toMover);
 
     return jsonSuccess(
       { gainers, losers, range, asOf: Date.now() },

@@ -60,17 +60,16 @@ function TokenGlyph({ coin, iconUrl }: { coin: string; iconUrl: string | null })
 function MoverRow({
   mover,
   maxAbs,
-  tone,
   onSelect,
 }: {
   mover: TopMover;
   maxAbs: number;
-  tone: "gain" | "loss";
   onSelect: (coin: string, e: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const widthPct = maxAbs > 0 ? Math.min(100, (Math.abs(mover.pctChange) / maxAbs) * 100) : 0;
-  const barColor = tone === "gain" ? "bg-emerald-500/75" : "bg-rose-500/75";
-  const valueColor = tone === "gain" ? "text-emerald-300" : "text-rose-300";
+  const isUp = mover.pctChange >= 0;
+  const barColor = isUp ? "bg-emerald-500/75" : "bg-rose-500/75";
+  const valueColor = isUp ? "text-emerald-300" : "text-rose-300";
 
   return (
     <Link
@@ -201,7 +200,6 @@ export default function TopMoversPanel() {
                   key={`g-${mover.coin}`}
                   mover={mover}
                   maxAbs={gainerMaxAbs}
-                  tone="gain"
                   onSelect={handleSelect}
                 />
               ))}
@@ -215,21 +213,14 @@ export default function TopMoversPanel() {
               Top Losers
             </div>
             <div className="space-y-0.5">
-              {data.losers.length > 0 ? (
-                data.losers.map((mover) => (
-                  <MoverRow
-                    key={`l-${mover.coin}`}
-                    mover={mover}
-                    maxAbs={loserMaxAbs}
-                    tone="loss"
-                    onSelect={handleSelect}
-                  />
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/40 px-2 py-2 text-[11px] leading-4 text-zinc-500">
-                  {range === "7d" ? "No other liquid perps are negative over 7D." : "No liquid perps are negative right now."}
-                </div>
-              )}
+              {data.losers.map((mover) => (
+                <MoverRow
+                  key={`l-${mover.coin}`}
+                  mover={mover}
+                  maxAbs={loserMaxAbs}
+                  onSelect={handleSelect}
+                />
+              ))}
             </div>
           </div>
         </div>
