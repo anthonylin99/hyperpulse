@@ -18,8 +18,6 @@ import {
   type ReactionLevelsPayload,
   type ReactionOverlayMode,
 } from "@/lib/reactionLevels";
-import { buildTradePlan } from "@/lib/tradePlan";
-import { ReactionMapPanel, type ReactionMapSelectableZone } from "@/components/reaction-map";
 import { SectionEyebrow } from "@/components/trading-ui";
 import type { SupportResistanceLevel } from "@/types";
 
@@ -226,10 +224,6 @@ function isStressZone(level: SupportResistanceLevel): boolean {
   return level.leverageBucket === "stress";
 }
 
-function isActionableFlowLevel(level: SupportResistanceLevel): boolean {
-  return level.status === "active";
-}
-
 function isDownsideReactionLevel(
   level: SupportResistanceLevel,
   currentPrice: number | null,
@@ -424,24 +418,10 @@ function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "up
     : { rgb: "244, 63, 94", textClass: "text-rose-200", borderClass: "border-rose-400/35" };
 }
 
-function panelZoneIdForChartBand(band: ChartZoneBand | null): string | null {
-  if (!band?.id.startsWith("reaction-")) return null;
-  const sourceId = band.id.slice("reaction-".length);
-  return band.level.leverageBucket === "positioning" ? `positioning-${sourceId}` : `reaction-zone-${sourceId}`;
-}
-
-function chartBandIdForPanelZone(zone: ReactionMapSelectableZone): string {
-  if (zone.id.startsWith("positioning-")) return `reaction-${zone.id.slice("positioning-".length)}`;
-  if (zone.id.startsWith("reaction-zone-")) return `reaction-${zone.id.slice("reaction-zone-".length)}`;
-  return zone.id;
-}
-
 export default function PriceChart({
   coin,
   marketType = "perp",
   compact = false,
-  fundingAPR = null,
-  fundingPercentile = null,
 }: PriceChartProps) {
   const chartFrameRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -500,17 +480,6 @@ export default function PriceChart({
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
   const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
-  const tradePlan = useMemo(
-    () =>
-      buildTradePlan({
-        candles,
-        interval: API_INTERVAL[interval],
-        levels: levels.filter(isActionableFlowLevel),
-        fundingAPR,
-        fundingPercentile,
-      }),
-    [candles, fundingAPR, fundingPercentile, interval, levels],
-  );
   const visibleDownsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
@@ -528,10 +497,6 @@ export default function PriceChart({
     [currentPrice, levels, overlayMode],
   );
   const activeZoneId = hoveredZoneId ?? selectedZoneId;
-  const activeZoneBand = useMemo(
-    () => zoneBands.find((band) => band.id === activeZoneId) ?? zoneBands[0] ?? null,
-    [activeZoneId, zoneBands],
-  );
 
   useEffect(() => {
     if (selectedZoneId && !zoneBands.some((band) => band.id === selectedZoneId)) {
@@ -816,7 +781,9 @@ export default function PriceChart({
     : reactionSupported
       ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
       : "Reaction Map is limited to major liquid perps so smaller names do not show noisy pressure bands.";
-  const hasActionablePlan = tradePlan.bias !== "wait";
+  const compactStatus = reactionUnavailable || (reactionSupported && levels.length === 0)
+    ? levelAvailabilityMessage
+    : levelSourceNote;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
@@ -925,176 +892,16 @@ export default function PriceChart({
             </>
           )}
         </div>
-        <div className="mt-2 text-[11px] leading-5 text-zinc-500">{levelSourceNote}</div>
-        {reactionPayload ? (
-          <ReactionMapPanel
-            payload={reactionPayload}
-            mode={overlayMode}
-            selectedZoneId={panelZoneIdForChartBand(activeZoneBand)}
-            onSelectZone={(zone) => setSelectedZoneId(chartBandIdForPanelZone(zone))}
-            className="mt-3"
-          />
-        ) : (
-          <ZoneDetailPanel
-            bands={zoneBands}
-            activeBand={activeZoneBand}
-            currentPrice={currentPrice}
-            onHover={setHoveredZoneId}
-            onSelect={setSelectedZoneId}
-          />
-        )}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] leading-5 text-zinc-500">
+          <span>{compactStatus}</span>
+          <span className="text-zinc-600">Hover a band for context. Details stay on-chart to keep the drawer compact.</span>
+        </div>
         {showReactionProgress ? (
           <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">
             <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-sky-400/70" />
           </div>
         ) : null}
       </div>
-
-      {!loading && !error && candles.length > 0 ? (
-        <div className="max-h-[300px] shrink-0 overflow-y-auto border-t border-zinc-800 bg-zinc-950/70 px-3 py-3">
-          <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-500">
-            Order book shelves are real resting liquidity. Positioning zones are inferred from public trades and OI changes.
-          </div>
-
-          <div className="grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <SectionEyebrow>Trade plan</SectionEyebrow>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] ${
-                    tradePlan.bias === "long-setup"
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                      : tradePlan.bias === "short-setup"
-                        ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                        : "border-zinc-700 bg-zinc-900 text-zinc-400"
-                  }`}
-                >
-                  {tradePlan.confidence} confidence
-                </span>
-              </div>
-              <div className="mt-1 text-sm font-semibold text-zinc-100">{tradePlan.title}</div>
-              <div className="mt-1 text-xs leading-5 text-zinc-400">{tradePlan.summary}</div>
-            </div>
-
-            <div className="grid gap-2 text-xs md:grid-cols-3">
-              <PlanBox label="Confirmation level" value={tradePlan.trigger} />
-              <PlanBox
-                label="Invalidation"
-                value={hasActionablePlan ? tradePlan.invalidation : "Defined after confirmation."}
-                tone={hasActionablePlan ? "danger" : "neutral"}
-              />
-              <PlanBox
-                label="Target"
-                value={hasActionablePlan && tradePlan.targets.length > 0 ? tradePlan.targets.join(" -> ") : "Appears after confirmation."}
-                tone={hasActionablePlan ? "success" : "neutral"}
-              />
-            </div>
-          </div>
-
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {tradePlan.context.slice(0, 3).map((item) => (
-              <div key={item} className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                {item}
-              </div>
-            ))}
-            {dataThroughTimeMs != null ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                Candles through {formatTimeMs(dataThroughTimeMs)}. Reaction Map refreshes from public Hyperliquid streams.
-              </div>
-            ) : null}
-            {reactionUnavailable || (reactionSupported && levels.length === 0) ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs text-zinc-500">
-                {levelAvailabilityMessage}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ZoneDetailPanel({
-  bands,
-  activeBand,
-  currentPrice,
-  onHover,
-  onSelect,
-}: {
-  bands: ChartZoneBand[];
-  activeBand: ChartZoneBand | null;
-  currentPrice: number | null;
-  onHover: (id: string | null) => void;
-  onSelect: (id: string) => void;
-}) {
-  const rows = [...bands].sort((a, b) => Math.abs(a.level.distancePct ?? 0) - Math.abs(b.level.distancePct ?? 0)).slice(0, 6);
-
-  if (rows.length === 0) {
-    return (
-      <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-3 text-xs text-zinc-500">
-        Reaction zones are still warming up for this asset.
-      </div>
-    );
-  }
-
-  const selected = activeBand ?? rows[0];
-  const flowSize = selected.level.zoneTooltip?.inferredOiUsd ?? selected.level.zoneTooltip?.totalRecentFlowUsd ?? selected.level.notionalUsd;
-
-  return (
-    <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/65 p-3">
-      <div className="grid gap-2 text-xs md:grid-cols-[1fr_1fr_0.75fr_0.75fr_1.5fr]">
-        <ZoneMetric label="Role" value={zoneRoleLabel(selected)} tone={selected.side === "downside" ? "success" : "danger"} />
-        <ZoneMetric label="Range" value={formatLevelRange(selected.level)} />
-        <ZoneMetric label="Distance" value={formatSignedPct(selected.level.distancePct ?? distanceFromCurrent(selected.level.price, currentPrice))} />
-        <ZoneMetric label="Flow/OI" value={formatCompactUsd(flowSize)} />
-        <ZoneMetric label="Trader read" value={shortTraderRead(selected.level, selected.side)} />
-      </div>
-
-      <div className="mt-3 overflow-x-auto">
-        <table className="min-w-full text-left text-[11px]">
-          <thead className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
-            <tr>
-              <th className="px-2 py-2 font-medium">Role</th>
-              <th className="px-2 py-2 font-medium">Range</th>
-              <th className="px-2 py-2 font-medium">Distance</th>
-              <th className="px-2 py-2 font-medium">Size</th>
-              <th className="px-2 py-2 font-medium">Read</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-900">
-            {rows.map((band) => {
-              const active = band.id === selected.id;
-              const rowRead = levelReadFor(band.level, band.side);
-              const size = band.level.zoneTooltip?.inferredOiUsd ?? band.level.zoneTooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
-              return (
-                <tr
-                  key={band.id}
-                  className={`cursor-pointer transition ${active ? "bg-zinc-900/80 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200"}`}
-                  onMouseEnter={() => onHover(band.id)}
-                  onMouseLeave={() => onHover(null)}
-                  onClick={() => onSelect(band.id)}
-                >
-                  <td className={`whitespace-nowrap px-2 py-2 font-medium ${band.side === "downside" ? "text-teal-300" : "text-rose-300"}`}>{zoneRoleLabel(band)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatLevelRange(band.level)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatSignedPct(band.level.distancePct ?? distanceFromCurrent(band.level.price, currentPrice))}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono">{formatCompactUsd(size)}</td>
-                  <td className="min-w-[220px] px-2 py-2 text-zinc-400">{shortTraderRead(band.level, band.side) || rowRead.label}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-2 text-[10px] leading-4 text-zinc-600">Click a zone row to pin it. Hovering highlights the matching band on the chart.</div>
-    </div>
-  );
-}
-
-function ZoneMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "success" | "danger" }) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">{label}</div>
-      <div className={`mt-1 truncate font-mono text-xs ${tone === "success" ? "text-teal-300" : tone === "danger" ? "text-rose-300" : "text-zinc-200"}`}>{value}</div>
     </div>
   );
 }
@@ -1105,18 +912,6 @@ function zoneRoleLabel(band: ChartZoneBand): string {
   if (band.level.leverageBucket === "book") return band.side === "downside" ? "Bid shelf" : "Ask shelf";
   if (band.side === "downside") return "Downside reaction";
   return "Upside reaction";
-}
-
-function distanceFromCurrent(price: number, currentPrice: number | null): number | null {
-  if (currentPrice == null || currentPrice <= 0 || price <= 0) return null;
-  return ((price - currentPrice) / currentPrice) * 100;
-}
-
-function formatSignedPct(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "n/a";
-  const abs = Math.abs(value);
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${sign}${abs.toFixed(abs < 1 ? 2 : 1)}%`;
 }
 
 function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upside"): string {
@@ -1256,29 +1051,6 @@ function TooltipMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
       <div className="text-[9px] uppercase tracking-[0.14em] text-zinc-600">{label}</div>
       <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-200">{value}</div>
-    </div>
-  );
-}
-
-function PlanBox({
-  label,
-  value,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  tone?: "neutral" | "success" | "danger";
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
-      <div
-        className={`mt-1 leading-5 ${
-          tone === "success" ? "text-emerald-300" : tone === "danger" ? "text-rose-300" : "text-zinc-300"
-        }`}
-      >
-        {value}
-      </div>
     </div>
   );
 }
