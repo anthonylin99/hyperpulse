@@ -211,7 +211,7 @@ function formatTimeMs(timeMs: number | null | undefined): string {
 }
 
 type LevelRead = {
-  label: "Rejection" | "Break" | "Pivot" | "Stress";
+  label: "Rejection" | "Break" | "Pivot" | "Long imbalance" | "Short imbalance" | "Stress";
   summary: string;
   reason: string;
   className: string;
@@ -244,14 +244,25 @@ function isUpsideReactionLevel(
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
   const isUpside = side === "upside";
   if (level.leverageBucket === "positioning") {
-    const likelyLong = level.flowSide === "forced_sell";
+    const imbalanceType = level.zoneTooltip?.imbalanceType;
+    if (imbalanceType === "pivot") {
+      return {
+        label: "Pivot",
+        summary: "Buy and sell flow are nearly balanced here. Treat it as a decision zone, not a one-sided wall.",
+        reason: "Net buy/sell imbalance is inside the pivot threshold, so confirmation matters more than direction.",
+        className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
+      };
+    }
+    const likelyLong = imbalanceType === "long_imbalance" || level.flowSide === "forced_sell";
     return {
-      label: "Pivot",
+      label: likelyLong ? "Long imbalance" : "Short imbalance",
       summary: likelyLong
-        ? "Top inferred long positioning. It can defend on retest, but a clean break can turn into sell pressure."
-        : "Top inferred short positioning. It can reject on retest, but a clean hold above can turn into buy pressure.",
-      reason: "Ranked from public trade concentration allocated against positive OI change. This is not exact trader-position data.",
-      className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
+        ? "Buyer-initiated OI build. It can defend on retest, but a clean break can turn into sell pressure."
+        : "Seller-initiated OI build. It can reject on retest, but a clean reclaim can turn into buy pressure.",
+      reason: "Ranked from public trade concentration, buy/sell imbalance, and positive OI change. This is not exact trader-position data.",
+      className: likelyLong
+        ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
+        : "border-red-400/35 bg-red-400/10 text-red-200",
     };
   }
   if (isStressZone(level)) {
@@ -319,6 +330,12 @@ function formatCompactUsd(value: number | null | undefined): string {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
   return `$${value.toFixed(0)}`;
+}
+
+function formatSignedCompactUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatCompactUsd(Math.abs(value))}`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -393,6 +410,15 @@ type ChartZoneTone = {
 function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): ChartZoneTone {
   const role = level.zoneTooltip?.role;
   if (level.leverageBucket === "positioning") {
+    if (level.zoneTooltip?.imbalanceType === "pivot") {
+      return { rgb: "251, 191, 36", textClass: "text-amber-200", borderClass: "border-amber-400/35" };
+    }
+    if (level.zoneTooltip?.imbalanceType === "long_imbalance") {
+      return { rgb: "52, 211, 153", textClass: "text-emerald-200", borderClass: "border-emerald-400/35" };
+    }
+    if (level.zoneTooltip?.imbalanceType === "short_imbalance") {
+      return { rgb: "248, 113, 113", textClass: "text-red-200", borderClass: "border-red-400/35" };
+    }
     if (role === "long_defense") {
       return { rgb: "45, 212, 191", textClass: "text-teal-200", borderClass: "border-teal-400/35" };
     }
@@ -921,6 +947,7 @@ function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upsi
   if (role === "trapped_longs") return "Buyer build above price. Bulls need acceptance back through the zone.";
   if (role === "short_defense") return "Seller build above price. Watch rejection versus clean acceptance above.";
   if (role === "trapped_shorts") return "Seller build below price. Reclaim can turn it into squeeze fuel.";
+  if (role === "pivot_zone") return "Net buy/sell is within the pivot threshold. Let acceptance or rejection decide the read.";
   if (role === "active_test") return "Price is inside the inferred positioning zone. Watch acceptance, rejection, or a fast reclaim.";
   if (level.leverageBucket === "book") {
     return side === "downside"
@@ -1034,6 +1061,8 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
         {tooltip?.rank || band.level.flowRank ? <TooltipMetric label="Rank" value={`#${tooltip?.rank ?? band.level.flowRank}`} /> : null}
         <TooltipMetric label="Flow / OI" value={formatCompactUsd(flowSize)} />
         {tooltip?.totalRecentFlowUsd ? <TooltipMetric label="Recent flow" value={formatCompactUsd(tooltip.totalRecentFlowUsd)} /> : null}
+        {tooltip?.imbalanceUsd != null ? <TooltipMetric label="Net" value={formatSignedCompactUsd(tooltip.imbalanceUsd)} /> : null}
+        {tooltip?.leveragePressure != null ? <TooltipMetric label="Leverage proxy" value={`${tooltip.leveragePressure.toFixed(0)}x`} /> : null}
         {tooltip?.buyNotionalUsd != null && tooltip?.sellNotionalUsd != null ? (
           <TooltipMetric label="Buy / sell" value={`${formatCompactUsd(tooltip.buyNotionalUsd)} / ${formatCompactUsd(tooltip.sellNotionalUsd)}`} />
         ) : null}

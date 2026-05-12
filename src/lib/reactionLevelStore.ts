@@ -19,6 +19,9 @@ const STORE_BACKOFF_MS = 5 * 60 * 1000;
 const CANDIDATE_RANGE_MULTIPLIER = 3;
 const CANDIDATE_RANGE_MIN_PCT = 12;
 const CANDIDATE_RANGE_MAX_PCT = 45;
+const POSITIONING_PIVOT_NET_USD = 100_000;
+const WORKER_ZONE_CARRY_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const DISPLAY_ZONES_PER_SIDE = 5;
 
 let pool: Pool | null = null;
 let disabledUntil = 0;
@@ -154,46 +157,129 @@ function compactUsd(value: number | null | undefined): string {
   return `$${Math.abs(value).toFixed(0)}`;
 }
 
+function leveragePressureForDistance(distancePct: number): number {
+  if (!Number.isFinite(distancePct)) return 1;
+  const distance = Math.max(Math.abs(distancePct), 0.25);
+  return Number(Math.min(50, Math.max(1, 100 / distance)).toFixed(1));
+}
+
+function rowEvidenceAt(row: Record<string, unknown>): number {
+  return asNumber(row.last_seen_at) ?? asNumber(row.refreshed_at) ?? asNumber(row.generated_at) ?? 0;
+}
+
+function rankExposureRows(rows: Array<Record<string, unknown>>): Array<Record<string, unknown> & { displayRank: number }> {
+  const selected: Array<Record<string, unknown> & { displayRank: number }> = [];
+  const seenRanges = new Set<string>();
+
+  for (const side of ["bull", "bear"]) {
+    const sideRows = rows
+      .filter((row) => normalizeSide(row.side) === side)
+      .sort((a, b) => {
+        const aActive = String(a.status ?? "active") === "active" ? 0 : 1;
+        const bActive = String(b.status ?? "active") === "active" ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+
+        const aRank = Math.max(Math.round(asNumber(a.rank) ?? DISPLAY_ZONES_PER_SIDE + 1), 1);
+        const bRank = Math.max(Math.round(asNumber(b.rank) ?? DISPLAY_ZONES_PER_SIDE + 1), 1);
+        if (aActive === 0 && aRank !== bRank) return aRank - bRank;
+
+        const aScore = asNumber(a.score) ?? 0;
+        const bScore = asNumber(b.score) ?? 0;
+        if (aScore !== bScore) return bScore - aScore;
+
+        const aFlow = asNumber(a.trade_notional_usd) ?? 0;
+        const bFlow = asNumber(b.trade_notional_usd) ?? 0;
+        if (aFlow !== bFlow) return bFlow - aFlow;
+
+        return rowEvidenceAt(b) - rowEvidenceAt(a);
+      });
+
+    let rank = 1;
+    for (const row of sideRows) {
+      if (rank > DISPLAY_ZONES_PER_SIDE) break;
+      const zoneLow = asNumber(row.zone_low) ?? asNumber(row.weighted_price) ?? 0;
+      const zoneHigh = asNumber(row.zone_high) ?? asNumber(row.weighted_price) ?? 0;
+      const rangeKey = `${side}:${Math.round(zoneLow)}:${Math.round(zoneHigh)}`;
+      if (seenRanges.has(rangeKey)) continue;
+      seenRanges.add(rangeKey);
+      selected.push({ ...row, displayRank: rank });
+      rank += 1;
+    }
+  }
+
+  return selected;
+}
+
 async function readCurrentExposureZones(client: Pool, asset: string, windowMs: number): Promise<ReactionLevelsPayload | null> {
   try {
-    // Worker stores up to 10 zones per side so emerging levels can climb the rankings;
-    // we only display the top 5 per side here.
+    // Active worker zones can be one-sided during a fast tape. Fill the displayed
+    // ladder with recent retired rows so long and short imbalance levels do not
+    // disappear just because the latest public-flow window leaned one way.
+    const carryCutoff = Date.now() - WORKER_ZONE_CARRY_LOOKBACK_MS;
     const result = await client.query(
       `
       select *
       from reaction_exposure_zones_current
       where asset = $1
         and window_ms = $2
-        and status = 'active'
-        and rank <= 5
-      order by side asc, rank asc
+        and (
+          status = 'active'
+          or coalesce(last_seen_at, refreshed_at, generated_at) >= $3
+        )
+      order by side asc, status asc, rank asc nulls last
       `,
-      [asset, windowMs],
+      [asset, windowMs, carryCutoff],
     );
     if (result.rows.length === 0) return null;
 
-    const currentPrice = asNumber(result.rows[0]?.current_price);
+    const selectedRows = rankExposureRows(result.rows as Array<Record<string, unknown>>);
+    if (selectedRows.length === 0) return null;
+
+    const priceRow = [...selectedRows].sort(
+      (a, b) => (asNumber(b.refreshed_at) ?? asNumber(b.generated_at) ?? 0) - (asNumber(a.refreshed_at) ?? asNumber(a.generated_at) ?? 0),
+    )[0];
+    const currentPrice = asNumber(priceRow?.current_price);
     if (currentPrice == null || currentPrice <= 0) return null;
     const updatedAt = Math.max(
-      ...result.rows.map((row) => asNumber(row.refreshed_at) ?? asNumber(row.generated_at) ?? 0),
+      ...selectedRows.map((row) => asNumber(row.refreshed_at) ?? asNumber(row.generated_at) ?? rowEvidenceAt(row)),
     );
-    const levels = result.rows.map((row) => {
+    const levels = selectedRows.map((row) => {
       const side = normalizeSide(row.side);
       const status = String(row.status ?? "active");
-      const rank = Math.max(Math.round(asNumber(row.rank) ?? 0), 1);
+      const rank = Math.max(Math.round(asNumber(row.displayRank) ?? asNumber(row.rank) ?? 0), 1);
       const tradeNotionalUsd = Math.max(asNumber(row.trade_notional_usd) ?? 0, 0);
       const inferredOiUsd = Math.max(asNumber(row.inferred_oi_notional_usd) ?? 0, 0);
       const buyNotionalUsd = Math.max(asNumber(row.buy_notional_usd) ?? 0, 0);
       const sellNotionalUsd = Math.max(asNumber(row.sell_notional_usd) ?? 0, 0);
+      const imbalanceUsd = buyNotionalUsd - sellNotionalUsd;
+      const tooltip = row.tooltip && typeof row.tooltip === "object" ? row.tooltip as Record<string, unknown> : {};
+      const payload = row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
+      const rawImbalanceType = tooltip.imbalanceType ?? payload.imbalanceType;
+      const imbalanceType =
+        rawImbalanceType === "long_imbalance" || rawImbalanceType === "short_imbalance" || rawImbalanceType === "pivot"
+          ? rawImbalanceType
+          : Math.abs(imbalanceUsd) <= POSITIONING_PIVOT_NET_USD
+            ? "pivot"
+            : imbalanceUsd > 0
+              ? "long_imbalance"
+              : "short_imbalance";
       const zoneLow = asNumber(row.zone_low) ?? asNumber(row.weighted_price) ?? currentPrice;
       const zoneHigh = asNumber(row.zone_high) ?? asNumber(row.weighted_price) ?? currentPrice;
       const price = asNumber(row.weighted_price) ?? asNumber(row.zone_mid) ?? (zoneLow + zoneHigh) / 2;
       const distancePct = asNumber(row.distance_pct) ?? ((price - currentPrice) / currentPrice) * 100;
-      const dynamicZoneWidthPct = asNumber(row.payload?.dynamicZoneWidthPct) ?? asNumber(row.tooltip?.dynamicZoneWidthPct);
+      const dynamicZoneWidthPct = asNumber(payload.dynamicZoneWidthPct) ?? asNumber(tooltip.dynamicZoneWidthPct);
+      const carriedForward =
+        status !== "active" ||
+        tooltip.carriedForward === true ||
+        payload.carriedForward === true;
       const reasonSelected =
-        typeof row.tooltip?.reasonSelected === "string"
-          ? row.tooltip.reasonSelected
-          : `Top ${side === "bull" ? "buyer-initiated" : "seller-initiated"} inferred OI build`;
+        typeof tooltip.reasonSelected === "string"
+          ? tooltip.reasonSelected
+          : carriedForward
+            ? "Carried forward because no public stream proves this inferred zone was unwound."
+            : imbalanceType === "pivot"
+              ? `Pivot zone: buy/sell net is within ${compactUsd(POSITIONING_PIVOT_NET_USD)}`
+              : `Top ${side === "bull" ? "buyer-initiated" : "seller-initiated"} inferred OI build`;
       const evidence = [
         `${distancePct >= 0 ? "+" : ""}${distancePct.toFixed(1)}%`,
         `${compactUsd(tradeNotionalUsd)} recent flow`,
@@ -225,15 +311,23 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
           inferredOiUsd,
           buyNotionalUsd,
           sellNotionalUsd,
+          imbalanceUsd,
+          imbalanceType,
+          leveragePressure:
+            asNumber(tooltip.leveragePressure) ?? asNumber(payload.leveragePressure) ?? leveragePressureForDistance(distancePct),
+          pivotThresholdUsd:
+            asNumber(tooltip.pivotThresholdUsd) ?? asNumber(payload.pivotThresholdUsd) ?? POSITIONING_PIVOT_NET_USD,
           reasonSelected,
           refreshedAtMs: asNumber(row.refreshed_at) ?? updatedAt,
+          lastEvidenceAtMs: rowEvidenceAt(row),
+          carriedForward,
           sourceCaveat: "Inferred from public Hyperliquid streams, not exact open positions.",
           windowMs,
           hiddenReason: status === "stale" ? "stale" as const : undefined,
           dynamicZoneWidthPct: dynamicZoneWidthPct ?? undefined,
         },
         windowMs,
-        ageMs: Math.max(updatedAt - (asNumber(row.refreshed_at) ?? updatedAt), 0),
+        ageMs: Math.max(Date.now() - (asNumber(row.refreshed_at) ?? rowEvidenceAt(row)), 0),
         hiddenReason: status === "stale" ? "stale" as const : undefined,
         sourceCaveat: {
           exactPositions: false as const,

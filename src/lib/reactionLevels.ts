@@ -17,11 +17,13 @@ export type ReactionOverlayMode = "confluence" | "book" | "oi_holding" | "stress
 export type ReactionExposureSide = "bull" | "bear";
 export type ReactionOrderBookSide = "bid" | "ask";
 export type ReactionPositioningAggressorSide = "buyer_initiated" | "seller_initiated" | "mixed";
+export type ReactionPositioningImbalanceType = "long_imbalance" | "short_imbalance" | "pivot";
 export type ReactionPositioningRole =
   | "long_defense"
   | "trapped_longs"
   | "short_defense"
   | "trapped_shorts"
+  | "pivot_zone"
   | "active_test"
   | "unknown"
   | "stale";
@@ -73,6 +75,9 @@ export interface ReactionPositioningZone {
   tradeNotionalUsd: number;
   buyNotionalUsd: number;
   sellNotionalUsd: number;
+  imbalanceUsd: number;
+  imbalanceType: ReactionPositioningImbalanceType;
+  leveragePressure: number | null;
   confidence: ReactionConfidence;
   confidenceReason: string;
   ageMs: number | null;
@@ -191,8 +196,14 @@ export interface ReactionLevel {
     inferredOiUsd?: number;
     buyNotionalUsd?: number;
     sellNotionalUsd?: number;
+    imbalanceUsd?: number;
+    imbalanceType?: ReactionPositioningImbalanceType;
+    leveragePressure?: number;
+    pivotThresholdUsd?: number;
     reasonSelected?: string;
     refreshedAtMs?: number;
+    lastEvidenceAtMs?: number;
+    carriedForward?: boolean;
     aggressorSide?: ReactionPositioningAggressorSide;
     role?: ReactionPositioningRole;
     roleLabel?: string;
@@ -307,6 +318,7 @@ const MAX_OI_HOLDING_ZONES_PER_SIDE = 5;
 const MAX_ORDER_BOOK_SHELVES_PER_SIDE = 5;
 const OI_HOLDING_CLUSTER_WIDTH_PCT = 0.8;
 const MIN_OI_HOLDING_TRADE_NOTIONAL_USD = 250_000;
+const POSITIONING_PIVOT_NET_USD = 100_000;
 const POSITIONING_STALE_MULTIPLIER = 2;
 const REACTION_ALGORITHM_VERSION = "reaction-map-v2.1.0";
 
@@ -458,12 +470,14 @@ function positioningInferenceType(
 
 function positioningRoleFor(args: {
   aggressorSide: ReactionPositioningAggressorSide;
+  imbalanceType: ReactionPositioningImbalanceType;
   zoneLow: number;
   zoneHigh: number;
   currentPrice: number | null;
   stale: boolean;
 }): ReactionPositioningRole {
   if (args.stale) return "stale";
+  if (args.imbalanceType === "pivot") return "pivot_zone";
   const location = zonePriceLocation(args);
   if (location === "inside") return "active_test";
   if (location === "unknown" || args.aggressorSide === "mixed") return "unknown";
@@ -483,6 +497,8 @@ function positioningRoleLabel(role: ReactionPositioningRole): string {
       return "Short defense";
     case "trapped_shorts":
       return "Trapped shorts";
+    case "pivot_zone":
+      return "Pivot zone";
     case "active_test":
       return "Active test";
     case "stale":
@@ -494,6 +510,9 @@ function positioningRoleLabel(role: ReactionPositioningRole): string {
 
 function confidenceReasonForPositioning(level: ReactionLevel, role: ReactionPositioningRole): string {
   if (role === "stale") return "Zone is older than the selected positioning window.";
+  if (role === "pivot_zone") {
+    return `Buy/sell net is within ${compactUsd(POSITIONING_PIVOT_NET_USD)}, so this is a pivot zone rather than a long or short imbalance.`;
+  }
   if (level.components.oiEntryNotionalUsd <= 0) return "No positive OI build is available for this bucket.";
   if (level.components.tradeNotionalUsd < MIN_OI_HOLDING_TRADE_NOTIONAL_USD) {
     return "Recent public flow is below the minimum used for positioning zones.";
@@ -640,6 +659,22 @@ function oiHoldingSide(level: ReactionLevel): ReactionExposureSide {
   return level.components.buyNotionalUsd >= level.components.sellNotionalUsd ? "bull" : "bear";
 }
 
+function positioningImbalanceType(level: ReactionLevel): ReactionPositioningImbalanceType {
+  const fromTooltip = level.tooltip?.imbalanceType;
+  if (fromTooltip === "long_imbalance" || fromTooltip === "short_imbalance" || fromTooltip === "pivot") {
+    return fromTooltip;
+  }
+  const imbalanceUsd = level.components.buyNotionalUsd - level.components.sellNotionalUsd;
+  if (Math.abs(imbalanceUsd) <= POSITIONING_PIVOT_NET_USD) return "pivot";
+  return imbalanceUsd > 0 ? "long_imbalance" : "short_imbalance";
+}
+
+function leveragePressureForDistance(distancePct: number): number {
+  if (!Number.isFinite(distancePct)) return 1;
+  const distance = Math.max(Math.abs(distancePct), 0.25);
+  return Number(clamp(100 / distance, 1, 50).toFixed(1));
+}
+
 function selectDistinctReactionLevels(levels: ReactionLevel[]): ReactionLevel[] {
   const eligible = levels.filter(
     (level) =>
@@ -782,8 +817,21 @@ function zoneFromCluster(
   );
   const clusterWidthPct = ((zoneHigh - zoneLow) / currentPrice) * 100;
   const aggressorSide: ReactionPositioningAggressorSide = side === "bull" ? "buyer_initiated" : "seller_initiated";
-  const role = positioningRoleFor({ aggressorSide, zoneLow, zoneHigh, currentPrice, stale: false });
+  const imbalanceUsd = components.buyNotionalUsd - components.sellNotionalUsd;
+  const imbalanceType: ReactionPositioningImbalanceType =
+    Math.abs(imbalanceUsd) <= POSITIONING_PIVOT_NET_USD
+      ? "pivot"
+      : imbalanceUsd > 0
+        ? "long_imbalance"
+        : "short_imbalance";
+  const leveragePressure = leveragePressureForDistance(distancePct);
+  const role = positioningRoleFor({ aggressorSide, imbalanceType, zoneLow, zoneHigh, currentPrice, stale: false });
   const roleLabel = positioningRoleLabel(role);
+  const confidenceReason = confidenceReasonForPositioning(dominant, role);
+  const reasonSelected =
+    imbalanceType === "pivot"
+      ? `Pivot zone: buy/sell net is within ${compactUsd(POSITIONING_PIVOT_NET_USD)} across ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`
+      : `Top ${aggressorSide === "buyer_initiated" ? "buyer-initiated" : "seller-initiated"} inferred OI build from ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`;
   const evidence = [
     formatDistance(distancePct),
     `${compactUsd(components.tradeNotionalUsd)} recent flow`,
@@ -817,20 +865,24 @@ function zoneFromCluster(
       inferredOiUsd: components.oiEntryNotionalUsd,
       buyNotionalUsd: components.buyNotionalUsd,
       sellNotionalUsd: components.sellNotionalUsd,
+      imbalanceUsd,
+      imbalanceType,
+      leveragePressure,
+      pivotThresholdUsd: POSITIONING_PIVOT_NET_USD,
       aggressorSide,
       role,
       roleLabel,
-      confidenceReason: confidenceReasonForPositioning(dominant, role),
+      confidenceReason,
       sourceCaveat: MARKET_STREAM_CAVEAT.text,
       windowMs: dominant.windowMs,
-      reasonSelected: `Top ${aggressorSide === "buyer_initiated" ? "buyer-initiated" : "seller-initiated"} inferred OI build from ${cluster.length} flow bucket${cluster.length === 1 ? "" : "s"}`,
+      reasonSelected,
     },
     positioning: {
       inferenceType: positioningInferenceType(aggressorSide),
       aggressorSide,
       role,
       roleLabel,
-      confidenceReason: confidenceReasonForPositioning(dominant, role),
+      confidenceReason,
       ageMs: dominant.ageMs ?? null,
       windowMs: dominant.windowMs ?? 0,
       sourceCaveat: MARKET_STREAM_CAVEAT,
@@ -1047,7 +1099,9 @@ function positioningZoneFromLevel(args: {
   const ageMs = zoneAgeMs(level, updatedAt);
   const stale = isStaleZone(level, updatedAt, windowMs);
   const aggressorSide = positioningAggressorFor(level);
-  const role = positioningRoleFor({ aggressorSide, zoneLow, zoneHigh, currentPrice, stale });
+  const imbalanceType = positioningImbalanceType(level);
+  const imbalanceUsd = level.tooltip?.imbalanceUsd ?? level.components.buyNotionalUsd - level.components.sellNotionalUsd;
+  const role = positioningRoleFor({ aggressorSide, imbalanceType, zoneLow, zoneHigh, currentPrice, stale });
   const sourceCaveat = caveatForLevel(level);
   const confidenceReason = level.positioning?.confidenceReason ?? level.tooltip?.confidenceReason ?? confidenceReasonForPositioning(level, role);
 
@@ -1068,6 +1122,9 @@ function positioningZoneFromLevel(args: {
     tradeNotionalUsd: level.components.tradeNotionalUsd,
     buyNotionalUsd: level.components.buyNotionalUsd,
     sellNotionalUsd: level.components.sellNotionalUsd,
+    imbalanceUsd,
+    imbalanceType,
+    leveragePressure: level.tooltip?.leveragePressure ?? null,
     confidence: level.confidence,
     confidenceReason,
     ageMs,
@@ -1610,6 +1667,10 @@ export function reactionLevelsToSupportResistanceLevels(
         ageMs: positioning?.ageMs ?? level.tooltip?.ageMs,
         windowMs: positioning?.windowMs ?? level.tooltip?.windowMs,
         hiddenReason: positioning?.hiddenReason ?? level.tooltip?.hiddenReason,
+        imbalanceUsd: positioning?.imbalanceUsd ?? level.tooltip?.imbalanceUsd,
+        imbalanceType: positioning?.imbalanceType ?? level.tooltip?.imbalanceType,
+        leveragePressure: positioning?.leveragePressure ?? level.tooltip?.leveragePressure,
+        pivotThresholdUsd: level.tooltip?.pivotThresholdUsd ?? POSITIONING_PIVOT_NET_USD,
       };
 
       return {

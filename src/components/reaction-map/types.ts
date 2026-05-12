@@ -65,6 +65,9 @@ export interface PositioningZoneLike {
   buyNotionalUsd?: number | null;
   sellNotionalUsd?: number | null;
   aggressorSkew?: number | null;
+  imbalanceUsd?: number | null;
+  imbalanceType?: "long_imbalance" | "short_imbalance" | "pivot" | null;
+  leveragePressure?: number | null;
   rank?: number | null;
   hiddenReason?: string | null;
   triggerText?: string | null;
@@ -158,6 +161,11 @@ export interface NormalizedPositioningZone {
   ageMs: number | null;
   windowMs: number | null;
   notionalUsd: number | null;
+  buyNotionalUsd: number | null;
+  sellNotionalUsd: number | null;
+  imbalanceUsd: number | null;
+  imbalanceType: "long_imbalance" | "short_imbalance" | "pivot" | null;
+  leveragePressure: number | null;
   rank: number | null;
   triggerText: string | null;
   invalidationText: string | null;

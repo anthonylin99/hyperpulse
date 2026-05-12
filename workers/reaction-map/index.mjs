@@ -100,6 +100,7 @@ const ZONE_CLUSTER_WIDTH_PCT = envNumber("REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT", 
 const ZONE_MIN_TRADE_NOTIONAL_USD = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD", 250_000, 1_000);
 const ZONE_MIN_TRADE_NOTIONAL_USD_FLOOR = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD_FLOOR", 25_000, 1_000);
 const ZONE_MIN_TRADE_NOTIONAL_SHARE = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_SHARE", 0.08, 0.01);
+const POSITIONING_PIVOT_NET_USD = envNumber("REACTION_MAP_PIVOT_NET_USD", 100_000, 0);
 const ZONE_RANGE_MIN_PCT = envNumber("REACTION_MAP_CLEANUP_RANGE_MIN_PCT", 12, 0.5);
 const ZONE_RANGE_MAX_PCT = envNumber("REACTION_MAP_CLEANUP_RANGE_MAX_PCT", 45, 5);
 const ZONE_RANGE_STDEV_MULTIPLIER = envNumber("REACTION_MAP_CLEANUP_RANGE_STDEV_X", 3, 1);
@@ -114,6 +115,11 @@ const ZONE_WIDTH_AVG_MOVE_MULTIPLIER = envNumber("REACTION_MAP_ZONE_WIDTH_AVG_MO
 const MAX_ZONES_STORED_PER_SIDE = Math.max(
   1,
   Math.floor(envNumber("REACTION_MAP_MAX_ZONES_STORED_PER_SIDE", 10, 1)),
+);
+const CARRIED_ZONE_LOOKBACK_MS = envNumber(
+  "REACTION_MAP_CARRIED_ZONE_LOOKBACK_MS",
+  Math.max(RETENTION_MS, 24 * 60 * 60 * 1000),
+  60 * 60 * 1000,
 );
 const ALGORITHM_VERSION = "reaction-map-v2.1.0";
 const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
@@ -251,6 +257,17 @@ function compactUsd(value) {
 
 function zoneSideFor(_price, _currentPrice, buyNotionalUsd, sellNotionalUsd) {
   return buyNotionalUsd >= sellNotionalUsd ? "bull" : "bear";
+}
+
+function positioningImbalanceType(buyNotionalUsd, sellNotionalUsd) {
+  const imbalanceUsd = buyNotionalUsd - sellNotionalUsd;
+  if (Math.abs(imbalanceUsd) <= POSITIONING_PIVOT_NET_USD) return "pivot";
+  return imbalanceUsd > 0 ? "long_imbalance" : "short_imbalance";
+}
+
+function leveragePressureForDistance(distancePct) {
+  const movePct = Math.max(Math.abs(distancePct), 0.25);
+  return Math.min(50, Math.max(1, 100 / movePct));
 }
 
 function zoneIdentity(asset, windowMs, side, zoneLow, zoneHigh) {
@@ -838,6 +855,9 @@ function buildZoneFromCluster(cluster, side, currentPrice, zoneWidthPct) {
   const walletCount = Math.max(...cluster.map((item) => item.uniqueTraderCount), 0);
   const clusterWidthPct = ((zoneHigh - zoneLow) / currentPrice) * 100;
   const distancePct = ((weightedPrice - currentPrice) / currentPrice) * 100;
+  const imbalanceUsd = buyNotionalUsd - sellNotionalUsd;
+  const imbalanceType = positioningImbalanceType(buyNotionalUsd, sellNotionalUsd);
+  const leveragePressure = leveragePressureForDistance(distancePct);
   const score = Math.round(
     Math.min(
       100,
@@ -847,8 +867,12 @@ function buildZoneFromCluster(cluster, side, currentPrice, zoneWidthPct) {
         Math.min(12, Math.abs(buyNotionalUsd - sellNotionalUsd) / Math.max(tradeNotionalUsd, 1) * 12),
     ),
   );
-  const buildSideLabel = side === "bull" ? "buyer-initiated" : "seller-initiated";
-  const reasonSelected = `Top ${buildSideLabel} inferred OI build from ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`;
+  const buildSideLabel =
+    imbalanceType === "pivot" ? "balanced pivot" : side === "bull" ? "buyer-initiated" : "seller-initiated";
+  const reasonSelected =
+    imbalanceType === "pivot"
+      ? `Pivot zone: buy/sell net is within ${compactUsd(POSITIONING_PIVOT_NET_USD)} across ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`
+      : `Top ${buildSideLabel} inferred OI build from ${cluster.length} clustered flow bucket${cluster.length === 1 ? "" : "s"}`;
 
   return {
     side,
@@ -865,6 +889,9 @@ function buildZoneFromCluster(cluster, side, currentPrice, zoneWidthPct) {
     bookNotionalUsd,
     tradeNotionalUsd,
     minTradeNotionalUsd,
+    imbalanceUsd,
+    imbalanceType,
+    leveragePressure,
     inferredOiNotionalUsd,
     trackedLiqNotionalUsd: 0,
     buyNotionalUsd,
@@ -893,6 +920,14 @@ function carriedZoneFromRow(row, currentPrice, zoneWidthPct) {
   const bookNotionalUsd = Math.max(parseNumber(row.book_notional_usd) ?? 0, 0);
   const score = Math.max(Math.round(parseNumber(row.score) ?? 0), 0);
   const side = row.side === "bear" ? "bear" : "bull";
+  const imbalanceUsd = Math.max(parseNumber(row.buy_notional_usd) ?? 0, 0) - Math.max(parseNumber(row.sell_notional_usd) ?? 0, 0);
+  const tooltip = row.tooltip && typeof row.tooltip === "object" ? row.tooltip : {};
+  const imbalanceType =
+    typeof tooltip.imbalanceType === "string"
+      ? tooltip.imbalanceType
+      : typeof payload.imbalanceType === "string"
+        ? payload.imbalanceType
+        : positioningImbalanceType(Math.max(parseNumber(row.buy_notional_usd) ?? 0, 0), Math.max(parseNumber(row.sell_notional_usd) ?? 0, 0));
 
   return {
     zoneId: String(row.zone_id),
@@ -910,6 +945,9 @@ function carriedZoneFromRow(row, currentPrice, zoneWidthPct) {
     bookNotionalUsd,
     tradeNotionalUsd,
     minTradeNotionalUsd: Math.max(parseNumber(payload.minTradeNotionalUsd) ?? 0, 0),
+    imbalanceUsd: parseNumber(tooltip.imbalanceUsd) ?? parseNumber(payload.imbalanceUsd) ?? imbalanceUsd,
+    imbalanceType,
+    leveragePressure: parseNumber(tooltip.leveragePressure) ?? parseNumber(payload.leveragePressure) ?? leveragePressureForDistance(distancePct),
     inferredOiNotionalUsd,
     trackedLiqNotionalUsd: Math.max(parseNumber(row.tracked_liq_notional_usd) ?? 0, 0),
     buyNotionalUsd: Math.max(parseNumber(row.buy_notional_usd) ?? 0, 0),
@@ -925,14 +963,16 @@ function carriedZoneFromRow(row, currentPrice, zoneWidthPct) {
 
 async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWidthPct) {
   const now = Date.now();
+  const carryCutoff = now - CARRIED_ZONE_LOOKBACK_MS;
   const existingResult = await pool.query(
     `
     select *
     from reaction_exposure_zones_current
     where asset = $1
       and window_ms = $2
+      and coalesce(last_seen_at, refreshed_at, generated_at) >= $3
     `,
-    [asset, windowMs],
+    [asset, windowMs, carryCutoff],
   );
   const existing = new Map(existingResult.rows.map((row) => [row.zone_id, row]));
   const nextZoneIds = [];
@@ -951,8 +991,8 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
     );
 
     for (const side of ["bull", "bear"]) {
-      // Store top N per side (default 10) so emerging zones can climb the rankings.
-      // The API filters to top 5 for display; the rest sit on the bench.
+      // Store top N per side (default 10) so emerging and recently carried zones
+      // keep a usable ladder instead of disappearing after one one-sided flow window.
       const freshZones = zones[side].map((zone) => ({
         ...zone,
         zoneId: zoneIdentity(asset, windowMs, side, zone.zoneLow, zone.zoneHigh),
@@ -961,7 +1001,7 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
       }));
       const freshZoneIds = new Set(freshZones.map((zone) => zone.zoneId));
       const carriedZones = existingResult.rows
-        .filter((row) => row.side === side && row.status === "active" && !freshZoneIds.has(String(row.zone_id)))
+        .filter((row) => row.side === side && !freshZoneIds.has(String(row.zone_id)))
         .map((row) => carriedZoneFromRow(row, currentPrice, zoneWidthPct))
         .filter((zone) => zone != null);
       const ranked = [...freshZones, ...carriedZones]
@@ -983,6 +1023,10 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
           inferredOiUsd: zone.inferredOiNotionalUsd,
           buyNotionalUsd: zone.buyNotionalUsd,
           sellNotionalUsd: zone.sellNotionalUsd,
+          imbalanceUsd: zone.imbalanceUsd,
+          imbalanceType: zone.imbalanceType,
+          leveragePressure: zone.leveragePressure,
+          pivotThresholdUsd: POSITIONING_PIVOT_NET_USD,
           aggressorSkew:
             zone.tradeNotionalUsd > 0
               ? (zone.buyNotionalUsd - zone.sellNotionalUsd) / zone.tradeNotionalUsd
@@ -1082,6 +1126,10 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
                 averageMoveMultiplier: ZONE_WIDTH_AVG_MOVE_MULTIPLIER,
               },
               minTradeNotionalUsd: zone.minTradeNotionalUsd,
+              imbalanceUsd: zone.imbalanceUsd,
+              imbalanceType: zone.imbalanceType,
+              leveragePressure: zone.leveragePressure,
+              pivotThresholdUsd: POSITIONING_PIVOT_NET_USD,
               carriedForward: zone.carriedForward,
             }),
             lastSeenAt,

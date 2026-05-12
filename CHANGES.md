@@ -367,3 +367,10 @@
 - Attempted: fetched/pulled latest refs, merged `origin/main` into the branch, resolved conflicts in the Reaction Map API route, momentum-alerts Dockerfile, Reaction Map chart mode cleanup, and the deleted `.codex` skill ledger.
 - Decision: keep main's live order-book shelf enrichment while preserving this branch's persisted Reaction Map source-of-truth changes; keep the momentum-alerts Dockerfile root-context compatible for local Compose while adding chart support from main.
 - Result: `docker compose build web`, `docker compose build momentum-alerts reaction-map`, and a recreated `reaction-map` container passed. The sampled `reaction-map` logs showed startup/subscriptions without fresh errors.
+
+## 2026-05-12
+
+- Request: make Reaction Map positioning levels reliable on `/markets`, with long imbalances green, short imbalances red, and near-flat net flow shown as yellow pivot zones.
+- Attempted: traced BTC 4h positioning through the worker table, API store, chart model, and page UI; reproduced the one-sided/near-price output; rebuilt and restarted `web` and `reaction-map` in Docker; verified the BTC 4h route and browser page on port `3004`.
+- Decision: keep worker-promoted zones as the source, but carry recent retired worker rows into the displayed top-five-per-side ladder so one-sided current flow does not erase the opposite side. Classify net buy/sell within `$100K` as `pivot`, expose a distance-based leverage-pressure proxy, and color by imbalance type instead of price location.
+- Result: `docker compose build web` and `docker compose build --no-cache reaction-map` passed. BTC 4h `/api/market/reaction-levels` returns 5 buyer-initiated long imbalance zones and 5 seller-initiated short imbalance zones with leverage proxy values; browser/API verification on `http://localhost:3004/markets` passed with no web console errors. Local full Compose startup remains blocked by the pre-existing `0007_reaction_only_cleanup.sql` checksum drift, so `web` was restarted with `--no-deps` on port `3004`.
