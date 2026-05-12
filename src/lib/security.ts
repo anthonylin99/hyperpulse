@@ -112,7 +112,7 @@ function applyCacheHeaders(response: NextResponse, cachePolicy: CachePolicy) {
   if (cachePolicy === "private-no-store") {
     response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
   } else {
-    response.headers.set("Cache-Control", "public, max-age=30, s-maxage=120, stale-while-revalidate=300");
+    response.headers.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=900");
   }
 }
 

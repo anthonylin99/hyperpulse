@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
         worker: diagnostics.worker,
         diagnostics,
         source: "momentum-alert-events",
-      });
+      }, { cache: "public-market" });
     }
     const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
     const currentPrices = parseCurrentPrices(await info.metaAndAssetCtxs());
@@ -65,9 +65,9 @@ export async function GET(req: NextRequest) {
       worker: diagnostics.worker,
       diagnostics,
       source: "momentum-alert-events",
-    });
+    }, { cache: "public-market" });
   } catch (error) {
     logServerError("api/alerts/momentum", error);
-    return jsonError("Unable to load momentum alerts right now.", { status: 502 });
+    return jsonError("Unable to load momentum alerts right now.", { status: 502, cache: "public-market" });
   }
 }

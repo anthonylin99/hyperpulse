@@ -19,10 +19,10 @@ export const POLL_INTERVAL_MARKET =
   Number.isFinite(configuredMarketPollMs) && configuredMarketPollMs >= 30_000
     ? configuredMarketPollMs
     : process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
-      ? 120_000
+      ? 300_000
       : 30_000;
 export const MARKET_ENRICHMENT_INTERVAL_MS =
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "production" ? 10 * 60_000 : 5 * 60_000;
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "production" ? 15 * 60_000 : 5 * 60_000;
 export const POLL_INTERVAL_PORTFOLIO = 300_000; // 5m
 export const WS_DEBOUNCE_MS = 1_000;
 export const OI_SPIKE_THRESHOLD_PCT = 5;

@@ -140,7 +140,6 @@ async function fetchCandleRows(url: string): Promise<Array<Record<string, string
 
     try {
       const response = await fetch(url, {
-        cache: "no-store",
         signal: controller.signal,
       });
 
@@ -571,9 +570,7 @@ export default function PriceChart({
           coin,
           window: REACTION_WINDOW[interval],
         });
-        const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`), {
-          cache: "no-store",
-        });
+        const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`));
         if (!response.ok) throw new Error("Unable to fetch Reaction Map.");
         const payload = (await response.json()) as ReactionLevelsPayload;
         if (!cancelled) {

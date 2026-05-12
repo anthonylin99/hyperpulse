@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Bell, BookOpenCheck, ExternalLink, Radio, RefreshCw, Send, type LucideIcon } from "lucide-react";
 import { cn, formatChartPrice } from "@/lib/format";
+import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import { formatEasternDateTime } from "@/lib/time";
 import { useShadowBook } from "@/context/ShadowBookContext";
 import type { MomentumAlert } from "@/types";
@@ -88,7 +89,7 @@ export default function AlertsPage() {
     const load = async () => {
       try {
         setError(null);
-        const response = await fetch("/api/alerts/momentum", { cache: "no-store" });
+        const response = await fetch("/api/alerts/momentum");
         if (!response.ok) throw new Error("Unable to load alerts");
         const payload = (await response.json()) as AlertsResponse;
         if (mounted) setData(payload);
@@ -99,7 +100,7 @@ export default function AlertsPage() {
       }
     };
     load();
-    const interval = window.setInterval(load, 60_000);
+    const interval = window.setInterval(load, POLL_INTERVAL_MARKET);
     return () => {
       mounted = false;
       window.clearInterval(interval);

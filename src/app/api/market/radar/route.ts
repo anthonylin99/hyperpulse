@@ -285,9 +285,9 @@ export async function GET(req: NextRequest) {
       generatedAt: timestamp,
       source: "quant-radar",
       factorsIncluded: false,
-    });
+    }, { cache: "public-market" });
   } catch (error) {
     logServerError("api/market/radar", error);
-    return jsonError("Unable to build market radar right now.", { status: 502 });
+    return jsonError("Unable to build market radar right now.", { status: 502, cache: "public-market" });
   }
 }

@@ -51,11 +51,12 @@ export async function GET(request: Request) {
       windowMs,
       requestUrl: url,
     });
-    return jsonSuccess(payloadWithLiveBook);
+    return jsonSuccess(payloadWithLiveBook, { cache: "public-market" });
   } catch (error) {
     logServerError("api/market/reaction-levels", error);
     return jsonError("Unable to fetch Reaction Map right now.", {
       status: 502,
+      cache: "public-market",
     });
   }
 }

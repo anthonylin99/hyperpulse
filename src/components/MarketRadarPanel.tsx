@@ -7,6 +7,7 @@ import { Info, Radar, RefreshCw } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { cn } from "@/lib/format";
 import { formatEasternTime } from "@/lib/time";
+import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import type { MarketRadarSignal } from "@/types";
 import { SectionEyebrow } from "@/components/trading-ui";
 
@@ -161,7 +162,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
     let mounted = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/market/radar", { cache: "no-store" });
+        const response = await fetch("/api/market/radar");
         if (!response.ok) return;
         const nextData = (await response.json()) as RadarResponse;
         if (mounted) setData(nextData);
@@ -170,7 +171,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
       }
     };
     load();
-    const interval = window.setInterval(load, 120_000);
+    const interval = window.setInterval(load, POLL_INTERVAL_MARKET);
     return () => {
       mounted = false;
       window.clearInterval(interval);

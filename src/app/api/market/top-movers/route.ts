@@ -163,7 +163,11 @@ export async function GET(req: NextRequest) {
     });
     const byPerf = [...scored].sort((a, b) => b.pctChange - a.pctChange);
     const gainers = byPerf.slice(0, TOP_N).map(toMover);
-    const losers = byPerf.slice(-TOP_N).reverse().map(toMover);
+    const losers = scored
+      .filter((s) => s.pctChange < 0)
+      .sort((a, b) => a.pctChange - b.pctChange)
+      .slice(0, TOP_N)
+      .map(toMover);
 
     return jsonSuccess(
       { gainers, losers, range, asOf: Date.now() },
