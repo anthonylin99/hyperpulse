@@ -4,6 +4,7 @@ const quickLinks = [
   { href: "#overview", label: "Overview" },
   { href: "#data-sources", label: "Data Sources" },
   { href: "#portfolio", label: "Portfolio Analytics" },
+  { href: "#vaults", label: "Vault Analytics" },
   { href: "#signals", label: "Market Signals" },
   { href: "#market-radar", label: "Market Radar" },
   { href: "#pressure-levels", label: "Pressure Levels" },
@@ -56,6 +57,52 @@ const portfolioMetrics = [
     detail:
       "Useful for understanding whether the system has a positive edge per completed trade.",
   },
+];
+
+const vaultMetrics = [
+  {
+    name: "TVL",
+    formula: "Sum of follower vault equity from vaultDetails.followers",
+    detail:
+      "Hyperliquid does not return a top-level TVL field. HyperPulse sums the depositor balances directly so the number stays consistent with what each follower is exposed to.",
+  },
+  {
+    name: "30d return",
+    formula: "(equity_now - equity_30d_ago) / equity_30d_ago",
+    detail:
+      "Computed from the vault's month-window account value series. Deposits and withdrawals are NOT removed in v1 — heavy flow days can distort the return. A future version will use pnlHistory deltas divided by start-of-day equity to isolate performance from flows.",
+  },
+  {
+    name: "Max drawdown (90d)",
+    formula: "Largest peak-to-trough fall in account value over the trailing 90 days",
+    detail:
+      "Shown as a positive percentage with the date of the trough and the from / to equity values. Same caveat as returns: equity-based drawdown can also pick up withdrawal events.",
+  },
+  {
+    name: "Sharpe (90d, annualized)",
+    formula: "(mean(daily_returns) / stdev(daily_returns)) × √365",
+    detail:
+      "Risk-free rate is set to zero, the standard convention for crypto. Suppressed with an Insufficient history label until at least 30 daily return observations are available — HyperPulse refuses to display a Sharpe built on a handful of points.",
+  },
+  {
+    name: "Calmar (90d, annualized)",
+    formula: "annualized_return / abs(max_drawdown)",
+    detail:
+      "Same 30-sample minimum as Sharpe. Useful as a complement: Sharpe punishes volatility, Calmar punishes the worst drawdown specifically.",
+  },
+  {
+    name: "Strategy fingerprint",
+    formula: "Top 5 traded coins, long/short bias, trades/day, median hold time, top-asset concentration",
+    detail:
+      "Derived from the operator's fills over the last 30 days. Long/short bias is (long_notional - short_notional) / (long_notional + short_notional). Median hold time pairs entry and exit fills per coin via FIFO matching across completed round trips.",
+  },
+];
+
+const vaultLimitations = [
+  "Vault discovery uses a curated seed list of addresses. New vaults won't appear until the seed is refreshed (~monthly) — Hyperliquid does not expose a public list-all endpoint.",
+  "Returns and drawdowns are computed from account value history, so deposits and withdrawals contaminate the v1 numbers. The next iteration will use pnlHistory deltas to isolate performance from flows.",
+  "Strategy fingerprint and operator track record cover the trailing 30–90 days. A vault that recently changed strategy will read differently than its all-time profile.",
+  "Sharpe and Calmar are suppressed below 30 daily observations to avoid false precision on short-lived vaults.",
 ];
 
 const signalStates = [
@@ -247,6 +294,34 @@ export default function DocsPage() {
                 Staked HYPE is intentionally excluded from this number so the dashboard stays aligned with immediately
                 usable trading capital.
               </div>
+            </div>
+          </Section>
+
+          <Section id="vaults" eyebrow="Vaults" title="How vault analytics are calculated">
+            <p>
+              Hyperliquid vaults are on-chain trading vaults: any user can deposit USDC, a vault operator
+              trades on their behalf, and returns are pro-rata to depositors. HyperPulse ranks vaults by
+              risk-adjusted performance — not headline APY — so the depositor question &ldquo;can I trust this
+              manager with my capital?&rdquo; gets a real answer.
+            </p>
+            <div className="overflow-hidden rounded-xl border border-zinc-800">
+              <div className="grid grid-cols-1 divide-y divide-zinc-800 bg-zinc-950/60">
+                {vaultMetrics.map((metric) => (
+                  <div key={metric.name} className="grid gap-3 p-4 md:grid-cols-[180px_minmax(0,220px)_1fr] md:items-start">
+                    <div className="text-sm font-medium text-zinc-100">{metric.name}</div>
+                    <div className="text-xs text-teal-300">{metric.formula}</div>
+                    <div className="text-sm text-zinc-400">{metric.detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
+              <div className="font-medium text-amber-200">Known limitations</div>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-100/80">
+                {vaultLimitations.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
             </div>
           </Section>
 

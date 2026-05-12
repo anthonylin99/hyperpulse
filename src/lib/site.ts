@@ -24,6 +24,7 @@ export function getPublicAppRoutes() {
     { path: "/markets", label: "Markets" },
     { path: "/alerts", label: "Alerts" },
     { path: "/portfolio", label: "Portfolio" },
+    { path: "/vaults", label: "Vaults" },
     { path: "/docs", label: "Docs" },
   ];
 
