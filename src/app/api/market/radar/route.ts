@@ -217,7 +217,7 @@ function buildCrowdingSignal(kind: MarketRadarSignal["kind"], asset: ParsedAsset
 function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: MomentumEdgeAsset, index: number, timestamp: number): MarketRadarSignal {
   const details = kind === "strongest_asset" ? asset.strongDetails : asset.weakDetails;
   const score = kind === "strongest_asset" ? asset.strongScore : asset.weakScore;
-  const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : "Short Momentum";
+  const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : "Relative Weakness";
   const weakEvidence =
     asset.coin === "BTC"
       ? [
