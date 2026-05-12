@@ -217,7 +217,7 @@ function buildCrowdingSignal(kind: MarketRadarSignal["kind"], asset: ParsedAsset
 function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: MomentumEdgeAsset, index: number, timestamp: number): MarketRadarSignal {
   const details = kind === "strongest_asset" ? asset.strongDetails : asset.weakDetails;
   const score = kind === "strongest_asset" ? asset.strongScore : asset.weakScore;
-  const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : "Short Momentum";
+  const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : "Relative Weakness";
   const weakEvidence =
     asset.coin === "BTC"
       ? [
@@ -285,9 +285,9 @@ export async function GET(req: NextRequest) {
       generatedAt: timestamp,
       source: "quant-radar",
       factorsIncluded: false,
-    });
+    }, { cache: "public-market" });
   } catch (error) {
     logServerError("api/market/radar", error);
-    return jsonError("Unable to build market radar right now.", { status: 502 });
+    return jsonError("Unable to build market radar right now.", { status: 502, cache: "public-market" });
   }
 }

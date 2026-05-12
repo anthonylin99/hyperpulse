@@ -21,7 +21,11 @@ import type { AccountState, Position } from "@/types";
 import toast from "react-hot-toast";
 
 const SESSION_MAIN_ADDR = "hp_main_address";
+const LAST_READONLY_ADDR = "hp_last_readonly_address";
 const MAIN_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+const DEFAULT_READONLY_ADDR = String(
+  process.env.NEXT_PUBLIC_DEFAULT_READONLY_WALLET ?? ""
+).trim();
 
 export type BrowserWalletPreference =
   | "auto"
@@ -161,6 +165,22 @@ function parsePositions(
 function parseNumber(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function getStoredReadonlyAddress() {
+  if (typeof window === "undefined") return null;
+  const candidates = [
+    sessionStorage.getItem(SESSION_MAIN_ADDR),
+    localStorage.getItem(LAST_READONLY_ADDR),
+    DEFAULT_READONLY_ADDR,
+  ];
+  return candidates.find((value) => value && MAIN_ADDRESS_REGEX.test(value)) ?? null;
+}
+
+function rememberReadonlyAddress(address: string) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(SESSION_MAIN_ADDR, address);
+  localStorage.setItem(LAST_READONLY_ADDR, address);
 }
 
 function parseSpotPositions(
@@ -443,7 +463,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           setApiAddress(null);
           setExchangeClient(null);
           setIsReadOnly(true);
-          sessionStorage.setItem(SESSION_MAIN_ADDR, providerAddr);
+          rememberReadonlyAddress(providerAddr);
           toast.success(
             `Viewing: ${providerAddr.slice(0, 6)}...${providerAddr.slice(-4)} (read-only)`
           );
@@ -511,7 +531,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setExchangeClient(null);
         setIsReadOnly(true);
 
-        sessionStorage.setItem(SESSION_MAIN_ADDR, normalized);
+        rememberReadonlyAddress(normalized);
 
         toast.success(
           `Viewing: ${normalized.slice(0, 6)}...${normalized.slice(-4)} (read-only)`
@@ -542,6 +562,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setAccountState(null);
     setExchangeClient(null);
     sessionStorage.removeItem(SESSION_MAIN_ADDR);
+    localStorage.removeItem(LAST_READONLY_ADDR);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -570,11 +591,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const storedAddr = sessionStorage.getItem(SESSION_MAIN_ADDR);
+    const storedAddr = getStoredReadonlyAddress();
     if (storedAddr) {
       // Restore read-only session
       connectReadOnly(storedAddr).catch(() => {
         sessionStorage.removeItem(SESSION_MAIN_ADDR);
+        localStorage.removeItem(LAST_READONLY_ADDR);
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

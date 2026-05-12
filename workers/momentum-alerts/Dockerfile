@@ -9,4 +9,5 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
 COPY workers/momentum-alerts/index.mjs ./index.mjs
+COPY workers/momentum-alerts/chart.mjs ./chart.mjs
 CMD ["npm", "start"]

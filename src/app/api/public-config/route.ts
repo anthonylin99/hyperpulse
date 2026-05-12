@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
-import { isFactorsEnabled, isTradingEnabled } from "@/lib/appConfig";
+import {
+  isAgentDevEnabled,
+  isFactorsEnabled,
+  isTradingEnabled,
+} from "@/lib/appConfig";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const tradingEnabled = isTradingEnabled();
   const factorsEnabled = isFactorsEnabled();
+  const agentDevEnabled = isAgentDevEnabled();
 
   return NextResponse.json(
     {
       tradingEnabled,
       factorsEnabled,
+      agentDevEnabled,
       deploymentMode: tradingEnabled ? "trading" : "read-only",
     },
     {

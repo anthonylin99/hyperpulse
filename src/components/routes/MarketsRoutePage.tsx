@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MousePointerClick } from "lucide-react";
 import MarketRadarPanel from "@/components/MarketRadarPanel";
 import MarketTable from "@/components/MarketTable";
+import TopMoversPanel from "@/components/markets/TopMoversPanel";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
@@ -61,8 +62,9 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             />
           </section>
 
-          <div className="space-y-4 xl:sticky xl:top-[96px]">
+          <div className="space-y-4">
             <MarketRadarPanel variant="rail" />
+            <TopMoversPanel />
           </div>
         </div>
       </div>

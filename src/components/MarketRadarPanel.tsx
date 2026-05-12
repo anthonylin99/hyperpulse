@@ -7,6 +7,7 @@ import { Info, Radar, RefreshCw } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { cn } from "@/lib/format";
 import { formatEasternTime } from "@/lib/time";
+import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import type { MarketRadarSignal } from "@/types";
 import { SectionEyebrow } from "@/components/trading-ui";
 
@@ -69,9 +70,19 @@ function formatSigned(value: number | null | undefined, digits = 1) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
 }
 
+function scoreLabel(signal: MarketRadarSignal) {
+  if (signal.kind !== "weakest_asset") return signal.value;
+  const numeric = Number(signal.value.replace(/[^\d.-]/g, ""));
+  if (!Number.isFinite(numeric)) return signal.value;
+  return `${numeric.toFixed(2)}σ weak`;
+}
+
 function compactEvidence(signal: MarketRadarSignal) {
   const details = signal.scoreDetails;
   if (!details) return signal.evidence[0] ?? "";
+  if (signal.kind === "weakest_asset") {
+    return `lags BTC ${Math.abs(details.btcResidualPct).toFixed(1)}% · lags Basket ${Math.abs(details.basketResidualPct).toFixed(1)}% · z ${formatSigned(details.crossSectionalZ, 1)}`;
+  }
   return `vs BTC ${formatSigned(details.btcResidualPct)}% · vs Basket ${formatSigned(details.basketResidualPct)}% · z ${formatSigned(details.crossSectionalZ, 1)}`;
 }
 
@@ -100,6 +111,7 @@ function useOpenMarketAsset(signal?: MarketRadarSignal) {
 
 function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
   const openAsset = useOpenMarketAsset(signal);
+  const valueColor = signal.kind === "weakest_asset" ? "text-rose-200" : "text-zinc-100";
 
   return (
     <Link
@@ -117,7 +129,7 @@ function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
           </div>
           <div className="mt-1 truncate text-[10px] text-zinc-500">{compactEvidence(signal)}</div>
         </div>
-        <div className="shrink-0 text-right font-mono text-xs text-zinc-100">{signal.value}</div>
+        <div className={cn("shrink-0 text-right font-mono text-xs", valueColor)}>{scoreLabel(signal)}</div>
       </div>
     </Link>
   );
@@ -138,6 +150,7 @@ function RadarTopCard({
     : "border-rose-500/20 bg-rose-500/10 hover:border-rose-400/35";
   const labelClasses = tone === "long" ? "text-emerald-300/80" : "text-rose-300/80";
   const valueClasses = tone === "long" ? "text-emerald-300" : "text-rose-300";
+  const value = signal ? scoreLabel(signal) : "waiting";
 
   return (
     <Link
@@ -147,7 +160,7 @@ function RadarTopCard({
     >
       <div className={cn("text-[9px] uppercase tracking-[0.14em]", labelClasses)}>{label}</div>
       <div className="mt-1 font-mono text-lg font-semibold text-zinc-100">{signal?.asset ?? "—"}</div>
-      <div className={cn("mt-1 truncate font-mono text-xs", valueClasses)}>{signal?.value ?? "waiting"}</div>
+      <div className={cn("mt-1 truncate font-mono text-xs", valueClasses)}>{value}</div>
     </Link>
   );
 }
@@ -161,7 +174,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
     let mounted = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/market/radar", { cache: "no-store" });
+        const response = await fetch("/api/market/radar");
         if (!response.ok) return;
         const nextData = (await response.json()) as RadarResponse;
         if (mounted) setData(nextData);
@@ -170,7 +183,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
       }
     };
     load();
-    const interval = window.setInterval(load, 120_000);
+    const interval = window.setInterval(load, POLL_INTERVAL_MARKET);
     return () => {
       mounted = false;
       window.clearInterval(interval);
@@ -226,7 +239,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <RadarTopCard signal={topLong} label="Running" tone="long" />
-              <RadarTopCard signal={topShort} label="Lagging" tone="short" />
+              <RadarTopCard signal={topShort} label="Weakest vs BTC" tone="short" />
             </div>
 
             <div>
@@ -239,8 +252,8 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
             </div>
 
             <div>
-              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Short bias</div>
-              <div className="mb-1.5 text-[10px] leading-4 text-zinc-600">Relative weakness, not an entry by itself.</div>
+              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Weak vs BTC</div>
+              <div className="mb-1.5 text-[10px] leading-4 text-zinc-600">Higher weak-score = falling more vs BTC/basket. Not an entry by itself.</div>
               <div className="space-y-1.5">
                 {shortSignals.length > 0 ? shortSignals.map((signal) => <RadarMiniRow key={signal.id} signal={signal} />) : (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-[11px] text-zinc-500">No qualified short edge.</div>
@@ -300,7 +313,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
                   <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", signalTone(signal))}>
                     {kindLabel(signal.kind)}
                   </span>
-                  <span className="font-mono text-xs text-zinc-100">{signal.value}</span>
+                  <span className="font-mono text-xs text-zinc-100">{scoreLabel(signal)}</span>
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-3">
                   <div>
@@ -358,7 +371,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
                   <div className="mt-2 text-xs leading-5 text-zinc-400">{signal.label}</div>
                   <div className="mt-1 truncate text-[11px] text-zinc-600">{signal.evidence[0]}</div>
                 </div>
-                <div className="font-mono text-sm text-zinc-100">{signal.value}</div>
+                <div className="font-mono text-sm text-zinc-100">{scoreLabel(signal)}</div>
               </div>
             </Link>
           ))

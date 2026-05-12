@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { formatCompactUsd } from "@/lib/format";
 import { cn } from "@/lib/format";
+import type { ReactionOverlayMode } from "@/lib/reactionLevels";
 import {
   ageLabel,
   normalizeReactionMap,
@@ -23,6 +24,7 @@ import type {
 
 interface ReactionMapPanelProps {
   payload: ReactionMapPayloadLike | null | undefined;
+  mode?: ReactionOverlayMode;
   selectedZoneId?: string | null;
   onSelectZone?: (zone: ReactionMapSelectableZone) => void;
   shelfLimit?: number;
@@ -59,6 +61,7 @@ interface SelectedZoneReadProps {
 
 export function ReactionMapPanel({
   payload,
+  mode = "oi_holding",
   selectedZoneId,
   onSelectZone,
   shelfLimit = 5,
@@ -73,6 +76,9 @@ export function ReactionMapPanel({
     ...model.sellerZones,
   ];
   const selectedZone = selectableZones.find((zone) => zone.id === activeId) ?? selectableZones[0] ?? null;
+  const showOrderBook = mode === "book";
+  const showPositioning = mode === "oi_holding";
+  const showReactionZones = mode === "confluence" || mode === "stress";
 
   const handleSelect = (zone: ReactionMapSelectableZone) => {
     setLocalSelectedId(zone.id);
@@ -81,20 +87,26 @@ export function ReactionMapPanel({
 
   return (
     <aside className={cn("space-y-3 text-xs text-zinc-300", className)}>
-      <OrderBookShelves bids={model.bidShelves} asks={model.askShelves} />
-      <PositioningZones
-        buyerZones={model.buyerZones}
-        sellerZones={model.sellerZones}
-        hiddenSlots={model.hiddenSlots}
-        selectedZoneId={selectedZone?.id ?? null}
-        onSelectZone={handleSelect}
-      />
-      <ReactionZoneList
-        zones={model.reactionZones}
-        selectedZoneId={selectedZone?.id ?? null}
-        onSelectZone={handleSelect}
-      />
-      <SelectedZoneRead zone={selectedZone} coverageNote={model.coverageNote} />
+      {showOrderBook ? <OrderBookShelves bids={model.bidShelves} asks={model.askShelves} /> : null}
+      {showPositioning ? (
+        <PositioningZones
+          buyerZones={model.buyerZones}
+          sellerZones={model.sellerZones}
+          hiddenSlots={model.hiddenSlots}
+          selectedZoneId={selectedZone?.id ?? null}
+          onSelectZone={handleSelect}
+        />
+      ) : null}
+      {showReactionZones ? (
+        <ReactionZoneList
+          zones={model.reactionZones}
+          selectedZoneId={selectedZone?.id ?? null}
+          onSelectZone={handleSelect}
+        />
+      ) : null}
+      {showPositioning || showReactionZones ? (
+        <SelectedZoneRead zone={selectedZone} coverageNote={model.coverageNote} />
+      ) : null}
     </aside>
   );
 }

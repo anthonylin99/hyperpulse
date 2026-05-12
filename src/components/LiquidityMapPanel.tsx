@@ -240,9 +240,7 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(withNetworkParam(`/api/market/liquidity-map?coin=${encodeURIComponent(coin)}&range=${range}`), {
-          cache: "no-store",
-        });
+        const response = await fetch(withNetworkParam(`/api/market/liquidity-map?coin=${encodeURIComponent(coin)}&range=${range}`));
         if (!response.ok) {
           const payload = await response.json().catch(() => null);
           throw new Error(payload?.error ?? "Liquidity map unavailable");

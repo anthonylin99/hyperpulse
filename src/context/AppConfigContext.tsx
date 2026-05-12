@@ -11,11 +11,16 @@ import {
   type ReactNode,
 } from "react";
 import toast from "react-hot-toast";
-import { ENABLE_FACTORS_DEFAULT, ENABLE_TRADING_DEFAULT } from "@/lib/appConfig";
+import {
+  ENABLE_AGENT_DEV_DEFAULT,
+  ENABLE_FACTORS_DEFAULT,
+  ENABLE_TRADING_DEFAULT,
+} from "@/lib/appConfig";
 
 type PublicAppConfig = {
   tradingEnabled: boolean;
   factorsEnabled: boolean;
+  agentDevEnabled: boolean;
   deploymentMode: "trading" | "read-only";
 };
 
@@ -32,10 +37,15 @@ const fallbackFactorsEnabled =
   process.env.NEXT_PUBLIC_ENABLE_FACTORS === "true" ||
   (process.env.NEXT_PUBLIC_ENABLE_FACTORS !== "false" &&
     ENABLE_FACTORS_DEFAULT);
+const fallbackAgentDevEnabled =
+  process.env.NEXT_PUBLIC_ENABLE_AGENT_DEV === "true" ||
+  (process.env.NEXT_PUBLIC_ENABLE_AGENT_DEV !== "false" &&
+    ENABLE_AGENT_DEV_DEFAULT);
 
 const fallbackConfig: PublicAppConfig = {
   tradingEnabled: fallbackTradingEnabled,
   factorsEnabled: fallbackFactorsEnabled,
+  agentDevEnabled: fallbackAgentDevEnabled,
   deploymentMode: fallbackTradingEnabled ? "trading" : "read-only",
 };
 

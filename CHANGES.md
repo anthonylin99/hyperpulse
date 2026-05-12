@@ -360,3 +360,10 @@
 - Follow-up: batched `reaction_orderbook_buckets` writes into configurable multi-row upserts (`REACTION_MAP_BOOK_FLUSH_BATCH_SIZE`, default `750`) and offset retention sweeps from promotion ticks. Fresh logs show `book=4320`+ flushes completing below the 5s slow-operation threshold, while promotion completes separately in roughly 17-19s without book-write overlap.
 - Follow-up: fixed the Reaction Map hover tooltip clipping by separating the chart's clipped canvas layer from the floating overlay layer and raising the overlay stack. Browser verification on `/markets?asset=SUI` confirmed the selected positioning tooltip renders above the chart/price-scale area.
 - Follow-up: removed near-spot suppression for inferred positioning. Worker promotion no longer drops zones inside `0.3%` of spot, API/chart display no longer hides positioning inside `0.45%`, and zones inside the current price range label as `Active test` instead of `Unknown`. Candidate lookups now use a 3x movement-based range clamped to `12%-45%` instead of fixed `65%-135%` worker and `80%-120%` API bands.
+
+## 2026-05-12
+
+- Request: make `codex/fix-reaction-map-levels` easy to merge into `main`.
+- Attempted: fetched/pulled latest refs, merged `origin/main` into the branch, resolved conflicts in the Reaction Map API route, momentum-alerts Dockerfile, Reaction Map chart mode cleanup, and the deleted `.codex` skill ledger.
+- Decision: keep main's live order-book shelf enrichment while preserving this branch's persisted Reaction Map source-of-truth changes; keep the momentum-alerts Dockerfile root-context compatible for local Compose while adding chart support from main.
+- Result: `docker compose build web`, `docker compose build momentum-alerts reaction-map`, and a recreated `reaction-map` container passed. The sampled `reaction-map` logs showed startup/subscriptions without fresh errors.

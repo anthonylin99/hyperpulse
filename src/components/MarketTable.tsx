@@ -76,7 +76,7 @@ const RWA_SPOT_CATEGORIES = [
 const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
 const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
 const REACTION_BATCH_SIZE = 4;
-const REACTION_SCAN_INTERVAL_MS = 2 * 60_000;
+const REACTION_SCAN_INTERVAL_MS = POLL_INTERVAL_MARKET;
 const REACTION_DEFAULT_SIGNAL: MarketSetupSignal = {
   type: "none",
   label: "Reaction defaults",
@@ -214,7 +214,7 @@ export default function MarketTable({
     let cancelled = false;
 
     async function fetchSavedMomentumFlags() {
-      const response = await fetch("/api/alerts/momentum?limit=100", { cache: "no-store" });
+      const response = await fetch("/api/alerts/momentum?limit=100");
       if (!response.ok) return;
       const payload = (await response.json()) as { alerts?: MomentumAlert[] };
       const nextSignals: Record<string, MarketSetupSignal> = {};
@@ -268,7 +268,7 @@ export default function MarketTable({
       arr = arr.filter((a) => getAssetCategory(a.coin) === categoryFilter);
     }
 
-    if (hideSmallCaps) {
+    if (hideSmallCaps && !search) {
       arr = arr.filter((a) => a.openInterest >= MIN_OI_USD);
     }
 
