@@ -52,7 +52,7 @@ function ageMinutes(value) {
 }
 
 try {
-  console.log("\nMomentum runtime config");
+  console.log("\nLocal CLI config");
   console.table([{
     database: "configured",
     telegramToken: telegramTokenPresent ? "present" : "missing",
@@ -68,6 +68,19 @@ try {
      order by started_at desc
      limit 10`,
   );
+  const latestRun = runs.rows[0];
+  if (latestRun?.payload) {
+    console.log("\nLatest production worker config observed");
+    console.table([{
+      dryRun: latestRun.payload.dryRun,
+      telegramEnabled: latestRun.payload.telegramEnabled,
+      telegramConfigured: latestRun.payload.telegramConfigured,
+      telegramChartsEnabled: latestRun.payload.telegramChartsEnabled,
+      telegramDailyCap: latestRun.payload.telegramDailyCap,
+      telegramHourlyCap: latestRun.payload.telegramHourlyCap,
+      maxTelegramPerCycle: latestRun.payload.maxTelegramPerCycle,
+    }]);
+  }
   console.log("\nMomentum worker runs");
   console.table(runs.rows.map((row) => ({
     started: asIso(row.started_at),
@@ -85,7 +98,6 @@ try {
     message: row.message,
   })));
 
-  const latestRun = runs.rows[0];
   const latestAge = ageMinutes(latestRun?.started_at);
   if (latestAge == null) {
     console.warn("\nALERT: no momentum worker runs found.");
@@ -122,7 +134,7 @@ try {
   console.table(queue.rows);
 
   const recentQueue = await pool.query(
-    `select status, created_at, sent_at, attempts, last_error, payload->>'asset' as asset
+    `select status, created_at, sent_at, attempts, last_error, payload->>'asset' as asset, payload
      from notification_queue
      where event_type = 'momentum_alert' and created_at >= $1
      order by created_at desc
@@ -137,6 +149,8 @@ try {
     sent: asIso(row.sent_at),
     attempts: row.attempts,
     error: row.last_error,
+    method: row.payload?.telegramReceipt?.method ?? null,
+    messageId: row.payload?.telegramReceipt?.messageId ?? null,
   })));
 } finally {
   await pool.end();

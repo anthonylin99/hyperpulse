@@ -993,6 +993,7 @@ async function sendTelegramMessage(text) {
   if (!response.ok || payload?.ok === false) {
     throw new Error(payload?.description || `Telegram request failed with ${response.status}`);
   }
+  return telegramReceipt(payload, "sendMessage");
 }
 
 async function sendTelegramPhoto({ text, alert }) {
@@ -1011,6 +1012,17 @@ async function sendTelegramPhoto({ text, alert }) {
   if (!response.ok || payload?.ok === false) {
     throw new Error(payload?.description || `Telegram photo request failed with ${response.status}`);
   }
+  return telegramReceipt(payload, "sendPhoto");
+}
+
+function telegramReceipt(payload, method) {
+  const message = payload?.result ?? {};
+  return {
+    method,
+    messageId: message.message_id ?? null,
+    chatId: message.chat?.id == null ? null : String(message.chat.id),
+    sentAt: message.date ? message.date * 1000 : Date.now(),
+  };
 }
 
 async function sendTelegramNotification(payload) {
@@ -1018,13 +1030,12 @@ async function sendTelegramNotification(payload) {
   if (!text) throw new Error("Notification payload missing text.");
   if (TELEGRAM_CHARTS_ENABLED && payload?.alert) {
     try {
-      await sendTelegramPhoto({ text, alert: payload.alert });
-      return;
+      return await sendTelegramPhoto({ text, alert: payload.alert });
     } catch (error) {
       console.warn("[momentum-alerts] telegram chart failed; falling back to text", error instanceof Error ? error.message : error);
     }
   }
-  await sendTelegramMessage(text);
+  return await sendTelegramMessage(text);
 }
 
 async function flushTelegramQueue() {
@@ -1047,10 +1058,20 @@ async function flushTelegramQueue() {
     if (sent >= MAX_TELEGRAM_PER_CYCLE || hourlySent >= TELEGRAM_HOURLY_CAP) break;
 
     try {
-      await sendTelegramNotification(row.payload);
+      const receipt = await sendTelegramNotification(row.payload);
+      const nextPayload = JSON.stringify({
+        ...(row.payload ?? {}),
+        telegramReceipt: receipt,
+      });
       await pool.query(
-        `update notification_queue set status = 'sent', sent_at = $2, attempts = attempts + 1, last_error = null where id = $1`,
-        [row.id, Date.now()],
+        `update notification_queue
+         set status = 'sent',
+             sent_at = $2,
+             attempts = attempts + 1,
+             last_error = null,
+             payload = $3::jsonb
+         where id = $1`,
+        [row.id, Date.now(), nextPayload],
       );
       sent += 1;
       hourlySent += 1;
