@@ -16,6 +16,9 @@ import {
 
 const DATABASE_URL = getPooledDatabaseUrl();
 const STORE_BACKOFF_MS = 5 * 60 * 1000;
+const CANDIDATE_RANGE_MULTIPLIER = 3;
+const CANDIDATE_RANGE_MIN_PCT = 12;
+const CANDIDATE_RANGE_MAX_PCT = 45;
 
 let pool: Pool | null = null;
 let disabledUntil = 0;
@@ -41,6 +44,34 @@ export function isReactionLevelStoreConfigured(): boolean {
 function asNumber(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function movementCandidateRangePct(rows: Array<Record<string, unknown>>, currentPrice: number): number {
+  const prices = rows
+    .map((row) => asNumber(row.mark_px))
+    .filter((price): price is number => price != null && price > 0);
+  if (prices.length < 2 || currentPrice <= 0) return CANDIDATE_RANGE_MIN_PCT;
+
+  const moves: number[] = [];
+  for (let index = 1; index < prices.length; index += 1) {
+    moves.push(((prices[index] - prices[index - 1]) / currentPrice) * 100);
+  }
+  if (moves.length === 0) return CANDIDATE_RANGE_MIN_PCT;
+
+  const mean = moves.reduce((sum, value) => sum + value, 0) / moves.length;
+  const averageAbsMovePct = moves.reduce((sum, value) => sum + Math.abs(value), 0) / moves.length;
+  const variance = moves.reduce((sum, value) => sum + (value - mean) * (value - mean), 0) / moves.length;
+  const movePct = Math.max(averageAbsMovePct, Math.sqrt(variance));
+  const rangePct = movePct * CANDIDATE_RANGE_MULTIPLIER;
+  return Math.min(CANDIDATE_RANGE_MAX_PCT, Math.max(CANDIDATE_RANGE_MIN_PCT, rangePct));
+}
+
+function priceRangeFromPct(currentPrice: number, rangePct: number): { low: number; high: number } {
+  const pct = Math.max(rangePct, 0) / 100;
+  return {
+    low: currentPrice * Math.max(0.01, 1 - pct),
+    high: currentPrice * (1 + pct),
+  };
 }
 
 function emptyPayload(coin: string, windowMs: number): ReactionLevelsPayload {
@@ -158,6 +189,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
       const zoneHigh = asNumber(row.zone_high) ?? asNumber(row.weighted_price) ?? currentPrice;
       const price = asNumber(row.weighted_price) ?? asNumber(row.zone_mid) ?? (zoneLow + zoneHigh) / 2;
       const distancePct = asNumber(row.distance_pct) ?? ((price - currentPrice) / currentPrice) * 100;
+      const dynamicZoneWidthPct = asNumber(row.payload?.dynamicZoneWidthPct) ?? asNumber(row.tooltip?.dynamicZoneWidthPct);
       const reasonSelected =
         typeof row.tooltip?.reasonSelected === "string"
           ? row.tooltip.reasonSelected
@@ -198,6 +230,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
           sourceCaveat: "Inferred from public Hyperliquid streams, not exact open positions.",
           windowMs,
           hiddenReason: status === "stale" ? "stale" as const : undefined,
+          dynamicZoneWidthPct: dynamicZoneWidthPct ?? undefined,
         },
         windowMs,
         ageMs: Math.max(updatedAt - (asNumber(row.refreshed_at) ?? updatedAt), 0),
@@ -342,6 +375,22 @@ export async function getReactionLevelMap(args: {
     const currentPrice = asNumber(latestContext?.mark_px) ?? asNumber(latestContext?.mid_px) ?? asNumber(latestContext?.oracle_px);
     if (currentPrice == null || currentPrice <= 0) return currentZones ?? emptyPayload(asset, args.windowMs);
 
+    const movementResult = await client.query(
+      `
+      select mark_px
+      from reaction_context_snapshots
+      where asset = $1
+        and bucket_ms >= $2
+        and mark_px > 0
+      order by bucket_ms asc
+      `,
+      [asset, cutoff],
+    );
+    const candidateRange = priceRangeFromPct(
+      currentPrice,
+      movementCandidateRangePct(movementResult.rows as Array<Record<string, unknown>>, currentPrice),
+    );
+
     const [earliestContextResult, oiDeltaResult, bookResult, tradeResult] = await Promise.all([
       client.query(
         `
@@ -385,7 +434,7 @@ export async function getReactionLevelMap(args: {
         ) desc
         limit 260
         `,
-        [asset, cutoff, currentPrice * 0.8, currentPrice * 1.2],
+        [asset, cutoff, candidateRange.low, candidateRange.high],
       ),
       client.query(
         `
@@ -404,7 +453,7 @@ export async function getReactionLevelMap(args: {
         order by sum(buy_notional_usd + sell_notional_usd) desc
         limit 260
         `,
-        [asset, cutoff, currentPrice * 0.8, currentPrice * 1.2],
+        [asset, cutoff, candidateRange.low, candidateRange.high],
       ),
     ]);
 

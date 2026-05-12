@@ -76,9 +76,8 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
 ];
 
 const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
-  { label: "Reaction", value: "confluence" },
-  { label: "Order Book", value: "book" },
   { label: "Positioning", value: "oi_holding" },
+  { label: "Order Book", value: "book" },
 ];
 
 const CANDLE_FETCH_TIMEOUT_MS = 10_000;
@@ -414,6 +413,9 @@ function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "up
     if (role === "trapped_longs") {
       return { rgb: "251, 191, 36", textClass: "text-amber-200", borderClass: "border-amber-400/35" };
     }
+    if (role === "active_test") {
+      return { rgb: "236, 72, 153", textClass: "text-pink-200", borderClass: "border-pink-400/35" };
+    }
     return { rgb: "148, 163, 184", textClass: "text-slate-200", borderClass: "border-slate-400/35" };
   }
   if (level.leverageBucket === "stress") {
@@ -452,7 +454,7 @@ export default function PriceChart({
   const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
-  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("confluence");
+  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("oi_holding");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [candleRetryNonce, setCandleRetryNonce] = useState(0);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
@@ -807,7 +809,7 @@ export default function PriceChart({
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Reaction combines book shelves, inferred positioning, and price behavior. Acceptance or rejection matters more than a red or green line.</div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Positioning shows inferred OI/flow zones. Order Book shows visible resting shelves.</div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
@@ -851,17 +853,17 @@ export default function PriceChart({
       <div className="p-3">
         <div
           ref={chartFrameRef}
-          className="relative h-[360px] overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
+          className="relative isolate h-[360px] overflow-visible overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
         >
           {loading ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full flex-col items-center justify-center gap-2 overflow-hidden rounded-[18px] px-6 text-center text-sm text-zinc-500">
               <div>Loading price candles...</div>
               {reactionPayload ? (
                 <div className="text-[11px] text-zinc-600">Reaction zones are ready.</div>
               ) : null}
             </div>
           ) : error || candles.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full flex-col items-center justify-center gap-3 overflow-hidden rounded-[18px] px-6 text-center text-sm text-zinc-500">
               <div>{error ?? "No price candles available."}</div>
               <button
                 type="button"
@@ -873,7 +875,9 @@ export default function PriceChart({
             </div>
           ) : (
             <>
-              <div ref={chartContainerRef} className="absolute inset-0" />
+              <div className="absolute inset-0 z-0 overflow-hidden rounded-[18px]">
+                <div ref={chartContainerRef} className="absolute inset-0" />
+              </div>
               <FlowZoneOverlay
                 bands={zoneBands}
                 activeZoneId={activeZoneId}
@@ -1082,6 +1086,7 @@ function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upsi
   if (role === "trapped_longs") return "Buyer build above price. Bulls need acceptance back through the zone.";
   if (role === "short_defense") return "Seller build above price. Watch rejection versus clean acceptance above.";
   if (role === "trapped_shorts") return "Seller build below price. Reclaim can turn it into squeeze fuel.";
+  if (role === "active_test") return "Price is inside the inferred positioning zone. Watch acceptance, rejection, or a fast reclaim.";
   if (level.leverageBucket === "book") {
     return side === "downside"
       ? "Real bid liquidity. Useful only if it stays/refills when tested."
@@ -1106,7 +1111,7 @@ function FlowZoneOverlay({
   const activeBand = bands.find((band) => band.id === activeZoneId) ?? null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-20">
+    <div className="pointer-events-none absolute inset-0 z-[60]">
       {bands.map((band) => {
         const read = levelReadFor(band.level, band.side);
         const tone = chartToneForLevel(band.level, band.side);
@@ -1176,7 +1181,7 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
 
   return (
     <div
-      className={`pointer-events-none absolute right-3 z-30 w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
+      className={`pointer-events-none absolute right-3 z-[90] w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
         tone.borderClass
       }`}
       style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}

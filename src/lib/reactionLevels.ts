@@ -22,6 +22,7 @@ export type ReactionPositioningRole =
   | "trapped_longs"
   | "short_defense"
   | "trapped_shorts"
+  | "active_test"
   | "unknown"
   | "stale";
 export type ReactionHiddenReason =
@@ -200,6 +201,7 @@ export interface ReactionLevel {
     ageMs?: number | null;
     windowMs?: number;
     hiddenReason?: ReactionHiddenReason;
+    dynamicZoneWidthPct?: number;
   };
   positioning?: {
     inferenceType: ReactionPositioningZone["inferenceType"];
@@ -299,7 +301,6 @@ type BuildReactionLevelsArgs = {
 const MIN_REACTION_DISTANCE_PCT = 0.45;
 const MIN_REACTION_SPACING_PCT = 0.55;
 const MIN_REACTION_SCORE = 8;
-const MIN_POSITIONING_DISPLAY_DISTANCE_PCT = 0.45;
 const MAX_REACTION_LEVELS_PER_SIDE = 4;
 const MAX_REACTION_LEVELS = MAX_REACTION_LEVELS_PER_SIDE * 2;
 const MAX_OI_HOLDING_ZONES_PER_SIDE = 5;
@@ -406,8 +407,22 @@ function isStaleZone(level: ReactionLevel, updatedAt: number, windowMs: number):
 }
 
 function isPositioningDisplayable(level: ReactionLevel, updatedAt: number, windowMs: number): boolean {
-  if (level.hiddenReason != null || isStaleZone(level, updatedAt, windowMs)) return false;
-  return Math.abs(level.distancePct) >= MIN_POSITIONING_DISPLAY_DISTANCE_PCT;
+  return level.hiddenReason == null && !isStaleZone(level, updatedAt, windowMs);
+}
+
+function capPositioningDisplayRange(level: ReactionLevel, currentPrice: number, zoneLow: number, zoneHigh: number): { zoneLow: number; zoneHigh: number } {
+  if (level.primarySource !== "positioning") return { zoneLow, zoneHigh };
+  const dynamicZoneWidthPct = level.tooltip?.dynamicZoneWidthPct;
+  if (dynamicZoneWidthPct == null || !Number.isFinite(dynamicZoneWidthPct) || dynamicZoneWidthPct <= 0) {
+    return { zoneLow, zoneHigh };
+  }
+  const maxWidth = currentPrice * (dynamicZoneWidthPct / 100);
+  if (!Number.isFinite(maxWidth) || maxWidth <= 0 || zoneHigh - zoneLow <= maxWidth) return { zoneLow, zoneHigh };
+  const halfWidth = maxWidth / 2;
+  return {
+    zoneLow: level.price - halfWidth,
+    zoneHigh: level.price + halfWidth,
+  };
 }
 
 function zonePriceLocation(args: {
@@ -450,7 +465,8 @@ function positioningRoleFor(args: {
 }): ReactionPositioningRole {
   if (args.stale) return "stale";
   const location = zonePriceLocation(args);
-  if (location === "inside" || location === "unknown" || args.aggressorSide === "mixed") return "unknown";
+  if (location === "inside") return "active_test";
+  if (location === "unknown" || args.aggressorSide === "mixed") return "unknown";
   if (args.aggressorSide === "buyer_initiated") {
     return location === "below" ? "long_defense" : "trapped_longs";
   }
@@ -467,6 +483,8 @@ function positioningRoleLabel(role: ReactionPositioningRole): string {
       return "Short defense";
     case "trapped_shorts":
       return "Trapped shorts";
+    case "active_test":
+      return "Active test";
     case "stale":
       return "Stale inferred zone";
     case "unknown":
@@ -1020,8 +1038,12 @@ function positioningZoneFromLevel(args: {
   updatedAt: number;
 }): ReactionPositioningZone {
   const { level, currentPrice, windowMs, updatedAt } = args;
-  const zoneLow = level.zoneLow ?? level.price;
-  const zoneHigh = level.zoneHigh ?? level.price;
+  const rawZoneLow = level.zoneLow ?? level.price;
+  const rawZoneHigh = level.zoneHigh ?? level.price;
+  const { zoneLow, zoneHigh } =
+    currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0
+      ? capPositioningDisplayRange(level, currentPrice, rawZoneLow, rawZoneHigh)
+      : { zoneLow: rawZoneLow, zoneHigh: rawZoneHigh };
   const ageMs = zoneAgeMs(level, updatedAt);
   const stale = isStaleZone(level, updatedAt, windowMs);
   const aggressorSide = positioningAggressorFor(level);
@@ -1055,15 +1077,33 @@ function positioningZoneFromLevel(args: {
   };
 }
 
+function dedupePositioningZones(zones: ReactionPositioningZone[]): ReactionPositioningZone[] {
+  const byKey = new Map<string, ReactionPositioningZone>();
+  for (const zone of zones) {
+    const key = `${zone.aggressorSide}:${levelKey(zone.price)}`;
+    const existing = byKey.get(key);
+    if (
+      !existing ||
+      zone.rank < existing.rank ||
+      (zone.rank === existing.rank && zone.tradeNotionalUsd > existing.tradeNotionalUsd)
+    ) {
+      byKey.set(key, zone);
+    }
+  }
+  return [...byKey.values()];
+}
+
 function buildPositioningSection(args: {
   levels: ReactionLevel[];
   currentPrice: number | null;
   windowMs: number;
   updatedAt: number;
 }): ReactionLevelsPayload["positioning"] {
-  const zones = args.levels
-    .filter((level) => level.primarySource === "positioning" && isPositioningDisplayable(level, args.updatedAt, args.windowMs))
-    .map((level) => positioningZoneFromLevel({ ...args, level }));
+  const zones = dedupePositioningZones(
+    args.levels
+      .filter((level) => level.primarySource === "positioning" && isPositioningDisplayable(level, args.updatedAt, args.windowMs))
+      .map((level) => positioningZoneFromLevel({ ...args, level })),
+  );
   const buyerInitiatedBuilds = zones
     .filter((zone) => zone.aggressorSide === "buyer_initiated")
     .sort((a, b) => a.rank - b.rank || b.tradeNotionalUsd - a.tradeNotionalUsd)
@@ -1529,8 +1569,9 @@ export function reactionLevelsToSupportResistanceLevels(
             })
           : null;
       const halfRange = Math.max(level.price * 0.0009, currentPrice * 0.00055);
-      const zoneLow = level.zoneLow ?? Number((level.price - halfRange).toFixed(level.price >= 100 ? 0 : 4));
-      const zoneHigh = level.zoneHigh ?? Number((level.price + halfRange).toFixed(level.price >= 100 ? 0 : 4));
+      const rawZoneLow = level.zoneLow ?? Number((level.price - halfRange).toFixed(level.price >= 100 ? 0 : 4));
+      const rawZoneHigh = level.zoneHigh ?? Number((level.price + halfRange).toFixed(level.price >= 100 ? 0 : 4));
+      const { zoneLow, zoneHigh } = capPositioningDisplayRange(level, currentPrice, rawZoneLow, rawZoneHigh);
       const displayNotionalUsd =
         level.primarySource === "positioning"
           ? level.components.tradeNotionalUsd

@@ -429,3 +429,43 @@
 - What helped: inspecting `upsertExposureZones()` exposed the remaining time-pruning behavior: every active current zone was retired on each promotion unless rediscovered in the current window.
 - Friction or missing capability: `git pull --ff-only` for HyperPulse is blocked by existing local edits that would be overwritten; Agent OS updated cleanly through its own lifecycle.
 - Recommendation: keep algorithm survival rules explicit in future market tools: what data enters, what line can drop it, what state can persist, and what signal is allowed to invalidate it.
+
+## 2026-05-10
+
+- Request summary: address browser comments on oversized XRP positioning ranges and confusing Reaction/Order Book/Positioning chart toggles.
+- Skills used: `diagnosis-loop`, `coding-discipline`, `ui-ux-pro-max`, `webapp-testing`.
+- What helped: the browser-selected XRP range made the mechanical issue obvious: low-priced asset buckets and raw stored zone ranges were too coarse for display.
+- Friction or missing capability: the first pass used a fixed width cap; user feedback correctly pushed this into a dynamic asset/window movement rule. The worker also revealed an existing schema constraint still capped ranks at 5.
+- Recommendation: for visual market levels, validate both algorithmic range math and rendered price-scale fit on low-priced assets, not only BTC/ETH. Prefer volatility or average-move sizing over universal visual caps.
+
+## 2026-05-10
+
+- Request summary: explain whether Reaction Map had no values and why worker logs showed repeated skipped flush/promote cycles.
+- Skills used: `diagnosis-loop`, `large-output-discipline`, `verification-gate`.
+- What helped: API and SQL smoke showed values existed while logs were noisy; timing logs showed flushes took 40-98s, far longer than the old 15s interval.
+- Friction or missing capability: the worker writes thousands of book rows sequentially, so cadence tuning helps but batching is the deeper performance follow-up.
+- Recommendation: separate ingestion flushing from expensive promotion/ranking work for streaming workers, then tune intervals from measured duration instead of guesswork.
+
+## 2026-05-10
+
+- Request summary: make the Reaction Map worker lighter by batching order-book bucket DB writes instead of relying only on cadence tuning.
+- Skills used: `diagnosis-loop`, `coding-discipline`, `large-output-discipline`.
+- What helped: timestamped worker logs separated book flush duration from promotion duration and exposed a separate retention/promote timer collision.
+- Friction or missing capability: structured API smoke needed the actual `orderBook.bidShelves/askShelves` and `positioning.buyerInitiatedBuilds/sellerInitiatedBuilds` payload shape, not placeholder field names.
+- Recommendation: keep timing logs around streaming workers and batch the highest-volume tables before widening asset coverage further.
+
+## 2026-05-10
+
+- Request summary: fix the Reaction Map chart tooltip being clipped under/inside the lightweight-charts layer.
+- Skills used: `verification-gate`, `ui-ux-pro-max`, `webapp-testing`.
+- What helped: browser verification reproduced the SUI chart state and confirmed the tooltip node rendered after selecting a positioning band.
+- Friction or missing capability: the first hover coordinate missed after reload because the selected asset/detail layout shifted, so verification switched to DOM-backed selection of the chart band.
+- Recommendation: keep interactive chart overlays outside clipped chart canvas wrappers when they need to float over axes, legends, or panels.
+
+## 2026-05-10
+
+- Request summary: explain trade dedupe, replace fixed candidate scan bands with movement-based bands, and stop hiding near-spot positioning zones.
+- Skills used: `diagnosis-loop`, `coding-discipline`, `large-output-discipline`.
+- What helped: BTC API smoke proved the supposedly missing positioning was present but hidden solely by the `0.45%` display-distance filter.
+- Friction or missing capability: Docker's default Next build was killed by memory pressure until the web Dockerfile constrained the builder to one worker.
+- Recommendation: for market maps, rank by evidence first and treat distance from spot as context, not a hard visibility gate.
