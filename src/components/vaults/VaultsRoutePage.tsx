@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { VaultFilters, DEFAULT_VAULT_FILTERS, type VaultFilterState } from "./VaultFilters";
 import { VaultsTable } from "./VaultsTable";
 import { withNetworkParam } from "@/lib/hyperliquid";
-import type { VaultListItem } from "@/types/vaults";
+import type { VaultListItem, VaultListResult } from "@/types/vaults";
 
 const MIN_TVL_FILTER = 100_000;
 const MIN_HISTORY_DAYS = 30;
@@ -12,6 +12,7 @@ const MIN_SHARPE = 1;
 
 export default function VaultsRoutePage() {
   const [items, setItems] = useState<VaultListItem[] | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<VaultFilterState>(DEFAULT_VAULT_FILTERS);
 
@@ -19,10 +20,13 @@ export default function VaultsRoutePage() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(withNetworkParam("/api/vaults"), { cache: "no-store" });
+        const res = await fetch(withNetworkParam("/api/vaults"));
         if (!res.ok) throw new Error(`Vaults request failed (${res.status})`);
-        const data = (await res.json()) as { vaults: VaultListItem[] };
-        if (!cancelled) setItems(data.vaults);
+        const data = (await res.json()) as VaultListResult;
+        if (!cancelled) {
+          setItems(data.vaults);
+          setWarnings(data.warnings ?? []);
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load vaults");
       }
@@ -65,6 +69,12 @@ export default function VaultsRoutePage() {
 
       <VaultFilters state={filters} onChange={setFilters} />
 
+      {warnings.length > 0 ? (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/80">
+          Vault list is partially refreshed. {warnings.slice(0, 2).join(" ")}
+        </div>
+      ) : null}
+
       {error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
@@ -72,7 +82,7 @@ export default function VaultsRoutePage() {
       ) : items === null ? (
         <VaultsSkeleton />
       ) : items.length === 0 ? (
-        <EmptySeedNotice />
+        <EmptyVaultNotice />
       ) : (
         <VaultsTable items={filtered} />
       )}
@@ -90,26 +100,23 @@ function VaultsSkeleton() {
   );
 }
 
-function EmptySeedNotice() {
+function EmptyVaultNotice() {
   return (
-    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-5 py-6 text-sm text-amber-100/90">
-      <div className="font-medium text-amber-200">No vault addresses configured</div>
-      <div className="mt-2 text-amber-100/80">
-        Hyperliquid does not expose a public &ldquo;list all vaults&rdquo; endpoint, so
-        HyperPulse uses a seed list to discover them. Populate{" "}
-        <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-amber-200">
-          src/lib/vaultSeed.ts
-        </code>{" "}
-        with vault addresses from{" "}
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-5 py-8 text-sm text-zinc-400">
+      <div className="font-medium text-zinc-100">No vaults available in this preview yet.</div>
+      <div className="mt-2 max-w-2xl leading-6">
+        HyperPulse only shows vaults after they pass the curated preview list or
+        Hyperliquid&apos;s recent vault summary feed. Check back shortly, or review
+        live vaults on{" "}
         <a
           href="https://app.hyperliquid.xyz/vaults"
           target="_blank"
           rel="noreferrer"
-          className="underline hover:text-amber-200"
+          className="text-emerald-300 underline hover:text-emerald-200"
         >
-          app.hyperliquid.xyz/vaults
+          Hyperliquid
         </a>{" "}
-        to populate this table.
+        while this feature is in private testing.
       </div>
     </div>
   );

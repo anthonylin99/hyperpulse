@@ -7,19 +7,31 @@ import type { VaultMetrics } from "@/types/vaults";
 
 const MIN_SAMPLES = 30;
 
+const TVL_SOURCE_LABEL: Record<VaultMetrics["tvlSource"], string> = {
+  account_value: "Vault equity",
+  summary_tvl: "Vault summary TVL",
+  followers_sum: "Follower equity sum",
+  unavailable: "Source unavailable",
+};
+
 export function VaultMetricsRow({ metrics }: { metrics: VaultMetrics }) {
   const showRisk = metrics.dailyReturnSamples >= MIN_SAMPLES;
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <StatTile
-        label="TVL"
+        label="Vault equity / TVL"
         value={formatCompact(metrics.tvl)}
         sub={
           metrics.tvlChange7dPct != null ? (
-            <span className={metrics.tvlChange7dPct >= 0 ? "text-emerald-400" : "text-red-400"}>
-              {formatPct(metrics.tvlChange7dPct)} 7d
-            </span>
-          ) : null
+            <>
+              <span className={metrics.tvlChange7dPct >= 0 ? "text-emerald-400" : "text-red-400"}>
+                {formatPct(metrics.tvlChange7dPct)} 7d
+              </span>
+              <span className="ml-1 text-zinc-500">· {TVL_SOURCE_LABEL[metrics.tvlSource]}</span>
+            </>
+          ) : (
+            TVL_SOURCE_LABEL[metrics.tvlSource]
+          )
         }
       />
       <StatTile
@@ -52,15 +64,7 @@ export function VaultMetricsRow({ metrics }: { metrics: VaultMetrics }) {
             : "—"
         }
         sub={
-          metrics.maxDrawdownAt &&
-          metrics.maxDrawdownFromEquity != null &&
-          metrics.maxDrawdownToEquity != null ? (
-            <>
-              {formatCompact(metrics.maxDrawdownFromEquity)} →{" "}
-              {formatCompact(metrics.maxDrawdownToEquity)} on{" "}
-              {formatEasternDate(metrics.maxDrawdownAt)}
-            </>
-          ) : null
+          metrics.maxDrawdownAt ? <>P&L-return trough on {formatEasternDate(metrics.maxDrawdownAt)}</> : null
         }
         state={metrics.maxDrawdownPct ? "danger" : "neutral"}
       />

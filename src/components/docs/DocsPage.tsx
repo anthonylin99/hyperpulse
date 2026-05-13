@@ -1,5 +1,7 @@
 "use client";
 
+import { useAppConfig } from "@/context/AppConfigContext";
+
 const quickLinks = [
   { href: "#overview", label: "Overview" },
   { href: "#data-sources", label: "Data Sources" },
@@ -61,22 +63,22 @@ const portfolioMetrics = [
 
 const vaultMetrics = [
   {
-    name: "TVL",
-    formula: "Sum of follower vault equity from vaultDetails.followers",
+    name: "Vault equity / TVL",
+    formula: "latest accountValueHistory, then vault summary TVL, then follower equity sum",
     detail:
-      "Hyperliquid does not return a top-level TVL field. HyperPulse sums the depositor balances directly so the number stays consistent with what each follower is exposed to.",
+      "HyperPulse prefers the latest vault account value when available because follower-only sums can undercount vault equity. If account value is unavailable, it falls back to Hyperliquid's vault summary TVL or follower equity.",
   },
   {
     name: "30d return",
-    formula: "(equity_now - equity_30d_ago) / equity_30d_ago",
+    formula: "(pnl_now - pnl_30d_start) / starting_equity",
     detail:
-      "Computed from the vault's month-window account value series. Deposits and withdrawals are NOT removed in v1 — heavy flow days can distort the return. A future version will use pnlHistory deltas divided by start-of-day equity to isolate performance from flows.",
+      "Computed from the vault's P&L history divided by starting equity where available, which is less flow-contaminated than raw account value changes.",
   },
   {
     name: "Max drawdown (90d)",
-    formula: "Largest peak-to-trough fall in account value over the trailing 90 days",
+    formula: "Largest peak-to-trough fall in cumulative daily P&L-return index",
     detail:
-      "Shown as a positive percentage with the date of the trough and the from / to equity values. Same caveat as returns: equity-based drawdown can also pick up withdrawal events.",
+      "Shown as a positive percentage with the date of the trough. HyperPulse uses P&L-return observations instead of raw equity drawdown when enough history exists.",
   },
   {
     name: "Sharpe (90d, annualized)",
@@ -92,15 +94,15 @@ const vaultMetrics = [
   },
   {
     name: "Strategy fingerprint",
-    formula: "Top 5 traded coins, long/short bias, trades/day, median hold time, top-asset concentration",
+    formula: "Top 5 traded coins, buy/sell flow bias, trades/day, median hold time, top-asset concentration",
     detail:
-      "Derived from the operator's fills over the last 30 days. Long/short bias is (long_notional - short_notional) / (long_notional + short_notional). Median hold time pairs entry and exit fills per coin via FIFO matching across completed round trips.",
+      "Derived from normalized operator fills over the last 30 days. Buy/sell flow bias is based on execution side, not a claim about the operator's current net exposure.",
   },
 ];
 
 const vaultLimitations = [
-  "Vault discovery uses a curated seed list of addresses. New vaults won't appear until the seed is refreshed (~monthly) — Hyperliquid does not expose a public list-all endpoint.",
-  "Returns and drawdowns are computed from account value history, so deposits and withdrawals contaminate the v1 numbers. The next iteration will use pnlHistory deltas to isolate performance from flows.",
+  "Vault discovery uses a curated seed list plus Hyperliquid's recent vault summaries when available. It is not a complete all-time vault leaderboard yet.",
+  "The equity curve is account value and can include deposits or withdrawals. Performance tiles prefer P&L-history calculations where available.",
   "Strategy fingerprint and operator track record cover the trailing 30–90 days. A vault that recently changed strategy will read differently than its all-time profile.",
   "Sharpe and Calmar are suppressed below 30 daily observations to avoid false precision on short-lived vaults.",
 ];
@@ -179,6 +181,11 @@ function Section({
 }
 
 export default function DocsPage() {
+  const { vaultsEnabled } = useAppConfig();
+  const visibleQuickLinks = vaultsEnabled
+    ? quickLinks
+    : quickLinks.filter((item) => item.href !== "#vaults");
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20">
       <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
@@ -188,7 +195,7 @@ export default function DocsPage() {
               Docs
             </div>
             <div className="mt-3 space-y-1">
-              {quickLinks.map((item) => (
+              {visibleQuickLinks.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
@@ -218,7 +225,7 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
-              {quickLinks.map((item) => (
+              {visibleQuickLinks.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
@@ -297,33 +304,35 @@ export default function DocsPage() {
             </div>
           </Section>
 
-          <Section id="vaults" eyebrow="Vaults" title="How vault analytics are calculated">
-            <p>
-              Hyperliquid vaults are on-chain trading vaults: any user can deposit USDC, a vault operator
-              trades on their behalf, and returns are pro-rata to depositors. HyperPulse ranks vaults by
-              risk-adjusted performance — not headline APY — so the depositor question &ldquo;can I trust this
-              manager with my capital?&rdquo; gets a real answer.
-            </p>
-            <div className="overflow-hidden rounded-xl border border-zinc-800">
-              <div className="grid grid-cols-1 divide-y divide-zinc-800 bg-zinc-950/60">
-                {vaultMetrics.map((metric) => (
-                  <div key={metric.name} className="grid gap-3 p-4 md:grid-cols-[180px_minmax(0,220px)_1fr] md:items-start">
-                    <div className="text-sm font-medium text-zinc-100">{metric.name}</div>
-                    <div className="text-xs text-teal-300">{metric.formula}</div>
-                    <div className="text-sm text-zinc-400">{metric.detail}</div>
-                  </div>
-                ))}
+          {vaultsEnabled ? (
+            <Section id="vaults" eyebrow="Vaults" title="How vault analytics are calculated">
+              <p>
+                Hyperliquid vaults are on-chain trading vaults: any user can deposit USDC, a vault operator
+                trades on their behalf, and returns are pro-rata to depositors. HyperPulse ranks vaults by
+                risk-adjusted performance — not headline APY — so the depositor question &ldquo;can I trust this
+                manager with my capital?&rdquo; gets a real answer.
+              </p>
+              <div className="overflow-hidden rounded-xl border border-zinc-800">
+                <div className="grid grid-cols-1 divide-y divide-zinc-800 bg-zinc-950/60">
+                  {vaultMetrics.map((metric) => (
+                    <div key={metric.name} className="grid gap-3 p-4 md:grid-cols-[180px_minmax(0,220px)_1fr] md:items-start">
+                      <div className="text-sm font-medium text-zinc-100">{metric.name}</div>
+                      <div className="text-xs text-teal-300">{metric.formula}</div>
+                      <div className="text-sm text-zinc-400">{metric.detail}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
-              <div className="font-medium text-amber-200">Known limitations</div>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-100/80">
-                {vaultLimitations.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            </div>
-          </Section>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
+                <div className="font-medium text-amber-200">Known limitations</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-100/80">
+                  {vaultLimitations.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            </Section>
+          ) : null}
 
           <Section id="signals" eyebrow="Signals" title="How funding signals are produced">
             <p>

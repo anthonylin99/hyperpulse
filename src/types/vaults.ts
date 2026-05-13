@@ -1,6 +1,8 @@
 // Vault Analytics types. Mirrors @nktkas/hyperliquid `vaultDetails` response,
 // plus the derived shapes the UI consumes (list rows, fingerprint, detail payload).
 
+import type { PortfolioStats } from "@/types";
+
 export type VaultPeriod = "day" | "week" | "month" | "allTime";
 
 export interface VaultPortfolioWindow {
@@ -32,10 +34,14 @@ export interface VaultDetails {
   allowDeposits: boolean;
   followers: VaultFollower[];
   portfolio: VaultPortfolioWindow[];
+  summaryTvl: number | null;
 }
+
+export type VaultTvlSource = "account_value" | "summary_tvl" | "followers_sum" | "unavailable";
 
 export interface VaultMetrics {
   tvl: number;
+  tvlSource: VaultTvlSource;
   tvlChange7dPct: number | null;
   return30dPct: number | null;
   returnAllTimePct: number | null;
@@ -55,6 +61,13 @@ export interface VaultListItem {
   name: string;
   leader: string;
   metrics: VaultMetrics;
+}
+
+export interface VaultListResult {
+  vaults: VaultListItem[];
+  partial: boolean;
+  warnings: string[];
+  unavailableCount: number;
 }
 
 export interface StrategyAssetSlice {
@@ -80,7 +93,8 @@ export interface VaultDetailPayload {
   fingerprint: StrategyFingerprint;
   operator: {
     address: string;
-    fillCount: number;
+    lookbackDays: number;
     fundingEntryCount: number;
+    stats: PortfolioStats;
   };
 }

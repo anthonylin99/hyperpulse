@@ -1,9 +1,8 @@
 // Seed list of known Hyperliquid vault addresses.
 //
-// Hyperliquid has no public "list all vaults" endpoint. We discover via this
-// seed then fetch `vaultDetails` per address. The list aggregator silently
-// drops addresses that return null or error from the API, so it's safe to
-// over-include here.
+// HyperPulse uses this curated list for stable preview/testing coverage, then
+// may supplement it with Hyperliquid's recent `vaultSummaries` response when
+// that endpoint returns data. Keep this list small and high-conviction.
 //
 // HOW TO POPULATE
 // 1. Open https://app.hyperliquid.xyz/vaults
@@ -12,10 +11,9 @@
 // 4. Restart the dev server — the /vaults table refreshes server-side every
 //    5 minutes (s-maxage=300), so a hard reload may also be needed.
 //
-// REFRESH CADENCE: ~monthly until leaderboard-based auto-discovery lands
-// (see /docs "Vault Analytics" → known limitations).
+// REFRESH CADENCE: ~monthly until richer vault discovery lands.
 
 export const VAULT_SEED: readonly string[] = [
-  // Add vault addresses here. Example:
-  // "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303",
+  // HLP: enough for preview smoke tests even before broader vault discovery is curated.
+  "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303",
 ];

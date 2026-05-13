@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, RefreshCcw } from "lucide-react";
 import { VaultMetricsRow } from "./VaultMetricsRow";
 import { VaultEquityCurve } from "./VaultEquityCurve";
 import { StrategyFingerprintPanel } from "./StrategyFingerprint";
@@ -14,7 +14,7 @@ import type {
   VaultDetails,
   VaultMetrics,
 } from "@/types/vaults";
-import type { EquityPoint, PortfolioStats } from "@/types";
+import type { PortfolioStats } from "@/types";
 
 type DetailResponse = {
   vault: VaultDetails;
@@ -23,43 +23,52 @@ type DetailResponse = {
   operator: {
     address: string;
     lookbackDays: number;
+    fundingEntryCount: number;
     stats: PortfolioStats;
-    equityCurve: EquityPoint[];
   };
 };
-
-const REFRESH_MS = 60_000;
 
 export default function VaultDetailPage({ address }: { address: string }) {
   const [data, setData] = useState<DetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
+  const load = useCallback(
+    async (cancelledRef?: { current: boolean }) => {
+      setLoading(true);
+      setError(null);
       try {
-        const res = await fetch(withNetworkParam(`/api/vaults/${address}`), { cache: "no-store" });
+        const res = await fetch(withNetworkParam(`/api/vaults/${address}`));
         if (res.status === 404) {
-          if (!cancelled) setError("Vault not found.");
+          if (!cancelledRef?.current) setError("Vault not found.");
           return;
         }
         if (!res.ok) throw new Error(`Vault request failed (${res.status})`);
         const payload = (await res.json()) as DetailResponse;
-        if (!cancelled) {
+        if (!cancelledRef?.current) {
           setData(payload);
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load vault");
+        if (!cancelledRef?.current) setError(e instanceof Error ? e.message : "Failed to load vault");
+      } finally {
+        if (!cancelledRef?.current) setLoading(false);
       }
-    }
-    load();
-    const id = window.setInterval(load, REFRESH_MS);
+    },
+    [address],
+  );
+
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    load(cancelledRef);
     return () => {
-      cancelled = true;
-      window.clearInterval(id);
+      cancelledRef.current = true;
     };
-  }, [address]);
+  }, [load]);
+
+  const handleRefresh = () => {
+    load();
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-5">
@@ -69,6 +78,17 @@ export default function VaultDetailPage({ address }: { address: string }) {
       >
         <ArrowLeft className="h-3 w-3" /> Back to vaults
       </Link>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-700 hover:text-zinc-100 disabled:opacity-50"
+        >
+          <RefreshCcw className="h-3 w-3" />
+          {loading ? "Refreshing..." : "Refresh vault"}
+        </button>
+      </div>
 
       {error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -116,6 +136,7 @@ export default function VaultDetailPage({ address }: { address: string }) {
             address={data.operator.address}
             stats={data.operator.stats}
             lookbackDays={data.operator.lookbackDays}
+            fundingEntryCount={data.operator.fundingEntryCount}
           />
         </>
       )}

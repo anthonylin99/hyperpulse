@@ -21,6 +21,8 @@ function LandingContent() {
         return asset ? `/markets?asset=${encodeURIComponent(asset)}` : "/markets";
       case "portfolio":
         return "/portfolio";
+      case "vaults":
+        return "/vaults";
       case "docs":
         return "/docs";
       case "whales":

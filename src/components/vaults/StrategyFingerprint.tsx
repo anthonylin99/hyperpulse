@@ -73,10 +73,10 @@ export function StrategyFingerprintPanel({ fingerprint }: { fingerprint: Strateg
           </div>
           <div className="mt-3 flex gap-4 text-[11px] text-zinc-500">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-emerald-500/70" /> Long
+              <span className="h-2 w-2 rounded-full bg-emerald-500/70" /> Buy flow
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-red-500/70" /> Short
+              <span className="h-2 w-2 rounded-full bg-red-500/70" /> Sell flow
             </span>
           </div>
         </div>
@@ -84,17 +84,17 @@ export function StrategyFingerprintPanel({ fingerprint }: { fingerprint: Strateg
         {/* Bias + activity */}
         <div className="space-y-4">
           <div>
-            <div className="text-xs text-zinc-500">Long / short bias</div>
+            <div className="text-xs text-zinc-500">Buy / sell flow bias</div>
             {bias == null ? (
               <div className="mt-2 text-sm text-zinc-500">—</div>
             ) : (
               <>
                 <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
-                  <span>100% short</span>
+                  <span>100% sell</span>
                   <span className={cn("font-mono", bias >= 0 ? "text-emerald-400" : "text-red-400")}>
                     {(bias * 100).toFixed(0)}%
                   </span>
-                  <span>100% long</span>
+                  <span>100% buy</span>
                 </div>
                 <div className="relative mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-900">
                   <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-700" />

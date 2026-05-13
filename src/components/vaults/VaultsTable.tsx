@@ -20,7 +20,7 @@ type SortDir = "asc" | "desc";
 
 const COLUMNS: Array<{ key: SortKey; label: string; align: "left" | "right" }> = [
   { key: "name", label: "Vault", align: "left" },
-  { key: "tvl", label: "TVL", align: "right" },
+  { key: "tvl", label: "Equity / TVL", align: "right" },
   { key: "return30d", label: "30d return", align: "right" },
   { key: "maxDrawdown", label: "Max DD (90d)", align: "right" },
   { key: "sharpe", label: "Sharpe (90d)", align: "right" },

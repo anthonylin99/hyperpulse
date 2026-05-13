@@ -10,10 +10,12 @@ export function OperatorTrackRecord({
   address,
   stats,
   lookbackDays,
+  fundingEntryCount,
 }: {
   address: string;
   stats: PortfolioStats;
   lookbackDays: number;
+  fundingEntryCount: number;
 }) {
   const pnlTone = stats.totalPnl >= 0 ? "text-emerald-400" : "text-red-400";
 
@@ -23,7 +25,7 @@ export function OperatorTrackRecord({
         <div>
           <div className="label text-emerald-400/75">Operator track record</div>
           <div className="mt-1 text-sm text-zinc-400">
-            Personal wallet performance over the last {lookbackDays} days.
+            Personal wallet round trips over the last {lookbackDays} days. Risk ratios are intentionally omitted until HyperPulse has a reliable starting-equity baseline.
           </div>
           <div className="mt-2"><CopyableAddress address={address} /></div>
         </div>
@@ -44,6 +46,7 @@ export function OperatorTrackRecord({
           <Tile label="Win rate" value={`${(stats.winRate * 100).toFixed(1)}%`} />
           <Tile label="Expectancy" value={formatUSD(stats.expectancy)} tone={stats.expectancy >= 0 ? "success" : "danger"} />
           <Tile label="Total trades" value={stats.totalTrades.toString()} />
+          <Tile label="Funding rows" value={fundingEntryCount.toString()} />
           <Tile label={`${lookbackDays}d PnL`} value={formatUSD(stats.totalPnl)} tone={stats.totalPnl >= 0 ? "success" : "danger"} className={pnlTone} />
         </div>
       )}

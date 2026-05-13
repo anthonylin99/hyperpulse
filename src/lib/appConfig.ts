@@ -2,6 +2,8 @@ export const ENABLE_TRADING_DEFAULT = false;
 export const ENABLE_FACTORS_DEFAULT = false;
 export const ENABLE_FACTORS_PROD_DEFAULT = false;
 export const ENABLE_AGENT_DEV_DEFAULT = process.env.NODE_ENV !== "production";
+export const ENABLE_VAULTS_DEV_DEFAULT = true;
+export const ENABLE_VAULTS_PROD_DEFAULT = false;
 
 function readEnvFlag(value: string | undefined): boolean | null {
   if (value === "true") return true;
@@ -48,6 +50,18 @@ export function isAgentDevEnabled() {
     resolveFlag(
       readEnvFlag(process.env.ENABLE_AGENT_DEV),
       readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_AGENT_DEV),
+    ) ?? defaultValue
+  );
+}
+
+export function isVaultsEnabled() {
+  const defaultValue = isPublicProduction()
+    ? ENABLE_VAULTS_PROD_DEFAULT
+    : ENABLE_VAULTS_DEV_DEFAULT;
+  return (
+    resolveFlag(
+      readEnvFlag(process.env.ENABLE_VAULTS),
+      readEnvFlag(process.env.NEXT_PUBLIC_ENABLE_VAULTS),
     ) ?? defaultValue
   );
 }

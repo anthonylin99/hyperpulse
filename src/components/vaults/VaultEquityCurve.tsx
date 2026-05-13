@@ -44,16 +44,12 @@ export function VaultEquityCurve({ portfolio }: { portfolio: VaultPortfolioWindo
     }
     if (history.length < 2) return [];
 
-    // Compute running peak + drawdown for the shaded overlay.
     let peak = history[0][1];
     return history.map(([time, equity]) => {
       peak = Math.max(peak, equity);
-      const ddPct = peak > 0 ? (equity - peak) / peak : 0; // 0 or negative
       return {
         time,
         equity,
-        // Shade band rendered as area between peak and current equity when in drawdown.
-        drawdownBand: ddPct < 0 ? peak - equity : 0,
         peak,
       };
     });
@@ -65,7 +61,7 @@ export function VaultEquityCurve({ portfolio }: { portfolio: VaultPortfolioWindo
         <div>
           <div className="label text-emerald-400/75">Equity curve</div>
           <div className="mt-1 text-sm text-zinc-400">
-            Vault account value over time. Red shading marks drawdown from the running peak.
+            Vault account value over time. This can include deposits and withdrawals, so performance tiles use P&L history where available.
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -99,10 +95,6 @@ export function VaultEquityCurve({ portfolio }: { portfolio: VaultPortfolioWindo
                   <stop offset="0%" stopColor="#34d399" stopOpacity={0.24} />
                   <stop offset="100%" stopColor="#020617" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="vaultDrawdownFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#ef4444" stopOpacity={0.22} />
-                  <stop offset="100%" stopColor="#ef4444" stopOpacity={0.05} />
-                </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="rgba(39,39,42,0.45)" />
               <XAxis
@@ -123,14 +115,6 @@ export function VaultEquityCurve({ portfolio }: { portfolio: VaultPortfolioWindo
                 domain={["dataMin", "dataMax"]}
               />
               <Tooltip content={<EquityTooltip />} cursor={{ stroke: "rgba(52,211,153,0.28)" }} />
-              <Area
-                type="monotone"
-                dataKey="peak"
-                stroke="transparent"
-                fill="url(#vaultDrawdownFill)"
-                isAnimationActive={false}
-                activeDot={false}
-              />
               <Area
                 type="monotone"
                 dataKey="equity"

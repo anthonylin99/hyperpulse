@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { isVaultsEnabled } from "@/lib/appConfig";
 import {
   enforceRateLimit,
   jsonError,
@@ -11,24 +12,126 @@ import {
   computeStrategyFingerprint,
   computeVaultMetrics,
   fetchVaultDetails,
+  normalizeVaultFill,
   SAMPLE_WINDOW_DAYS,
 } from "@/lib/vaults";
 import {
-  computeEquityCurve,
   computePortfolioStats,
   groupFillsIntoTrades,
   mergeFundingIntoTrades,
 } from "@/lib/analytics";
 import type { Fill, FundingEntry, PortfolioStats } from "@/types";
+import type { HyperliquidNetwork } from "@/lib/hyperliquid";
 
 export const dynamic = "force-dynamic";
 
 const OPERATOR_LOOKBACK_DAYS = 90;
+const PAGE_LIMIT = 2_000;
+const MAX_PAGES = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type RawFundingRow = {
+  time: number;
+  delta?: {
+    type?: string;
+    coin?: string;
+    usdc?: string;
+    szi?: string;
+    fundingRate?: string;
+    nSamples?: number;
+  };
+};
+
+function parseNumber(value: string | number | null | undefined): number {
+  if (value == null) return 0;
+  const n = typeof value === "number" ? value : Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function fetchOperatorFills(args: {
+  user: string;
+  network: HyperliquidNetwork;
+  startTime: number;
+  endTime: number;
+}): Promise<Fill[]> {
+  const info = getInfoClient(args.network);
+  const normalized = new Map<string, Fill>();
+  let cursor = args.startTime;
+
+  for (let page = 0; page < MAX_PAGES && cursor < args.endTime; page++) {
+    const rows = (await info.userFillsByTime({
+      user: args.user as `0x${string}`,
+      startTime: cursor,
+      endTime: args.endTime,
+      aggregateByTime: true,
+    })) as unknown[];
+
+    for (const row of rows) {
+      const fill = normalizeVaultFill(row);
+      if (!fill) continue;
+      normalized.set(`${fill.hash}:${fill.oid}:${fill.time}:${fill.coin}:${fill.px}:${fill.sz}`, fill);
+    }
+
+    if (rows.length < PAGE_LIMIT) break;
+    const maxTime = Math.max(
+      cursor,
+      ...rows.map((row) => Number((row as { time?: unknown }).time)).filter(Number.isFinite),
+    );
+    if (maxTime <= cursor) break;
+    cursor = maxTime + 1;
+  }
+
+  return Array.from(normalized.values()).sort((a, b) => a.time - b.time);
+}
+
+async function fetchOperatorFunding(args: {
+  user: string;
+  network: HyperliquidNetwork;
+  startTime: number;
+  endTime: number;
+}): Promise<FundingEntry[]> {
+  const info = getInfoClient(args.network);
+  const normalized = new Map<string, FundingEntry>();
+  let cursor = args.startTime;
+
+  for (let page = 0; page < MAX_PAGES && cursor < args.endTime; page++) {
+    const rows = (await info.userFunding({
+      user: args.user as `0x${string}`,
+      startTime: cursor,
+      endTime: args.endTime,
+    })) as RawFundingRow[];
+
+    for (const row of rows) {
+      if (row.delta?.type !== "funding" || !row.delta.coin) continue;
+      const entry: FundingEntry = {
+        time: row.time,
+        coin: row.delta.coin,
+        // Hyperliquid already signs this cash flow: negative means paid, positive means received.
+        usdc: parseNumber(row.delta.usdc),
+        positionSize: parseNumber(row.delta.szi),
+        fundingRate: parseNumber(row.delta.fundingRate),
+        nSamples: row.delta.nSamples ?? 1,
+      };
+      normalized.set(`${entry.time}:${entry.coin}:${entry.usdc}:${entry.positionSize}`, entry);
+    }
+
+    if (rows.length < PAGE_LIMIT) break;
+    const maxTime = Math.max(cursor, ...rows.map((row) => Number(row.time)).filter(Number.isFinite));
+    if (maxTime <= cursor) break;
+    cursor = maxTime + 1;
+  }
+
+  return Array.from(normalized.values()).sort((a, b) => a.time - b.time);
+}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ address: string }> },
 ) {
+  if (!isVaultsEnabled()) {
+    return jsonError("Vault analytics are not enabled for this deployment.", { status: 404 });
+  }
+
   const limited = enforceRateLimit(req, {
     key: "api-vaults-detail",
     limit: 60,
@@ -43,7 +146,6 @@ export async function GET(
   }
 
   const network = resolveNetworkFromRequest(req.nextUrl);
-  const info = getInfoClient(network);
 
   try {
     const vault = await fetchVaultDetails(address, network);
@@ -52,56 +154,17 @@ export async function GET(
     }
 
     const now = Date.now();
-    const startTime = now - OPERATOR_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+    const startTime = now - OPERATOR_LOOKBACK_DAYS * DAY_MS;
 
-    // Fetch operator fills + funding in parallel. The vault's `leader` is the
-    // operator wallet — same data shape as /portfolio analytics.
-    const [fillsRaw, fundingRaw] = await Promise.all([
-      info
-        .userFillsByTime({
-          user: vault.leader as `0x${string}`,
-          startTime,
-          aggregateByTime: true,
-        })
-        .catch(() => [] as unknown[]),
-      info
-        .userFunding({
-          user: vault.leader as `0x${string}`,
-          startTime,
-          endTime: now,
-        })
-        .catch(() => [] as unknown[]),
+    const [fills, funding] = await Promise.all([
+      fetchOperatorFills({ user: vault.leader, network, startTime, endTime: now }),
+      fetchOperatorFunding({ user: vault.leader, network, startTime, endTime: now }),
     ]);
-
-    const fills = fillsRaw as Fill[];
-    const funding = (fundingRaw as Array<{
-      time: number;
-      delta: {
-        type: string;
-        coin: string;
-        usdc: string;
-        szi?: string;
-        fundingRate?: string;
-        nSamples?: number;
-      };
-    }>)
-      .filter((f) => f.delta?.type === "funding")
-      .map<FundingEntry>((f) => ({
-        time: f.time,
-        coin: f.delta.coin,
-        // HL ledger funding `usdc` is the cash flow; negative means paid out.
-        usdc: -Number.parseFloat(f.delta.usdc),
-        positionSize: f.delta.szi ? Number.parseFloat(f.delta.szi) : 0,
-        fundingRate: f.delta.fundingRate ? Number.parseFloat(f.delta.fundingRate) : 0,
-        nSamples: f.delta.nSamples ?? 1,
-      }));
 
     const metrics = computeVaultMetrics(vault);
     const fingerprint = computeStrategyFingerprint(fills, SAMPLE_WINDOW_DAYS);
-
     const trades = mergeFundingIntoTrades(groupFillsIntoTrades(fills), funding);
     const operatorStats: PortfolioStats = computePortfolioStats(trades, funding);
-    const equityCurve = computeEquityCurve(trades, 1000);
 
     return jsonSuccess(
       {
@@ -111,8 +174,8 @@ export async function GET(
         operator: {
           address: vault.leader,
           lookbackDays: OPERATOR_LOOKBACK_DAYS,
+          fundingEntryCount: funding.length,
           stats: operatorStats,
-          equityCurve,
         },
       },
       { cache: "public-market" },
