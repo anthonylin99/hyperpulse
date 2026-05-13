@@ -8,6 +8,7 @@ import { VaultEquityCurve } from "./VaultEquityCurve";
 import { StrategyFingerprintPanel } from "./StrategyFingerprint";
 import { OperatorTrackRecord } from "./OperatorTrackRecord";
 import { CopyableAddress } from "@/components/ui/CopyableAddress";
+import { cn, formatCompact, formatPct } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import type {
   StrategyFingerprint,
@@ -126,6 +127,8 @@ export default function VaultDetailPage({ address }: { address: string }) {
             </div>
           </header>
 
+          <VaultScreeningPanel vault={data.vault} metrics={data.metrics} />
+
           <VaultMetricsRow metrics={data.metrics} />
 
           <VaultEquityCurve portfolio={data.vault.portfolio} />
@@ -142,6 +145,69 @@ export default function VaultDetailPage({ address }: { address: string }) {
       )}
     </div>
   );
+}
+
+function VaultScreeningPanel({ vault, metrics }: { vault: VaultDetails; metrics: VaultMetrics }) {
+  const status = vault.isClosed ? "Closed" : vault.allowDeposits ? "Deposits open" : "Deposits disabled";
+  const decisionTone = metrics.score.decision === "watch"
+    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+    : metrics.score.decision === "avoid"
+      ? "border-red-500/25 bg-red-500/10 text-red-300"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-200";
+  const confidenceTone = metrics.score.confidence === "high"
+    ? "text-emerald-300"
+    : metrics.score.confidence === "medium"
+      ? "text-sky-300"
+      : "text-amber-200";
+
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-[#0b0d10] p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-400/80">Vault screen</div>
+          <div className="mt-1 text-sm text-zinc-400">{metrics.score.reason}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={cn("rounded-full border px-3 py-1 text-xs uppercase tracking-[0.14em]", decisionTone)}>
+            {metrics.score.label} · {metrics.score.score}/100
+          </span>
+          <span className={cn("font-mono text-xs uppercase", confidenceTone)}>{metrics.score.confidence} confidence</span>
+        </div>
+      </div>
+      <div className="grid gap-2 md:grid-cols-4">
+        <DueDiligenceTile label="Deposit status" value={status} sub={`${metrics.followerCount} followers`} />
+        <DueDiligenceTile label="7D equity Δ" value={metrics.tvlChange7dPct != null ? formatPct(metrics.tvlChange7dPct) : "—"} sub="Includes P&L + capital movement" />
+        <DueDiligenceTile label="Risk sample" value={`${metrics.dailyReturnSamples} daily points`} sub={`History ${Math.round(metrics.historyDays)}d`} />
+        <DueDiligenceTile label="TVL source" value={formatCompact(metrics.tvl)} sub={tvlSourceCopy(metrics.tvlSource)} />
+      </div>
+      {metrics.score.flags.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {metrics.score.flags.map((flag) => (
+            <span key={flag} className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-400">
+              {flag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function DueDiligenceTile({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-black/25 px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{label}</div>
+      <div className="mt-1 font-mono text-sm text-zinc-100">{value}</div>
+      <div className="mt-1 text-[11px] text-zinc-500">{sub}</div>
+    </div>
+  );
+}
+
+function tvlSourceCopy(source: VaultMetrics["tvlSource"]): string {
+  if (source === "account_value") return "Latest account value";
+  if (source === "summary_tvl") return "Vault summary fallback";
+  if (source === "followers_sum") return "Follower equity fallback";
+  return "Unavailable";
 }
 
 function DetailSkeleton() {

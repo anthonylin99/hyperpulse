@@ -25,7 +25,7 @@ export function VaultMetricsRow({ metrics }: { metrics: VaultMetrics }) {
           metrics.tvlChange7dPct != null ? (
             <>
               <span className={metrics.tvlChange7dPct >= 0 ? "text-emerald-400" : "text-red-400"}>
-                {formatPct(metrics.tvlChange7dPct)} 7d
+                {formatPct(metrics.tvlChange7dPct)} 7d equity Δ
               </span>
               <span className="ml-1 text-zinc-500">· {TVL_SOURCE_LABEL[metrics.tvlSource]}</span>
             </>
@@ -46,7 +46,7 @@ export function VaultMetricsRow({ metrics }: { metrics: VaultMetrics }) {
         }
       />
       <StatTile
-        label="30d return"
+        label="30d P&L return"
         value={metrics.return30dPct != null ? formatPct(metrics.return30dPct) : "—"}
         state={
           metrics.return30dPct == null
@@ -69,9 +69,9 @@ export function VaultMetricsRow({ metrics }: { metrics: VaultMetrics }) {
         state={metrics.maxDrawdownPct ? "danger" : "neutral"}
       />
       <StatTile
-        label="Sharpe (90d)"
+        label="Sharpe sample"
         value={showRisk && metrics.sharpe90d != null ? metrics.sharpe90d.toFixed(2) : "—"}
-        sub={!showRisk ? "Insufficient history" : null}
+        sub={!showRisk ? "Need 30 daily samples" : null}
         state={
           showRisk && metrics.sharpe90d != null && metrics.sharpe90d >= 1 ? "success" : "neutral"
         }

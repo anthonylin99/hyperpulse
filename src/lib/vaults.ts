@@ -316,7 +316,7 @@ function scoreVaultRisk(metrics: Omit<VaultMetrics, "score">): VaultMetrics["sco
     }
   } else {
     flags.push("Sharpe sample too thin");
-    score -= 4;
+    score -= 8;
   }
 
   if (metrics.tvl >= 10_000_000) {
@@ -351,31 +351,57 @@ function scoreVaultRisk(metrics: Omit<VaultMetrics, "score">): VaultMetrics["sco
 
   if (metrics.tvlChange7dPct != null) {
     if (metrics.tvlChange7dPct > 10) {
-      flags.push("Capital inflow");
+      flags.push("7d equity increased");
       score += 4;
     } else if (metrics.tvlChange7dPct < -15) {
-      flags.push("Capital leaving");
+      flags.push("7d equity declined");
       score -= 8;
     }
   }
 
-  const normalized = Math.round(clamp(score, 0, 100));
+  const caps: Array<{ cap: number; flag: string }> = [];
+  if (metrics.historyDays < 30) {
+    caps.push({ cap: 55, flag: "Screen capped: short history" });
+  } else if (metrics.historyDays < 90) {
+    caps.push({ cap: 72, flag: "Screen capped: limited history" });
+  }
+  if (metrics.dailyReturnSamples < MIN_DAILY_RETURN_SAMPLES) {
+    caps.push({ cap: 82, flag: "Thin risk sample" });
+  }
+  if (metrics.maxDrawdownPct == null) {
+    caps.push({ cap: 68, flag: "No drawdown sample" });
+  }
+  if (metrics.tvlSource !== "account_value") {
+    caps.push({ cap: 75, flag: "TVL source less reliable" });
+  }
+
+  const rawNormalized = Math.round(clamp(score, 0, 100));
+  const normalized = caps.reduce((value, entry) => Math.min(value, entry.cap), rawNormalized);
+  for (const cap of caps) {
+    if (!flags.includes(cap.flag)) flags.unshift(cap.flag);
+  }
+
   let decision: VaultMetrics["score"]["decision"] = "review";
   let label = "Review carefully";
-  let reason = "Mixed profile: inspect drawdown, operator behavior, and recent P&L before depositing.";
-  if (normalized >= 72 && metrics.historyDays >= 30 && (metrics.return30dPct ?? 0) >= 0) {
+  let reason = "Mixed profile: inspect drawdown, operator behavior, deposits status, and recent P&L before depositing.";
+  if (
+    normalized >= 72 &&
+    metrics.historyDays >= 30 &&
+    metrics.dailyReturnSamples >= 7 &&
+    (metrics.return30dPct ?? 0) >= 0
+  ) {
     decision = "watch";
-    label = "Worth watching";
-    reason = "Better risk-adjusted profile: positive recent P&L with acceptable drawdown and enough history.";
+    label = "Candidate";
+    reason = "Best candidate for deeper review: positive recent P&L, acceptable sampled drawdown, and enough history to inspect.";
   } else if (normalized <= 40 || (metrics.return30dPct ?? 0) < -8) {
     decision = "avoid";
-    label = "Avoid for now";
+    label = "High risk";
     reason = "Risk/reward is weak right now: negative returns, thin history, or drawdown concerns dominate.";
   }
 
-  const confidence = metrics.dailyReturnSamples >= 30
+  const confidence = metrics.dailyReturnSamples >= MIN_DAILY_RETURN_SAMPLES && metrics.historyDays >= 90 && metrics.maxDrawdownPct != null
     ? "high"
-    : metrics.historyDays >= 30
+    : metrics.historyDays >= 30 && metrics.maxDrawdownPct != null
       ? "medium"
       : "low";
 
@@ -602,6 +628,10 @@ export async function listVaultSummaries(
         vaultAddress: vault.vaultAddress,
         name: vault.name,
         leader: vault.leader,
+        apr: parseNullableFloat(vault.apr),
+        leaderCommission: parseNullableFloat(vault.leaderCommission),
+        isClosed: vault.isClosed,
+        allowDeposits: vault.allowDeposits,
         metrics,
       };
       return item;

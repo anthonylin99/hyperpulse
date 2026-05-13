@@ -9,32 +9,45 @@ import type { VaultDecision, VaultListItem } from "@/types/vaults";
 
 type SortKey =
   | "name"
-  | "score"
+  | "screen"
   | "tvl"
   | "return30d"
   | "maxDrawdown"
-  | "sharpe"
+  | "quality"
   | "tvlChange7d"
-  | "followers";
+  | "followers"
+  | "status";
 
 type SortDir = "asc" | "desc";
 
 const COLUMNS: Array<{ key: SortKey; label: string; align: "left" | "right" }> = [
   { key: "name", label: "Vault", align: "left" },
-  { key: "score", label: "Score", align: "right" },
+  { key: "screen", label: "Screen", align: "right" },
   { key: "tvl", label: "TVL", align: "right" },
-  { key: "return30d", label: "30D", align: "right" },
+  { key: "return30d", label: "30D P&L", align: "right" },
   { key: "maxDrawdown", label: "DD", align: "right" },
-  { key: "sharpe", label: "Sharpe", align: "right" },
-  { key: "tvlChange7d", label: "7D Flow", align: "right" },
+  { key: "quality", label: "Quality", align: "right" },
+  { key: "tvlChange7d", label: "7D Equity Δ", align: "right" },
   { key: "followers", label: "Users", align: "right" },
+  { key: "status", label: "Status", align: "right" },
 ];
+
+function qualityRank(item: VaultListItem): number {
+  const confidence = item.metrics.score.confidence === "high" ? 3 : item.metrics.score.confidence === "medium" ? 2 : 1;
+  return confidence * 1000 + item.metrics.dailyReturnSamples;
+}
+
+function statusRank(item: VaultListItem): number {
+  if (item.isClosed) return 0;
+  if (!item.allowDeposits) return 1;
+  return 2;
+}
 
 function getSortValue(item: VaultListItem, key: SortKey): number | string {
   switch (key) {
     case "name":
       return item.name.toLowerCase();
-    case "score":
+    case "screen":
       return item.metrics.score.score;
     case "tvl":
       return item.metrics.tvl;
@@ -42,17 +55,19 @@ function getSortValue(item: VaultListItem, key: SortKey): number | string {
       return item.metrics.return30dPct ?? Number.NEGATIVE_INFINITY;
     case "maxDrawdown":
       return item.metrics.maxDrawdownPct ?? Number.POSITIVE_INFINITY;
-    case "sharpe":
-      return item.metrics.sharpe90d ?? Number.NEGATIVE_INFINITY;
+    case "quality":
+      return qualityRank(item);
     case "tvlChange7d":
       return item.metrics.tvlChange7dPct ?? Number.NEGATIVE_INFINITY;
     case "followers":
       return item.metrics.followerCount;
+    case "status":
+      return statusRank(item);
   }
 }
 
 export function VaultsTable({ items }: { items: VaultListItem[] }) {
-  const [sortKey, setSortKey] = useState<SortKey>("score");
+  const [sortKey, setSortKey] = useState<SortKey>("screen");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const sorted = useMemo(() => {
@@ -85,14 +100,14 @@ export function VaultsTable({ items }: { items: VaultListItem[] }) {
   return (
     <>
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[1100px] text-sm">
+        <table className="w-full min-w-[1180px] text-sm">
           <thead className="border-b border-zinc-800 bg-[#0d1015]">
             <tr>
               {COLUMNS.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    "px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500 cursor-pointer select-none",
+                    "cursor-pointer select-none px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-500",
                     col.align === "right" ? "text-right" : "text-left",
                   )}
                   onClick={() => handleSort(col.key)}
@@ -122,7 +137,7 @@ export function VaultsTable({ items }: { items: VaultListItem[] }) {
                       <div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
                         <span className="font-mono">{item.vaultAddress.slice(0, 6)}…{item.vaultAddress.slice(-4)}</span>
                         <span>·</span>
-                        <span className="truncate">{item.metrics.score.flags[0] ?? item.metrics.score.label}</span>
+                        <span className="truncate">{primaryFlag(item)}</span>
                       </div>
                     </div>
                   </div>
@@ -136,9 +151,10 @@ export function VaultsTable({ items }: { items: VaultListItem[] }) {
                 <td className="px-3 py-2.5 text-right font-mono text-zinc-200">{formatCompact(item.metrics.tvl)}</td>
                 <ReturnCell value={item.metrics.return30dPct} />
                 <DrawdownCell value={item.metrics.maxDrawdownPct} />
-                <SharpeCell value={item.metrics.sharpe90d} samples={item.metrics.dailyReturnSamples} />
-                <ReturnCell value={item.metrics.tvlChange7dPct} />
+                <QualityCell item={item} />
+                <ReturnCell value={item.metrics.tvlChange7dPct} mutedNote />
                 <td className="px-3 py-2.5 text-right font-mono text-zinc-300">{item.metrics.followerCount}</td>
+                <td className="px-3 py-2.5 text-right"><StatusBadge item={item} /></td>
                 <td className="px-3 py-2.5"><CopyableAddress address={item.leader} /></td>
                 <td className="px-3 py-2.5 text-right">
                   <Link href={`/vaults/${item.vaultAddress}`} className="inline-flex items-center gap-1 rounded-full border border-zinc-800 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300">
@@ -183,7 +199,11 @@ export function VaultsTable({ items }: { items: VaultListItem[] }) {
                 <MobileStat label="TVL" value={item.metrics.tvl} kind="tvl" />
                 <MobileStat label="30D" value={item.metrics.return30dPct} kind="return" />
                 <MobileStat label="DD" value={item.metrics.maxDrawdownPct} kind="drawdown" />
-                <MobileStat label="Users" value={item.metrics.followerCount} kind="count" />
+                <MobileStat label="Quality" value={item.metrics.dailyReturnSamples} kind="samples" confidence={item.metrics.score.confidence} />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-zinc-500">
+                <span>{primaryFlag(item)}</span>
+                <StatusBadge item={item} />
               </div>
             </Link>
           ))
@@ -193,9 +213,14 @@ export function VaultsTable({ items }: { items: VaultListItem[] }) {
   );
 }
 
+function primaryFlag(item: VaultListItem): string {
+  const firstNonCap = item.metrics.score.flags.find((flag) => !flag.toLowerCase().includes("capped"));
+  return firstNonCap ?? item.metrics.score.label;
+}
+
 function shortDecisionLabel(decision: VaultDecision) {
-  if (decision === "watch") return "Watch";
-  if (decision === "avoid") return "Avoid";
+  if (decision === "watch") return "Candidate";
+  if (decision === "avoid") return "High risk";
   return "Review";
 }
 
@@ -213,9 +238,13 @@ function DecisionBadge({ decision, label }: { decision: VaultDecision; label: st
   return <span className={cn("rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]", tone)}>{label}</span>;
 }
 
-function ReturnCell({ value }: { value: number | null }) {
+function ReturnCell({ value, mutedNote = false }: { value: number | null; mutedNote?: boolean }) {
   if (value == null) return <td className="px-3 py-2.5 text-right text-xs text-zinc-500">—</td>;
-  return <td className={cn("px-3 py-2.5 text-right font-mono", value >= 0 ? "text-emerald-400" : "text-red-400")}>{formatPct(value)}</td>;
+  return (
+    <td className={cn("px-3 py-2.5 text-right font-mono", value >= 0 ? "text-emerald-400" : "text-red-400", mutedNote && "text-opacity-90")}>
+      {formatPct(value)}
+    </td>
+  );
 }
 
 function DrawdownCell({ value }: { value: number | null }) {
@@ -223,12 +252,34 @@ function DrawdownCell({ value }: { value: number | null }) {
   return <td className="px-3 py-2.5 text-right font-mono text-red-400">{(value * 100).toFixed(1)}%</td>;
 }
 
-function SharpeCell({ value, samples }: { value: number | null; samples: number }) {
-  if (value == null || samples < 30) return <td className="px-3 py-2.5 text-right text-xs text-zinc-500">—</td>;
-  return <td className={cn("px-3 py-2.5 text-right font-mono", value >= 1 ? "text-emerald-400" : value >= 0 ? "text-zinc-200" : "text-red-400")}>{value.toFixed(2)}</td>;
+function QualityCell({ item }: { item: VaultListItem }) {
+  const confidence = item.metrics.score.confidence;
+  const tone = confidence === "high"
+    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+    : confidence === "medium"
+      ? "border-sky-500/25 bg-sky-500/10 text-sky-300"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-200";
+  return (
+    <td className="px-3 py-2.5 text-right">
+      <div className="flex flex-col items-end gap-0.5">
+        <span className={cn("rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]", tone)}>{confidence}</span>
+        <span className="font-mono text-[11px] text-zinc-500">{item.metrics.dailyReturnSamples} samples</span>
+      </div>
+    </td>
+  );
 }
 
-function MobileStat({ label, value, kind }: { label: string; value: number | null; kind: "return" | "drawdown" | "tvl" | "count" }) {
+function StatusBadge({ item }: { item: VaultListItem }) {
+  const label = item.isClosed ? "Closed" : item.allowDeposits ? "Open" : "No deposits";
+  const tone = item.isClosed
+    ? "border-red-500/25 bg-red-500/10 text-red-300"
+    : item.allowDeposits
+      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-200";
+  return <span className={cn("rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]", tone)}>{label}</span>;
+}
+
+function MobileStat({ label, value, kind, confidence }: { label: string; value: number | null; kind: "return" | "drawdown" | "tvl" | "count" | "samples"; confidence?: string }) {
   let display = "—";
   let tone = "text-zinc-200";
   if (value != null) {
@@ -239,7 +290,10 @@ function MobileStat({ label, value, kind }: { label: string; value: number | nul
       display = `${(value * 100).toFixed(1)}%`;
       tone = "text-red-400";
     } else if (kind === "tvl") display = formatCompact(value);
-    else display = String(value);
+    else if (kind === "samples") {
+      display = `${confidence ?? "n/a"}`;
+      tone = confidence === "high" ? "text-emerald-300" : confidence === "medium" ? "text-sky-300" : "text-amber-200";
+    } else display = String(value);
   } else tone = "text-zinc-500";
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-2">

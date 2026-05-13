@@ -69,20 +69,23 @@ export default function VaultsRoutePage() {
               <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-400/80">Vaults</div>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Hyperliquid vault directory</h1>
-                <p className="text-xs text-zinc-500">Score, compare, then inspect operator risk before depositing.</p>
+                <p className="text-xs text-zinc-500">Screen vaults by return, drawdown, data quality, deposits status, and operator risk.</p>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 text-xs sm:min-w-[460px]">
               <SummaryTile label="Tracked" value={items ? String(items.length) : "—"} />
-              <SummaryTile label="Watch" value={items ? String(summary.watch) : "—"} tone="green" />
+              <SummaryTile label="Candidates" value={items ? String(summary.watch) : "—"} tone="green" />
               <SummaryTile label="TVL" value={items ? formatCompact(summary.totalTvl) : "—"} />
             </div>
           </div>
           <div className="mt-3 flex flex-col gap-3 border-t border-zinc-900 pt-3 lg:flex-row lg:items-center lg:justify-between">
             <VaultFilters state={filters} onChange={setFilters} />
             <div className="text-xs text-zinc-500">
-              Top score: {summary.top ? <span className="text-zinc-200">{summary.top.name} · {summary.top.metrics.score.score}/100</span> : "loading"}
+              Top screen: {summary.top ? <span className="text-zinc-200">{summary.top.name} · {summary.top.metrics.score.score}/100</span> : "loading"}
             </div>
+          </div>
+          <div className="mt-2 text-[11px] leading-5 text-zinc-600">
+            Screening score is a shortlist tool, not a deposit recommendation. 7D Equity Δ can include P&L and capital movement.
           </div>
         </header>
 

@@ -72,6 +72,10 @@ export interface VaultListItem {
   vaultAddress: string;
   name: string;
   leader: string;
+  apr: number | null;
+  leaderCommission: number | null;
+  isClosed: boolean;
+  allowDeposits: boolean;
   metrics: VaultMetrics;
 }
 

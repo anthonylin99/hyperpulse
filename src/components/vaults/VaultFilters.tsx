@@ -34,7 +34,7 @@ export function VaultFilters({
         onClick={() => onChange({ ...state, minHistory: !state.minHistory })}
       />
       <FilterChip
-        label="Sharpe > 1"
+        label="High risk-adjusted sample"
         active={state.sharpePositive}
         onClick={() => onChange({ ...state, sharpePositive: !state.sharpePositive })}
       />
