@@ -769,7 +769,11 @@ export default function PriceChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
     chart.timeScale().subscribeVisibleTimeRangeChange(scheduleZoneBandRender);
     chart.subscribeCrosshairMove(scheduleZoneBandRender);
-    container.addEventListener("wheel", scheduleZoneBandRender, { passive: true });
+    const handleChartWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      scheduleZoneBandRender();
+    };
+    container.addEventListener("wheel", handleChartWheel, { passive: false });
     container.addEventListener("pointermove", scheduleZoneBandRender);
     container.addEventListener("pointerup", scheduleZoneBandRender);
 
@@ -778,7 +782,7 @@ export default function PriceChart({
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(scheduleZoneBandRender);
       chart.unsubscribeCrosshairMove(scheduleZoneBandRender);
-      container.removeEventListener("wheel", scheduleZoneBandRender);
+      container.removeEventListener("wheel", handleChartWheel);
       container.removeEventListener("pointermove", scheduleZoneBandRender);
       container.removeEventListener("pointerup", scheduleZoneBandRender);
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
