@@ -3,6 +3,7 @@ import {
   isAgentDevEnabled,
   isFactorsEnabled,
   isTradingEnabled,
+  isVaultsEnabled,
 } from "@/lib/appConfig";
 
 export const dynamic = "force-dynamic";
@@ -11,12 +12,14 @@ export async function GET() {
   const tradingEnabled = isTradingEnabled();
   const factorsEnabled = isFactorsEnabled();
   const agentDevEnabled = isAgentDevEnabled();
+  const vaultsEnabled = isVaultsEnabled();
 
   return NextResponse.json(
     {
       tradingEnabled,
       factorsEnabled,
       agentDevEnabled,
+      vaultsEnabled,
       deploymentMode: tradingEnabled ? "trading" : "read-only",
     },
     {

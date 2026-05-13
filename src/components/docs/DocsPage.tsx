@@ -1,9 +1,12 @@
 "use client";
 
+import { useAppConfig } from "@/context/AppConfigContext";
+
 const quickLinks = [
   { href: "#overview", label: "Overview" },
   { href: "#data-sources", label: "Data Sources" },
   { href: "#portfolio", label: "Portfolio Analytics" },
+  { href: "#vaults", label: "Vault Analytics" },
   { href: "#signals", label: "Market Signals" },
   { href: "#market-radar", label: "Market Radar" },
   { href: "#pressure-levels", label: "Pressure Levels" },
@@ -56,6 +59,52 @@ const portfolioMetrics = [
     detail:
       "Useful for understanding whether the system has a positive edge per completed trade.",
   },
+];
+
+const vaultMetrics = [
+  {
+    name: "Vault equity / TVL",
+    formula: "latest accountValueHistory, then vault summary TVL, then follower equity sum",
+    detail:
+      "HyperPulse prefers the latest vault account value when available because follower-only sums can undercount vault equity. If account value is unavailable, it falls back to Hyperliquid's vault summary TVL or follower equity.",
+  },
+  {
+    name: "30d return",
+    formula: "(pnl_now - pnl_30d_start) / starting_equity",
+    detail:
+      "Computed from the vault's P&L history divided by starting equity where available, which is less flow-contaminated than raw account value changes.",
+  },
+  {
+    name: "Max drawdown (90d)",
+    formula: "Largest peak-to-trough fall in cumulative daily P&L-return index",
+    detail:
+      "Shown as a positive percentage with the date of the trough. HyperPulse uses P&L-return observations instead of raw equity drawdown when enough history exists.",
+  },
+  {
+    name: "Sharpe (90d, annualized)",
+    formula: "(mean(daily_returns) / stdev(daily_returns)) × √365",
+    detail:
+      "Risk-free rate is set to zero, the standard convention for crypto. Suppressed with an Insufficient history label until at least 30 daily return observations are available — HyperPulse refuses to display a Sharpe built on a handful of points.",
+  },
+  {
+    name: "Calmar (90d, annualized)",
+    formula: "annualized_return / abs(max_drawdown)",
+    detail:
+      "Same 30-sample minimum as Sharpe. Useful as a complement: Sharpe punishes volatility, Calmar punishes the worst drawdown specifically.",
+  },
+  {
+    name: "Strategy fingerprint",
+    formula: "Top 5 traded coins, buy/sell flow bias, trades/day, median hold time, top-asset concentration",
+    detail:
+      "Derived from normalized operator fills over the last 30 days. Buy/sell flow bias is based on execution side, not a claim about the operator's current net exposure.",
+  },
+];
+
+const vaultLimitations = [
+  "Vault discovery uses a curated seed list plus Hyperliquid's recent vault summaries when available. It is not a complete all-time vault leaderboard yet.",
+  "The equity curve is account value and can include deposits or withdrawals. Performance tiles prefer P&L-history calculations where available.",
+  "Strategy fingerprint and operator track record cover the trailing 30–90 days. A vault that recently changed strategy will read differently than its all-time profile.",
+  "Sharpe and Calmar are suppressed below 30 daily observations to avoid false precision on short-lived vaults.",
 ];
 
 const signalStates = [
@@ -132,6 +181,11 @@ function Section({
 }
 
 export default function DocsPage() {
+  const { vaultsEnabled } = useAppConfig();
+  const visibleQuickLinks = vaultsEnabled
+    ? quickLinks
+    : quickLinks.filter((item) => item.href !== "#vaults");
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20">
       <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
@@ -141,7 +195,7 @@ export default function DocsPage() {
               Docs
             </div>
             <div className="mt-3 space-y-1">
-              {quickLinks.map((item) => (
+              {visibleQuickLinks.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
@@ -171,7 +225,7 @@ export default function DocsPage() {
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
-              {quickLinks.map((item) => (
+              {visibleQuickLinks.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
@@ -249,6 +303,36 @@ export default function DocsPage() {
               </div>
             </div>
           </Section>
+
+          {vaultsEnabled ? (
+            <Section id="vaults" eyebrow="Vaults" title="How vault analytics are calculated">
+              <p>
+                Hyperliquid vaults are on-chain trading vaults: any user can deposit USDC, a vault operator
+                trades on their behalf, and returns are pro-rata to depositors. HyperPulse ranks vaults by
+                risk-adjusted performance — not headline APY — so the depositor question &ldquo;can I trust this
+                manager with my capital?&rdquo; gets a real answer.
+              </p>
+              <div className="overflow-hidden rounded-xl border border-zinc-800">
+                <div className="grid grid-cols-1 divide-y divide-zinc-800 bg-zinc-950/60">
+                  {vaultMetrics.map((metric) => (
+                    <div key={metric.name} className="grid gap-3 p-4 md:grid-cols-[180px_minmax(0,220px)_1fr] md:items-start">
+                      <div className="text-sm font-medium text-zinc-100">{metric.name}</div>
+                      <div className="text-xs text-teal-300">{metric.formula}</div>
+                      <div className="text-sm text-zinc-400">{metric.detail}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
+                <div className="font-medium text-amber-200">Known limitations</div>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-100/80">
+                  {vaultLimitations.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            </Section>
+          ) : null}
 
           <Section id="signals" eyebrow="Signals" title="How funding signals are produced">
             <p>

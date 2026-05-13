@@ -15,12 +15,14 @@ import {
   ENABLE_AGENT_DEV_DEFAULT,
   ENABLE_FACTORS_DEFAULT,
   ENABLE_TRADING_DEFAULT,
+  ENABLE_VAULTS_DEV_DEFAULT,
 } from "@/lib/appConfig";
 
 type PublicAppConfig = {
   tradingEnabled: boolean;
   factorsEnabled: boolean;
   agentDevEnabled: boolean;
+  vaultsEnabled: boolean;
   deploymentMode: "trading" | "read-only";
 };
 
@@ -41,11 +43,19 @@ const fallbackAgentDevEnabled =
   process.env.NEXT_PUBLIC_ENABLE_AGENT_DEV === "true" ||
   (process.env.NEXT_PUBLIC_ENABLE_AGENT_DEV !== "false" &&
     ENABLE_AGENT_DEV_DEFAULT);
+const fallbackIsPublicProduction =
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "production";
+const fallbackVaultsEnabled =
+  process.env.NEXT_PUBLIC_ENABLE_VAULTS === "true" ||
+  (!fallbackIsPublicProduction &&
+    process.env.NEXT_PUBLIC_ENABLE_VAULTS !== "false" &&
+    ENABLE_VAULTS_DEV_DEFAULT);
 
 const fallbackConfig: PublicAppConfig = {
   tradingEnabled: fallbackTradingEnabled,
   factorsEnabled: fallbackFactorsEnabled,
   agentDevEnabled: fallbackAgentDevEnabled,
+  vaultsEnabled: fallbackVaultsEnabled,
   deploymentMode: fallbackTradingEnabled ? "trading" : "read-only",
 };
 

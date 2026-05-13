@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { isTradingEnabled } from "@/lib/appConfig";
+import { isTradingEnabled, isVaultsEnabled } from "@/lib/appConfig";
 
 const DEFAULT_SITE_URL = "https://hyperpulsehl.com";
 const DEFAULT_OG_IMAGE = "/opengraph-image";
@@ -26,6 +26,10 @@ export function getPublicAppRoutes() {
     { path: "/portfolio", label: "Portfolio" },
     { path: "/docs", label: "Docs" },
   ];
+
+  if (isVaultsEnabled()) {
+    routes.splice(4, 0, { path: "/vaults", label: "Vaults" });
+  }
 
   return routes;
 }

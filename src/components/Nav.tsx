@@ -10,11 +10,12 @@ import { cn } from "@/lib/format";
 
 export default function Nav() {
   const pathname = usePathname();
-  const { agentDevEnabled, factorsEnabled } = useAppConfig();
+  const { agentDevEnabled, factorsEnabled, vaultsEnabled } = useAppConfig();
 
   const tabs = APP_TABS.filter((tab) => {
     if (!agentDevEnabled && tab.key === "agent") return false;
     if (!factorsEnabled && tab.key === "factors") return false;
+    if (!vaultsEnabled && tab.key === "vaults") return false;
     return true;
   });
 

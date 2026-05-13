@@ -34,7 +34,7 @@ for (const check of checks) {
         throw new Error(`/api/health expected ok payload, got ${body}`);
       }
     } else {
-      for (const key of ["tradingEnabled", "factorsEnabled"]) {
+      for (const key of ["tradingEnabled", "factorsEnabled", "vaultsEnabled"]) {
         if (typeof config[key] !== "boolean") {
           throw new Error(`/api/public-config expected boolean ${key}, got ${config[key]}`);
         }
@@ -42,6 +42,7 @@ for (const check of checks) {
       if (expectPublicFlags) {
         const expectedOff = [
           ["tradingEnabled", false],
+          ["vaultsEnabled", false],
         ];
         for (const [key, expected] of expectedOff) {
           if (config[key] !== expected) {
@@ -58,7 +59,7 @@ for (const check of checks) {
 }
 
 if (expectPublicFlags) {
-  for (const path of ["/whales"]) {
+  for (const path of ["/vaults", "/whales"]) {
     const response = await fetch(`${baseUrl}${path}`, {
       headers: { "user-agent": "HyperPulse public smoke/1.0" },
       redirect: "manual",
@@ -72,6 +73,14 @@ if (expectPublicFlags) {
     }
     console.log(`ok ${path} disabled redirect`);
   }
+
+  const vaultsApi = await fetch(`${baseUrl}/api/vaults`, {
+    headers: { "user-agent": "HyperPulse public smoke/1.0" },
+  });
+  if (vaultsApi.status !== 404) {
+    throw new Error(`/api/vaults expected 404 when vaults disabled, got ${vaultsApi.status}`);
+  }
+  console.log("ok /api/vaults disabled 404");
 
   const response = await fetch(`${baseUrl}/api/whales/feed`, {
     headers: { "user-agent": "HyperPulse public smoke/1.0" },
