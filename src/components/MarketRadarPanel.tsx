@@ -19,7 +19,7 @@ type RadarResponse = {
 };
 
 function sourceLabel(source: string | undefined) {
-  if (source === "quant-radar") return "Quant relative-strength scan";
+  if (source === "quant-radar") return "Price-action relative-strength scan";
   return "Market-only scan";
 }
 
@@ -61,8 +61,8 @@ function formatRadarTime(time: number | undefined): string {
 
 const radarMethodology = [
   "Liquidity gate: >=$10M OI and >=$20M 24h volume.",
-  "Shows both long momentum and relative short/laggard candidates.",
-  "Adds volume/OI participation, then penalizes overcrowded funding.",
+  "Scores BTC/basket-relative strength plus Friday-high/low divergence.",
+  "Adds 1h/4h acceleration, volume/OI participation, and funding crowding penalty.",
 ];
 
 function formatSigned(value: number | null | undefined, digits = 1) {
@@ -80,10 +80,19 @@ function scoreLabel(signal: MarketRadarSignal) {
 function compactEvidence(signal: MarketRadarSignal) {
   const details = signal.scoreDetails;
   if (!details) return signal.evidence[0] ?? "";
+  const divergence =
+    signal.kind === "weakest_asset"
+      ? details.assetBelowFridayLow && !details.btcBelowFridayLow
+        ? "diverged below Fri low"
+        : `structure ${formatSigned(details.structureDivergenceScore, 1)}`
+      : details.assetAboveFridayHigh && !details.btcAboveFridayHigh
+        ? "diverged above Fri high"
+        : `structure ${formatSigned(details.structureDivergenceScore, 1)}`;
+  const accel = `accel ${formatSigned(details.accelerationScore, 1)}`;
   if (signal.kind === "weakest_asset") {
-    return `lags BTC ${Math.abs(details.btcResidualPct).toFixed(1)}% · lags Basket ${Math.abs(details.basketResidualPct).toFixed(1)}% · z ${formatSigned(details.crossSectionalZ, 1)}`;
+    return `lags BTC ${Math.abs(details.btcResidualPct).toFixed(1)}% · ${divergence} · ${accel}`;
   }
-  return `vs BTC ${formatSigned(details.btcResidualPct)}% · vs Basket ${formatSigned(details.basketResidualPct)}% · z ${formatSigned(details.crossSectionalZ, 1)}`;
+  return `vs BTC ${formatSigned(details.btcResidualPct)}% · ${divergence} · ${accel}`;
 }
 
 function marketAssetElementId(asset: string) {
@@ -227,7 +236,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
 
         {showFormula ? (
           <div className="mb-3 rounded-xl border border-teal-500/20 bg-teal-500/10 px-3 py-2 text-[11px] leading-5 text-teal-100">
-            Score = BTC residual z + basket residual z + raw return z + OI/volume participation - funding crowding penalty.
+            Score = BTC/basket residual z + Friday structure divergence + 1h/4h acceleration + participation - funding crowding penalty.
           </div>
         ) : null}
 
@@ -274,8 +283,8 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
             <SectionEyebrow className="text-teal-300">Market Radar v1</SectionEyebrow>
             <div className="mt-1 text-sm font-medium text-zinc-100">Quick context before the directory</div>
             <div className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
-              Momentum Edge is not raw 24h green. It scans liquid Hyperliquid perps for BTC-adjusted and basket-adjusted
-              relative strength, then checks participation and funding crowding. Refreshes every 2m.
+              Momentum Edge is not raw 24h green. It scans liquid Hyperliquid perps for BTC/basket-relative strength,
+              Friday-high divergence, short-term acceleration, participation, and funding crowding. Refreshes every 2m.
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -339,7 +348,7 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
             {sourceLabel(data?.source)} · refreshes every 2m
           </div>
           <div className="mt-1 max-w-[260px] text-[10px] leading-4 text-zinc-600">
-            Liquidity-gated relative strength: BTC residual, basket residual, participation, funding penalty.
+            Liquidity-gated: BTC/basket residual, Friday structure, acceleration, participation, funding penalty.
           </div>
           <div className="mt-0.5 font-mono text-[10px] text-zinc-600">Updated {formatRadarTime(data?.generatedAt)}</div>
         </div>

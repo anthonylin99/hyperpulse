@@ -366,9 +366,9 @@ export default function DocsPage() {
 
           <Section id="market-radar" eyebrow="Radar" title="How Momentum Edge is calculated">
             <p>
-              Market Radar is a relative-strength scan, not a raw list of the biggest green candles. It starts with
-              Hyperliquid perp markets, keeps only liquid names, then asks which assets are outperforming after
-              adjusting for BTC and the broader liquid perp basket.
+              Market Radar is a price-action relative-strength scan, not a raw list of the biggest green candles. It
+              starts with Hyperliquid perp markets, keeps only liquid names, then asks which assets are outperforming
+              after adjusting for BTC, the broader liquid perp basket, Friday structure, and short-term acceleration.
             </p>
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
               <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Momentum Edge pipeline</div>
@@ -377,16 +377,18 @@ export default function DocsPage() {
                 <div>2. Compute 24h log return from mark price versus previous-day price.</div>
                 <div>3. Estimate each asset&apos;s BTC beta from 1h candles when enough history exists; otherwise use a 1.00 fallback.</div>
                 <div>4. Compute BTC-adjusted residual return and liquid-basket residual return.</div>
-                <div>5. Robust-z-score raw return, BTC residual, basket residual, volume, and open interest participation.</div>
-                <div>6. Penalize longs when funding is very expensive and shorts when funding is very negative.</div>
-                <div>7. Show only qualified leaders above the current radar threshold, capped at three strength and three weakness names.</div>
+                <div>5. Check structure divergence: for example, asset above last Friday&apos;s high while BTC is still below its Friday high.</div>
+                <div>6. Score acceleration from 1h momentum versus 4h pace and 4h momentum versus 24h pace.</div>
+                <div>7. Robust-z-score raw return, BTC residual, basket residual, acceleration, volume, and open interest participation.</div>
+                <div>8. Penalize longs when funding is very expensive and shorts when funding is very negative.</div>
+                <div>9. Show only qualified leaders above the current radar threshold, capped at three strength and three weakness names.</div>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
                 <div className="text-xs font-medium text-zinc-100">Strength score</div>
                 <div className="mt-2 font-mono text-xs text-teal-300">
-                  40% BTC residual + 30% basket residual + 20% raw return + 10% participation - funding penalty
+                  30% BTC residual + 20% basket residual + 15% raw return + 20% Friday structure + 10% acceleration + 5% participation - funding penalty
                 </div>
                 <div className="mt-2 text-sm text-zinc-400">
                   A Momentum Edge must be positive on raw 24h return, positive versus the basket, and positive versus
@@ -396,7 +398,7 @@ export default function DocsPage() {
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
                 <div className="text-xs font-medium text-zinc-100">Weakness score</div>
                 <div className="mt-2 font-mono text-xs text-rose-300">
-                  40% negative BTC residual + 30% negative basket residual + 20% negative raw return + 10% participation - funding penalty
+                  30% negative BTC residual + 20% negative basket residual + 15% negative raw return + 20% Friday structure + 10% acceleration + 5% participation - funding penalty
                 </div>
                 <div className="mt-2 text-sm text-zinc-400">
                   A Weakness Edge must be negative on raw 24h return, negative versus the basket, and lag BTC after

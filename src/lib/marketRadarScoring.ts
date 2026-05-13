@@ -7,6 +7,13 @@ export interface RadarScoringAsset {
   fundingAPR: number;
   openInterestUsd: number;
   dayVolumeUsd: number;
+  return1hPct?: number | null;
+  return4hPct?: number | null;
+  fridayHigh?: number | null;
+  fridayLow?: number | null;
+  btcFridayHigh?: number | null;
+  btcFridayLow?: number | null;
+  btcMarkPx?: number | null;
 }
 
 export interface RadarBetaInfo {
@@ -22,9 +29,17 @@ export interface MomentumEdgeScoreDetails {
   basketReturn24hPct: number;
   btcResidualPct: number;
   basketResidualPct: number;
+  structureDivergenceScore: number;
+  accelerationScore: number;
   crossSectionalZ: number;
   btcBeta: number;
   betaStatus: RadarBetaStatus;
+  assetAboveFridayHigh: boolean;
+  assetBelowFridayLow: boolean;
+  btcAboveFridayHigh: boolean;
+  btcBelowFridayLow: boolean;
+  return1hPct: number | null;
+  return4hPct: number | null;
   volumeConfirmation: boolean;
   oiConfirmation: boolean;
 }
@@ -38,9 +53,18 @@ export interface MomentumEdgeAsset extends RadarScoringAsset {
   rawReturnZ: number;
   btcResidualZ: number;
   basketResidualZ: number;
+  structureDivergenceScore: number;
+  accelerationRaw: number;
+  accelerationZ: number;
   participationZ: number;
   btcBeta: number;
   betaStatus: RadarBetaStatus;
+  assetAboveFridayHigh: boolean;
+  assetBelowFridayLow: boolean;
+  btcAboveFridayHigh: boolean;
+  btcBelowFridayLow: boolean;
+  return1hPct: number | null;
+  return4hPct: number | null;
   volumeConfirmation: boolean;
   oiConfirmation: boolean;
   strongScore: number;
@@ -112,6 +136,52 @@ function fundingPenalty(asset: RadarScoringAsset, direction: "strong" | "weak"):
   return 0;
 }
 
+function isAbove(value: number, level?: number | null): boolean {
+  return Number.isFinite(value) && Number.isFinite(level) && value > Number(level) * 1.001;
+}
+
+function isBelow(value: number, level?: number | null): boolean {
+  return Number.isFinite(value) && Number.isFinite(level) && value < Number(level) * 0.999;
+}
+
+function distancePct(value: number, level?: number | null): number {
+  if (!Number.isFinite(value) || !Number.isFinite(level) || Number(level) <= 0) return 0;
+  return ((value - Number(level)) / Number(level)) * 100;
+}
+
+function structureDivergenceScore(asset: RadarScoringAsset, direction: "strong" | "weak"): number {
+  const btcMarkPx = finite(asset.btcMarkPx ?? 0, 0);
+  if (direction === "strong") {
+    const assetAbove = isAbove(asset.markPx, asset.fridayHigh);
+    const btcAbove = isAbove(btcMarkPx, asset.btcFridayHigh);
+    const assetDistance = distancePct(asset.markPx, asset.fridayHigh);
+    const btcDistance = distancePct(btcMarkPx, asset.btcFridayHigh);
+    let score = 0;
+    if (assetAbove) score += 0.7;
+    if (assetAbove && !btcAbove) score += 1.1;
+    score += clamp((assetDistance - btcDistance) / 3, -0.6, 0.8);
+    return clamp(score, -1.2, 2.2);
+  }
+
+  const assetBelow = isBelow(asset.markPx, asset.fridayLow);
+  const btcBelow = isBelow(btcMarkPx, asset.btcFridayLow);
+  const assetDistance = -distancePct(asset.markPx, asset.fridayLow);
+  const btcDistance = -distancePct(btcMarkPx, asset.btcFridayLow);
+  let score = 0;
+  if (assetBelow) score += 0.7;
+  if (assetBelow && !btcBelow) score += 1.1;
+  score += clamp((assetDistance - btcDistance) / 3, -0.6, 0.8);
+  return clamp(score, -1.2, 2.2);
+}
+
+function accelerationRaw(asset: RadarScoringAsset, rawReturn24hPct: number): number {
+  const return1h = finite(asset.return1hPct ?? 0);
+  const return4h = finite(asset.return4hPct ?? 0);
+  const oneHourVsFourHourPace = return1h - return4h / 4;
+  const fourHourVsDailyPace = return4h - rawReturn24hPct / 6;
+  return oneHourVsFourHourPace + fourHourVsDailyPace * 0.35;
+}
+
 function buildDetails(args: {
   score: number;
   asset: MomentumEdgeAsset;
@@ -124,9 +194,17 @@ function buildDetails(args: {
     basketReturn24hPct: Number(args.asset.basketReturn24hPct.toFixed(2)),
     btcResidualPct: Number(args.asset.btcResidualPct.toFixed(2)),
     basketResidualPct: Number(args.asset.basketResidualPct.toFixed(2)),
+    structureDivergenceScore: Number(args.asset.structureDivergenceScore.toFixed(2)),
+    accelerationScore: Number(args.asset.accelerationZ.toFixed(2)),
     crossSectionalZ: Number(args.crossSectionalZ.toFixed(2)),
     btcBeta: Number(args.asset.btcBeta.toFixed(2)),
     betaStatus: args.asset.betaStatus,
+    assetAboveFridayHigh: args.asset.assetAboveFridayHigh,
+    assetBelowFridayLow: args.asset.assetBelowFridayLow,
+    btcAboveFridayHigh: args.asset.btcAboveFridayHigh,
+    btcBelowFridayLow: args.asset.btcBelowFridayLow,
+    return1hPct: args.asset.return1hPct == null ? null : Number(args.asset.return1hPct.toFixed(2)),
+    return4hPct: args.asset.return4hPct == null ? null : Number(args.asset.return4hPct.toFixed(2)),
     volumeConfirmation: args.asset.volumeConfirmation,
     oiConfirmation: args.asset.oiConfirmation,
   };
@@ -155,6 +233,12 @@ export function computeMomentumEdges(
     const basketResidualPct = rawReturn24hPct - basketReturn;
     const volumeZ = robustZ(Math.log10(Math.max(asset.dayVolumeUsd, 1)), volumeStats);
     const oiZ = robustZ(Math.log10(Math.max(asset.openInterestUsd, 1)), oiStats);
+    const strongStructure = structureDivergenceScore(asset, "strong");
+    const weakStructure = structureDivergenceScore(asset, "weak");
+    const assetAboveFridayHigh = isAbove(asset.markPx, asset.fridayHigh);
+    const assetBelowFridayLow = isBelow(asset.markPx, asset.fridayLow);
+    const btcAboveFridayHigh = isAbove(finite(asset.btcMarkPx ?? 0, 0), asset.btcFridayHigh);
+    const btcBelowFridayLow = isBelow(finite(asset.btcMarkPx ?? 0, 0), asset.btcFridayLow);
     return {
       ...asset,
       rawReturn24hPct,
@@ -165,9 +249,19 @@ export function computeMomentumEdges(
       rawReturnZ: robustZ(rawReturn24hPct, rawStats),
       btcResidualZ: 0,
       basketResidualZ: 0,
+      structureDivergenceScore: strongStructure,
+      weakStructureDivergenceScore: weakStructure,
+      accelerationRaw: accelerationRaw(asset, rawReturn24hPct),
+      accelerationZ: 0,
       participationZ: clamp((volumeZ + oiZ) / 2, -3, 3),
       btcBeta,
       betaStatus,
+      assetAboveFridayHigh,
+      assetBelowFridayLow,
+      btcAboveFridayHigh,
+      btcBelowFridayLow,
+      return1hPct: asset.return1hPct ?? null,
+      return4hPct: asset.return4hPct ?? null,
       volumeConfirmation: volumeZ >= 0,
       oiConfirmation: oiZ >= 0,
       strongScore: 0,
@@ -179,33 +273,44 @@ export function computeMomentumEdges(
 
   const btcResidualStats = robustStats(base.map((asset) => asset.btcResidualPct));
   const basketResidualStats = robustStats(base.map((asset) => asset.basketResidualPct));
+  const accelerationStats = robustStats(base.map((asset) => asset.accelerationRaw));
 
   return base.map((asset) => {
     const btcResidualZ = robustZ(asset.btcResidualPct, btcResidualStats);
     const basketResidualZ = robustZ(asset.basketResidualPct, basketResidualStats);
+    const accelerationZ = robustZ(asset.accelerationRaw, accelerationStats);
     const strongScore =
-      0.4 * btcResidualZ +
-      0.3 * basketResidualZ +
-      0.2 * asset.rawReturnZ +
-      0.1 * asset.participationZ -
+      0.3 * btcResidualZ +
+      0.2 * basketResidualZ +
+      0.15 * asset.rawReturnZ +
+      0.2 * asset.structureDivergenceScore +
+      0.1 * accelerationZ +
+      0.05 * asset.participationZ -
       fundingPenalty(asset, "strong");
     const weakScore =
-      0.4 * -btcResidualZ +
-      0.3 * -basketResidualZ +
-      0.2 * -asset.rawReturnZ +
-      0.1 * asset.participationZ -
+      0.3 * -btcResidualZ +
+      0.2 * -basketResidualZ +
+      0.15 * -asset.rawReturnZ +
+      0.2 * asset.weakStructureDivergenceScore +
+      0.1 * -accelerationZ +
+      0.05 * asset.participationZ -
       fundingPenalty(asset, "weak");
     const next = {
       ...asset,
       btcResidualZ,
       basketResidualZ,
+      accelerationZ,
       strongScore,
       weakScore,
     };
     return {
       ...next,
       strongDetails: buildDetails({ score: strongScore, asset: next, crossSectionalZ: btcResidualZ }),
-      weakDetails: buildDetails({ score: weakScore, asset: next, crossSectionalZ: -btcResidualZ }),
+      weakDetails: buildDetails({
+        score: weakScore,
+        asset: { ...next, structureDivergenceScore: next.weakStructureDivergenceScore },
+        crossSectionalZ: -btcResidualZ,
+      }),
     };
   });
 }

@@ -19,10 +19,25 @@ type ParsedAsset = {
   dayVolumeUsd: number;
 };
 
+type RadarHistory = {
+  return1hPct: number | null;
+  return4hPct: number | null;
+  fridayHigh: number | null;
+  fridayLow: number | null;
+};
+
+type CandleRow = {
+  time: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
 const RADAR_MAX_PER_BUCKET = 3;
 const RADAR_MIN_VOLUME_USD = 20_000_000;
 const RADAR_SCORE_THRESHOLD = 0.75;
 const RADAR_WEAK_SCORE_THRESHOLD = 0.35;
+const RADAR_HISTORY_CANDIDATE_LIMIT = 36;
 const DATABASE_URL = getPooledDatabaseUrl();
 const BETA_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 const BETA_MIN_SAMPLES = 72;
@@ -112,6 +127,111 @@ function formatCompactUsd(value: number) {
 function pctChange(from: number, to: number): number | null {
   if (!Number.isFinite(from) || !Number.isFinite(to) || from <= 0 || to <= 0) return null;
   return Math.log(to / from);
+}
+
+function normalizeCandle(candle: Record<string, unknown>): CandleRow | null {
+  const time = Number(candle.t ?? candle.T ?? candle.time ?? candle.openTime);
+  const high = Number(candle.h ?? candle.high);
+  const low = Number(candle.l ?? candle.low);
+  const close = Number(candle.c ?? candle.close);
+  if (![time, high, low, close].every(Number.isFinite)) return null;
+  if (time <= 0 || high <= 0 || low <= 0 || close <= 0) return null;
+  return { time, high, low, close };
+}
+
+function valueAtLookback(candles: CandleRow[], lookbackMs: number): number | null {
+  const target = Date.now() - lookbackMs;
+  let candidate: CandleRow | null = null;
+  for (const candle of candles) {
+    if (candle.time <= target) candidate = candle;
+    else break;
+  }
+  return candidate?.close ?? null;
+}
+
+function lastFridayWindow(now = Date.now()): { start: number; end: number } {
+  const date = new Date(now);
+  const start = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const day = new Date(start).getUTCDay();
+  const daysSinceFriday = day === 5 ? 0 : (day - 5 + 7) % 7;
+  const fridayStart = start - daysSinceFriday * 24 * 60 * 60 * 1000;
+  return { start: fridayStart, end: fridayStart + 24 * 60 * 60 * 1000 };
+}
+
+function computeRadarHistory(candles: CandleRow[], markPx: number): RadarHistory {
+  const sorted = [...candles].sort((a, b) => a.time - b.time);
+  const oneHourClose = valueAtLookback(sorted, 60 * 60 * 1000);
+  const fourHourClose = valueAtLookback(sorted, 4 * 60 * 60 * 1000);
+  const friday = lastFridayWindow();
+  const fridayCandles = sorted.filter((candle) => candle.time >= friday.start && candle.time < friday.end);
+  const fridayHigh = fridayCandles.length > 0 ? Math.max(...fridayCandles.map((candle) => candle.high)) : null;
+  const fridayLow = fridayCandles.length > 0 ? Math.min(...fridayCandles.map((candle) => candle.low)) : null;
+  const return1h = oneHourClose == null ? null : pctChange(oneHourClose, markPx);
+  const return4h = fourHourClose == null ? null : pctChange(fourHourClose, markPx);
+
+  return {
+    return1hPct: return1h == null ? null : return1h * 100,
+    return4hPct: return4h == null ? null : return4h * 100,
+    fridayHigh,
+    fridayLow,
+  };
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let index = 0; index < items.length; index += limit) {
+    const batch = items.slice(index, index + limit);
+    results.push(...(await Promise.all(batch.map(fn))));
+  }
+  return results;
+}
+
+function selectHistoryCandidates(rows: ParsedAsset[]): ParsedAsset[] {
+  const selected = new Map<string, ParsedAsset>();
+  const byLiquidity = [...rows]
+    .sort((a, b) => b.dayVolumeUsd + b.openInterestUsd * 0.35 - (a.dayVolumeUsd + a.openInterestUsd * 0.35))
+    .slice(0, RADAR_HISTORY_CANDIDATE_LIMIT);
+  const byMove = [...rows]
+    .sort((a, b) => Math.abs(b.priceChange24h) - Math.abs(a.priceChange24h))
+    .slice(0, Math.floor(RADAR_HISTORY_CANDIDATE_LIMIT / 2));
+
+  for (const asset of [...byLiquidity, ...byMove]) selected.set(asset.coin, asset);
+  const btc = rows.find((asset) => asset.coin === "BTC");
+  if (btc) selected.set("BTC", btc);
+  return [...selected.values()];
+}
+
+async function loadRadarHistory(
+  info: ReturnType<typeof getInfoClient>,
+  rows: ParsedAsset[],
+): Promise<Map<string, RadarHistory>> {
+  const candidates = selectHistoryCandidates(rows);
+  const endTime = Date.now();
+  const startTime = endTime - 8 * 24 * 60 * 60 * 1000;
+  const entries = await mapLimit(candidates, 8, async (asset) => {
+    try {
+      const raw = await info.candleSnapshot({
+        coin: asset.coin,
+        interval: "1h",
+        startTime,
+        endTime,
+      });
+      const candles = Array.isArray(raw)
+        ? raw
+            .map((candle) => normalizeCandle(candle as Record<string, unknown>))
+            .filter((candle): candle is CandleRow => candle != null)
+        : [];
+      return [asset.coin, computeRadarHistory(candles, asset.markPx)] as const;
+    } catch {
+      return [asset.coin, null] as const;
+    }
+  });
+
+  const history = new Map<string, RadarHistory>();
+  for (const [coin, item] of entries) {
+    if (item) history.set(coin, item);
+  }
+  return history;
 }
 
 function computeBeta(assetReturns: number[], btcReturns: number[]): number | null {
@@ -218,6 +338,17 @@ function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: M
   const details = kind === "strongest_asset" ? asset.strongDetails : asset.weakDetails;
   const score = kind === "strongest_asset" ? asset.strongScore : asset.weakScore;
   const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : "Relative Weakness";
+  const divergenceEvidence = kind === "strongest_asset"
+    ? details.assetAboveFridayHigh && !details.btcAboveFridayHigh
+      ? "Structure divergence: asset above Friday high while BTC is not"
+      : `Structure score ${details.structureDivergenceScore.toFixed(2)}`
+    : details.assetBelowFridayLow && !details.btcBelowFridayLow
+      ? "Structure divergence: asset below Friday low while BTC is not"
+      : `Structure score ${details.structureDivergenceScore.toFixed(2)}`;
+  const accelerationEvidence =
+    details.return1hPct == null || details.return4hPct == null
+      ? `Acceleration z ${details.accelerationScore.toFixed(2)}`
+      : `1h ${formatPct(details.return1hPct)} · 4h ${formatPct(details.return4hPct)} · accel z ${details.accelerationScore.toFixed(2)}`;
   const weakEvidence =
     asset.coin === "BTC"
       ? [
@@ -243,6 +374,8 @@ function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: M
             `Outperformed liquid perp basket by ${formatPct(details.basketResidualPct)}`,
           ]
         : weakEvidence),
+      divergenceEvidence,
+      accelerationEvidence,
       `Momentum z-score ${details.crossSectionalZ >= 0 ? "+" : ""}${details.crossSectionalZ.toFixed(2)}`,
       `Beta to BTC ${details.betaStatus === "ready" ? details.btcBeta.toFixed(2) : "fallback 1.00"}`,
       `${details.volumeConfirmation ? "Volume confirming" : "Volume below universe median"} · ${details.oiConfirmation ? "OI base liquid" : "OI below universe median"}`,
@@ -267,9 +400,25 @@ export async function GET(req: NextRequest) {
     );
     const timestamp = Date.now();
     const signals: MarketRadarSignal[] = [];
+    const history = await loadRadarHistory(info, rows);
+    const btc = rows.find((asset) => asset.coin === "BTC");
+    const btcHistory = history.get("BTC");
+    const enrichedRows = rows.map((asset) => {
+      const item = history.get(asset.coin);
+      return {
+        ...asset,
+        return1hPct: item?.return1hPct ?? null,
+        return4hPct: item?.return4hPct ?? null,
+        fridayHigh: item?.fridayHigh ?? null,
+        fridayLow: item?.fridayLow ?? null,
+        btcFridayHigh: btcHistory?.fridayHigh ?? null,
+        btcFridayLow: btcHistory?.fridayLow ?? null,
+        btcMarkPx: btc?.markPx ?? null,
+      };
+    });
 
     const betas = await loadBtcBetas(rows.map((asset) => asset.coin));
-    const scored = computeMomentumEdges(rows, betas);
+    const scored = computeMomentumEdges(enrichedRows, betas);
     const strongestAssets = selectMomentumEdges({ assets: scored, direction: "strong", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_SCORE_THRESHOLD });
     const weakestAssets = selectMomentumEdges({ assets: scored, direction: "weak", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_WEAK_SCORE_THRESHOLD });
     const crowdedLong = [...rows].sort((a, b) => b.fundingAPR - a.fundingAPR)[0];

@@ -919,9 +919,17 @@ export interface MarketRadarScoreDetails {
   basketReturn24hPct: number;
   btcResidualPct: number;
   basketResidualPct: number;
+  structureDivergenceScore: number;
+  accelerationScore: number;
   crossSectionalZ: number;
   btcBeta: number;
   betaStatus: "ready" | "fallback";
+  assetAboveFridayHigh: boolean;
+  assetBelowFridayLow: boolean;
+  btcAboveFridayHigh: boolean;
+  btcBelowFridayLow: boolean;
+  return1hPct: number | null;
+  return4hPct: number | null;
   volumeConfirmation: boolean;
   oiConfirmation: boolean;
 }
