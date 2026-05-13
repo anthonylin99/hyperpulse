@@ -167,13 +167,52 @@ function rowEvidenceAt(row: Record<string, unknown>): number {
   return asNumber(row.last_seen_at) ?? asNumber(row.refreshed_at) ?? asNumber(row.generated_at) ?? 0;
 }
 
-function rankExposureRows(rows: Array<Record<string, unknown>>): Array<Record<string, unknown> & { displayRank: number }> {
+function rowRange(row: Record<string, unknown>): { low: number; high: number; center: number; width: number } {
+  const fallback = asNumber(row.weighted_price) ?? asNumber(row.zone_mid) ?? 0;
+  const low = asNumber(row.zone_low) ?? fallback;
+  const high = asNumber(row.zone_high) ?? fallback;
+  const orderedLow = Math.min(low, high);
+  const orderedHigh = Math.max(low, high);
+  const width = Math.max(orderedHigh - orderedLow, 1);
+  return {
+    low: orderedLow,
+    high: orderedHigh,
+    center: (orderedLow + orderedHigh) / 2,
+    width,
+  };
+}
+
+function rowRangeKey(side: string, row: Record<string, unknown>): string {
+  const range = rowRange(row);
+  return `${side}:${Math.round(range.low)}:${Math.round(range.high)}`;
+}
+
+function isDistinctExposureRange(row: Record<string, unknown>, selectedRows: Array<Record<string, unknown>>): boolean {
+  const range = rowRange(row);
+
+  return selectedRows.every((selectedRow) => {
+    const selectedRange = rowRange(selectedRow);
+    const overlap = Math.max(0, Math.min(range.high, selectedRange.high) - Math.max(range.low, selectedRange.low));
+    const overlapRatio = overlap / Math.max(Math.min(range.width, selectedRange.width), 1);
+    if (overlapRatio >= 0.35) return false;
+
+    const centerGap = Math.abs(range.center - selectedRange.center);
+    const minimumCenterGap = Math.max(Math.min(range.width, selectedRange.width) * 0.85, 1);
+    return centerGap >= minimumCenterGap;
+  });
+}
+
+function rankExposureRows(
+  rows: Array<Record<string, unknown>>,
+  windowMs: number,
+): Array<Record<string, unknown> & { displayRank: number }> {
   const selected: Array<Record<string, unknown> & { displayRank: number }> = [];
-  const seenRanges = new Set<string>();
+  const displayFreshCutoff = Date.now() - windowMs * 2;
 
   for (const side of ["bull", "bear"]) {
     const sideRows = rows
       .filter((row) => normalizeSide(row.side) === side)
+      .filter((row) => String(row.status ?? "active") === "active" || rowEvidenceAt(row) >= displayFreshCutoff)
       .sort((a, b) => {
         const aActive = String(a.status ?? "active") === "active" ? 0 : 1;
         const bActive = String(b.status ?? "active") === "active" ? 0 : 1;
@@ -194,16 +233,29 @@ function rankExposureRows(rows: Array<Record<string, unknown>>): Array<Record<st
         return rowEvidenceAt(b) - rowEvidenceAt(a);
       });
 
+    const sideSelected: Array<Record<string, unknown>> = [];
+    const seenRanges = new Set<string>();
     let rank = 1;
-    for (const row of sideRows) {
-      if (rank > DISPLAY_ZONES_PER_SIDE) break;
-      const zoneLow = asNumber(row.zone_low) ?? asNumber(row.weighted_price) ?? 0;
-      const zoneHigh = asNumber(row.zone_high) ?? asNumber(row.weighted_price) ?? 0;
-      const rangeKey = `${side}:${Math.round(zoneLow)}:${Math.round(zoneHigh)}`;
-      if (seenRanges.has(rangeKey)) continue;
+
+    const addRow = (row: Record<string, unknown>) => {
+      if (rank > DISPLAY_ZONES_PER_SIDE) return;
+      const rangeKey = rowRangeKey(side, row);
+      if (seenRanges.has(rangeKey)) return;
       seenRanges.add(rangeKey);
       selected.push({ ...row, displayRank: rank });
+      sideSelected.push(row);
       rank += 1;
+    };
+
+    for (const row of sideRows) {
+      if (rank > DISPLAY_ZONES_PER_SIDE) break;
+      if (!isDistinctExposureRange(row, sideSelected)) continue;
+      addRow(row);
+    }
+
+    for (const row of sideRows) {
+      if (rank > DISPLAY_ZONES_PER_SIDE) break;
+      addRow(row);
     }
   }
 
@@ -232,7 +284,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
     );
     if (result.rows.length === 0) return null;
 
-    const selectedRows = rankExposureRows(result.rows as Array<Record<string, unknown>>);
+    const selectedRows = rankExposureRows(result.rows as Array<Record<string, unknown>>, windowMs);
     if (selectedRows.length === 0) return null;
 
     const priceRow = [...selectedRows].sort(
