@@ -39,6 +39,17 @@ export interface VaultDetails {
 
 export type VaultTvlSource = "account_value" | "summary_tvl" | "followers_sum" | "unavailable";
 
+export type VaultDecision = "watch" | "review" | "avoid";
+
+export interface VaultScore {
+  score: number;
+  decision: VaultDecision;
+  label: string;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+  flags: string[];
+}
+
 export interface VaultMetrics {
   tvl: number;
   tvlSource: VaultTvlSource;
@@ -54,6 +65,7 @@ export interface VaultMetrics {
   dailyReturnSamples: number;
   followerCount: number;
   historyDays: number;
+  score: VaultScore;
 }
 
 export interface VaultListItem {

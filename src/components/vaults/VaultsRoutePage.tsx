@@ -49,21 +49,58 @@ export default function VaultsRoutePage() {
     });
   }, [items, filters]);
 
+  const best = useMemo(() => {
+    if (!items?.length) return null;
+    return [...items].sort((a, b) => b.metrics.score.score - a.metrics.score.score)[0];
+  }, [items]);
+
+  const watchCount = useMemo(
+    () => items?.filter((v) => v.metrics.score.decision === "watch").length ?? 0,
+    [items],
+  );
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-5">
       <header className="rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-teal-950/30 p-6 md:p-8">
-        <div className="max-w-3xl">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">
-            HyperPulse Vaults
+        <div className="grid gap-6 lg:grid-cols-[1fr_340px] lg:items-end">
+          <div className="max-w-3xl">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">
+              HyperPulse Vaults
+            </div>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 md:text-4xl">
+              Find vaults worth watching before depositing capital.
+            </h1>
+            <p className="mt-4 text-sm leading-7 text-zinc-300">
+              HyperPulse scores Hyperliquid vaults by recent P&L, drawdown, history,
+              capital base, and depositor trust so users can quickly separate
+              watchlist candidates from risky headline returns.
+            </p>
+            <p className="mt-3 text-xs text-zinc-500">
+              Read-only analytics. Not guaranteed yield. Vault deposits can lose money.
+            </p>
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 md:text-4xl">
-            Rank Hyperliquid vaults by risk-adjusted return, not headline APY.
-          </h1>
-          <p className="mt-4 text-sm leading-7 text-zinc-300">
-            Every vault is scored on Sharpe, drawdown, and the operator&apos;s personal
-            track record. Click a vault to inspect its equity curve, strategy
-            fingerprint, and whether the manager is worth trusting with your capital.
-          </p>
+          <div className="rounded-2xl border border-zinc-800 bg-black/30 p-4">
+            <div className="label">Best current candidate</div>
+            {best ? (
+              <>
+                <div className="mt-2 text-lg font-semibold text-zinc-100">{best.name}</div>
+                <div className="mt-1 font-mono text-sm text-emerald-300">{best.metrics.score.score}/100</div>
+                <div className="mt-2 text-xs leading-5 text-zinc-400">{best.metrics.score.reason}</div>
+              </>
+            ) : (
+              <div className="mt-2 text-sm text-zinc-500">Loading vault candidates...</div>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="text-zinc-500">Vaults tracked</div>
+                <div className="mt-1 font-mono text-zinc-100">{items?.length ?? "—"}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="text-zinc-500">Worth watching</div>
+                <div className="mt-1 font-mono text-emerald-300">{items ? watchCount : "—"}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 

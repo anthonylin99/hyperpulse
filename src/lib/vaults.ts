@@ -258,6 +258,137 @@ function followerEquitySum(vault: VaultDetails): number {
   return vault.followers.reduce((s, f) => s + f.vaultEquity, 0);
 }
 
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function scoreVaultRisk(metrics: Omit<VaultMetrics, "score">): VaultMetrics["score"] {
+  const flags: string[] = [];
+  let score = 50;
+
+  const return30 = metrics.return30dPct;
+  if (return30 == null) {
+    flags.push("No 30d P&L sample");
+    score -= 10;
+  } else if (return30 > 5) {
+    flags.push("Strong 30d return");
+    score += 22;
+  } else if (return30 > 1) {
+    flags.push("Positive 30d return");
+    score += 12;
+  } else if (return30 < -5) {
+    flags.push("Weak 30d return");
+    score -= 24;
+  } else if (return30 < 0) {
+    flags.push("Slightly negative 30d");
+    score -= 10;
+  }
+
+  const drawdownPct = metrics.maxDrawdownPct == null ? null : metrics.maxDrawdownPct * 100;
+  if (drawdownPct == null) {
+    flags.push("Drawdown not established");
+    score -= 6;
+  } else if (drawdownPct <= 3) {
+    flags.push("Controlled drawdown");
+    score += 14;
+  } else if (drawdownPct <= 10) {
+    flags.push("Moderate drawdown");
+    score += 4;
+  } else if (drawdownPct > 25) {
+    flags.push("Large drawdown");
+    score -= 24;
+  } else {
+    flags.push("Elevated drawdown");
+    score -= 10;
+  }
+
+  if (metrics.sharpe90d != null) {
+    if (metrics.sharpe90d >= 2) {
+      flags.push("High Sharpe");
+      score += 16;
+    } else if (metrics.sharpe90d >= 1) {
+      flags.push("Positive Sharpe");
+      score += 8;
+    } else if (metrics.sharpe90d < 0) {
+      flags.push("Negative Sharpe");
+      score -= 16;
+    }
+  } else {
+    flags.push("Sharpe sample too thin");
+    score -= 4;
+  }
+
+  if (metrics.tvl >= 10_000_000) {
+    flags.push("Deep capital base");
+    score += 8;
+  } else if (metrics.tvl >= 1_000_000) {
+    flags.push("Meaningful TVL");
+    score += 4;
+  } else if (metrics.tvl < 250_000) {
+    flags.push("Small vault");
+    score -= 10;
+  }
+
+  if (metrics.followerCount >= 50) {
+    flags.push("Broad depositor base");
+    score += 6;
+  } else if (metrics.followerCount < 5) {
+    flags.push("Few followers");
+    score -= 8;
+  }
+
+  if (metrics.historyDays >= 180) {
+    flags.push("Long history");
+    score += 8;
+  } else if (metrics.historyDays >= 30) {
+    flags.push("Enough history for review");
+    score += 2;
+  } else {
+    flags.push("Short history");
+    score -= 14;
+  }
+
+  if (metrics.tvlChange7dPct != null) {
+    if (metrics.tvlChange7dPct > 10) {
+      flags.push("Capital inflow");
+      score += 4;
+    } else if (metrics.tvlChange7dPct < -15) {
+      flags.push("Capital leaving");
+      score -= 8;
+    }
+  }
+
+  const normalized = Math.round(clamp(score, 0, 100));
+  let decision: VaultMetrics["score"]["decision"] = "review";
+  let label = "Review carefully";
+  let reason = "Mixed profile: inspect drawdown, operator behavior, and recent P&L before depositing.";
+  if (normalized >= 72 && metrics.historyDays >= 30 && (metrics.return30dPct ?? 0) >= 0) {
+    decision = "watch";
+    label = "Worth watching";
+    reason = "Better risk-adjusted profile: positive recent P&L with acceptable drawdown and enough history.";
+  } else if (normalized <= 40 || (metrics.return30dPct ?? 0) < -8) {
+    decision = "avoid";
+    label = "Avoid for now";
+    reason = "Risk/reward is weak right now: negative returns, thin history, or drawdown concerns dominate.";
+  }
+
+  const confidence = metrics.dailyReturnSamples >= 30
+    ? "high"
+    : metrics.historyDays >= 30
+      ? "medium"
+      : "low";
+
+  return {
+    score: normalized,
+    decision,
+    label,
+    reason,
+    confidence,
+    flags: flags.slice(0, 4),
+  };
+}
+
 // ─── Public: compute metrics + TVL ─────────────────────────────
 
 export function computeVaultMetrics(vault: VaultDetails): VaultMetrics {
@@ -301,7 +432,7 @@ export function computeVaultMetrics(vault: VaultDetails): VaultMetrics {
     ? Math.max(0, (allHistory[allHistory.length - 1][0] - allHistory[0][0]) / DAY_MS)
     : 0;
 
-  return {
+  const baseMetrics = {
     tvl,
     tvlSource,
     tvlChange7dPct,
@@ -316,6 +447,11 @@ export function computeVaultMetrics(vault: VaultDetails): VaultMetrics {
     dailyReturnSamples: dailyReturns.length,
     followerCount: vault.followers.length,
     historyDays,
+  } satisfies Omit<VaultMetrics, "score">;
+
+  return {
+    ...baseMetrics,
+    score: scoreVaultRisk(baseMetrics),
   };
 }
 
