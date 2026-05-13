@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { getDirectDatabaseUrl } from "./database-url.mjs";
 
 function loadLocalEnv() {
   for (const file of [".env.local", ".env"]) {
@@ -20,12 +21,7 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const DATABASE_URL =
-  process.env.NEON_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL ??
-  process.env.NEON_DATABASE_URL_POOLING ??
-  "";
+const DATABASE_URL = getDirectDatabaseUrl();
 const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR ?? "migrations";
 const REACTION_ONLY_CLEANUP_MIGRATION = "0007_reaction_only_cleanup.sql";
 

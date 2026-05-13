@@ -325,7 +325,12 @@ export function buildTradePlan({
   const previous = sorted.at(-2);
   const lfxMode =
     levels.length === 0 ||
-    levels.every((level) => level.source === "leverage_liquidation" || level.pressureSource === "market_inferred");
+    levels.every(
+      (level) =>
+        level.source === "leverage_liquidation" ||
+        level.source === "reaction_map" ||
+        level.pressureSource === "market_inferred",
+    );
   const lowerLevelName = lfxMode ? "downside flow zone" : "support";
   const upperLevelName = lfxMode ? "upside flow zone" : "resistance";
 

@@ -7,7 +7,7 @@ create table if not exists reaction_exposure_zones_current (
   asset text not null,
   window_ms bigint not null,
   side text not null check (side in ('bull', 'bear')),
-  rank integer not null check (rank between 1 and 5),
+  rank integer not null check (rank between 1 and 10),
   status text not null default 'active' check (status in ('active', 'stale', 'retired')),
   generated_at bigint not null,
   refreshed_at bigint not null,

@@ -295,7 +295,8 @@ export interface SupportResistanceLevel {
     | "swing_pivot"
     | "structure_pivot"
     | "structure_trendline"
-    | "leverage_liquidation";
+    | "leverage_liquidation"
+    | "reaction_map";
   price: number;
   zoneLow?: number;
   zoneHigh?: number;
@@ -340,10 +341,16 @@ export interface SupportResistanceLevel {
     inferredOiUsd?: number;
     buyNotionalUsd?: number;
     sellNotionalUsd?: number;
+    imbalanceUsd?: number;
+    imbalanceType?: "long_imbalance" | "short_imbalance" | "pivot";
+    leveragePressure?: number;
+    pivotThresholdUsd?: number;
     reasonSelected?: string;
     refreshedAtMs?: number;
+    lastEvidenceAtMs?: number;
+    carriedForward?: boolean;
     aggressorSide?: "buyer_initiated" | "seller_initiated" | "mixed";
-    role?: "long_defense" | "trapped_longs" | "short_defense" | "trapped_shorts" | "unknown" | "stale";
+    role?: "long_defense" | "trapped_longs" | "short_defense" | "trapped_shorts" | "pivot_zone" | "active_test" | "unknown" | "stale";
     roleLabel?: string;
     confidenceReason?: string;
     sourceCaveat?: string;

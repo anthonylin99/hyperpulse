@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
+import { getPooledDatabaseUrl } from "./database-url.mjs";
 
 function loadLocalEnv() {
   for (const file of [".env.local", ".env"]) {
@@ -19,19 +20,19 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const DATABASE_URL =
-  process.env.NEON_DATABASE_URL_POOLING ??
-  process.env.NEON_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL ??
-  "";
+const DATABASE_URL = getPooledDatabaseUrl();
 
-const ASSETS = (process.env.REACTION_MAP_HEALTH_ASSETS ?? "BTC,ETH,SOL")
+const ASSETS = (
+  process.env.REACTION_MAP_HEALTH_ASSETS ??
+  "BTC,ETH,SOL,HYPE,XRP,DOGE,ZEC,TON,SUI,ONDO,AAVE,LINK,BNB,AVAX,LTC,ADA,TRX,UNI,ENA,WIF"
+)
   .split(",")
   .map((asset) => asset.trim().toUpperCase())
   .filter(Boolean);
 
 const ZONE_MIN_TRADE_NOTIONAL_USD = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD", 250_000, 1_000);
+const ZONE_MIN_TRADE_NOTIONAL_USD_FLOOR = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD_FLOOR", 25_000, 1_000);
+const ZONE_MIN_TRADE_NOTIONAL_SHARE = envNumber("REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_SHARE", 0.08, 0.01);
 const WINDOWS = healthWindows();
 const EXPECTED_TABLES = new Set([
   "schema_migrations",
@@ -67,6 +68,10 @@ function envNumber(key, fallback, min = 0) {
   const parsed = Number(process.env[key]);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(parsed, min);
+}
+
+function compactPositioningThreshold() {
+  return `${compactUsd(ZONE_MIN_TRADE_NOTIONAL_USD_FLOOR)} floor, ${compactUsd(ZONE_MIN_TRADE_NOTIONAL_USD)} cap, ${(ZONE_MIN_TRADE_NOTIONAL_SHARE * 100).toFixed(0)}% of window flow`;
 }
 
 function windowMsFromLabel(value) {
@@ -134,7 +139,7 @@ function missingReason({ active, candidate, freshness }) {
   if ((Number(freshness.positive_oi_delta_usd) || 0) <= 0) return "OI flat/down in window";
   if ((Number(candidate?.total_bucket_count) || 0) === 0) return "no trade buckets in window";
   if ((Number(candidate?.eligible_bucket_count) || 0) === 0) {
-    return `flow below ${compactUsd(ZONE_MIN_TRADE_NOTIONAL_USD)} bucket threshold`;
+    return `flow below ${compactUsd(candidate?.min_trade_notional_usd)} bucket threshold`;
   }
   if (active === 0) return "eligible flow did not promote into active zones";
   if ((Number(candidate?.eligible_bucket_count) || 0) <= active) return "eligible buckets already clustered";
@@ -243,18 +248,31 @@ try {
           and trade_rows.bucket_ms >= (extract(epoch from now()) * 1000 - requested.window_ms)
         group by requested.asset, requested.window_ms, trade_rows.price_bucket
       ),
-      side_candidates as (
+      window_trade_totals as (
         select
           asset,
           window_ms,
-          case when buy_notional_usd >= sell_notional_usd then 'bull' else 'bear' end as side,
-          count(*)::int as total_bucket_count,
-          count(*) filter (where buy_notional_usd + sell_notional_usd >= $3)::int as eligible_bucket_count,
           coalesce(sum(buy_notional_usd + sell_notional_usd), 0) as total_trade_notional_usd,
-          coalesce(sum(buy_notional_usd + sell_notional_usd) filter (where buy_notional_usd + sell_notional_usd >= $3), 0) as eligible_trade_notional_usd,
-          coalesce(sum(trade_count), 0)::int as trade_count
+          least($3::numeric, greatest($4::numeric, coalesce(sum(buy_notional_usd + sell_notional_usd), 0) * $5::numeric)) as min_trade_notional_usd
         from trade_price_buckets
-        group by asset, window_ms, side
+        group by asset, window_ms
+      ),
+      side_candidates as (
+        select
+          trade_price_buckets.asset,
+          trade_price_buckets.window_ms,
+          case when trade_price_buckets.buy_notional_usd >= trade_price_buckets.sell_notional_usd then 'bull' else 'bear' end as side,
+          count(*)::int as total_bucket_count,
+          count(*) filter (where trade_price_buckets.buy_notional_usd + trade_price_buckets.sell_notional_usd >= window_trade_totals.min_trade_notional_usd)::int as eligible_bucket_count,
+          coalesce(sum(trade_price_buckets.buy_notional_usd + trade_price_buckets.sell_notional_usd), 0) as total_trade_notional_usd,
+          coalesce(sum(trade_price_buckets.buy_notional_usd + trade_price_buckets.sell_notional_usd) filter (where trade_price_buckets.buy_notional_usd + trade_price_buckets.sell_notional_usd >= window_trade_totals.min_trade_notional_usd), 0) as eligible_trade_notional_usd,
+          coalesce(sum(trade_price_buckets.trade_count), 0)::int as trade_count,
+          max(window_trade_totals.min_trade_notional_usd) as min_trade_notional_usd
+        from trade_price_buckets
+        join window_trade_totals
+          on window_trade_totals.asset = trade_price_buckets.asset
+          and window_trade_totals.window_ms = trade_price_buckets.window_ms
+        group by trade_price_buckets.asset, trade_price_buckets.window_ms, side
       )
       select
         requested.asset,
@@ -267,6 +285,7 @@ try {
         coalesce(side_candidates.eligible_bucket_count, 0)::int as eligible_bucket_count,
         coalesce(side_candidates.total_trade_notional_usd, 0) as total_trade_notional_usd,
         coalesce(side_candidates.eligible_trade_notional_usd, 0) as eligible_trade_notional_usd,
+        coalesce(side_candidates.min_trade_notional_usd, least($3::numeric, greatest($4::numeric, 0))) as min_trade_notional_usd,
         coalesce(side_candidates.trade_count, 0)::int as trade_count
       from requested
       cross join (values ('bull'), ('bear')) as sides(side)
@@ -279,7 +298,7 @@ try {
         and side_candidates.side = sides.side
       order by requested.asset, requested.window_ms, sides.side
       `,
-      [ASSETS, windowMsValues, ZONE_MIN_TRADE_NOTIONAL_USD],
+      [ASSETS, windowMsValues, ZONE_MIN_TRADE_NOTIONAL_USD, ZONE_MIN_TRADE_NOTIONAL_USD_FLOOR, ZONE_MIN_TRADE_NOTIONAL_SHARE],
     );
 
     const bookShelfResult = await client.query(
@@ -387,7 +406,7 @@ try {
     const shelfBySide = new Map(bookShelfResult.rows.map((row) => [mapKey(row.asset, row.window_ms, row.shelf_side), row]));
 
     console.log(`[reaction-health] windows=${WINDOWS.map((window) => window.label).join(",")} assets=${ASSETS.join(",")}`);
-    console.log(`[reaction-health] positioning threshold=${compactUsd(ZONE_MIN_TRADE_NOTIONAL_USD)} per price bucket`);
+    console.log(`[reaction-health] positioning threshold=${compactPositioningThreshold()}`);
     if (unexpectedTables.length > 0) {
       console.log(`[reaction-health] unexpected tables: ${unexpectedTables.join(", ")}`);
     } else {
@@ -432,6 +451,7 @@ try {
             sellerEligibleBuckets: Number(seller?.eligible_bucket_count ?? 0),
             sellerMissing: Math.max(5 - activeSeller, 0),
             sellerReason: missingReason({ active: activeSeller, candidate: seller, freshness }),
+            bucketThreshold: compactUsd(freshness?.min_trade_notional_usd),
             positiveOiDelta: compactUsd(freshness?.positive_oi_delta_usd),
             contextAge: ageLabel(freshness?.latest_context_age_seconds),
           };

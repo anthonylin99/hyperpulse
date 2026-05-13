@@ -322,7 +322,59 @@
 
 ## 2026-05-09
 
+- Request: stop Reaction and Positioning from rendering the same levels, and widen live flow ingestion so more coins get useful levels.
+- Attempted: expanded Reaction Map defaults to 20 liquid perps, made positioning thresholds adaptive by asset/window flow, kept top-5 bid/ask shelves live from `l2Book`, separated Reaction overlays from positioning-only zones, and guarded the worker against overlapping DB write cycles after widening ingestion.
+- Decision: Positioning may show inferred OI/flow zones by itself, but Reaction should only show non-positioning confluence/stress zones; when confluence is absent, the Reaction view should not duplicate the Positioning chart.
+- Result: Docker typecheck, lint, production web build, reaction-map rebuild, health script, API smoke, and runtime logs passed. BTC/TON/SUI/ONDO health shows 5 bid shelves + 5 ask shelves; TON API smoke returned separate Reaction and Positioning IDs.
+
+## 2026-05-09
+
+- Request: remove the Node `pg-connection-string` SSL mode warning for Postgres URLs using `sslmode=require` or related aliases.
+- Attempted: refreshed Agent OS, fetched/pulled `main`, traced all `pg` Pool entry points, added shared URL normalization for app/scripts, normalized worker DB URLs before Pool construction, and rebuilt the Docker images for `web`, `migrate`, `market-collector`, `momentum-alerts`, and `reaction-map`.
+- Decision: preserve the current secure behavior by converting `sslmode=prefer`, `sslmode=require`, and `sslmode=verify-ca` to explicit `sslmode=verify-full` before passing connection strings to `pg`.
+- Result: `docker compose exec web npm run lint`, Docker image builds, worker syntax checks, and URL normalization smoke checks passed. Fresh `migrate` logs no longer show the SSL warning, but local Compose migration remains blocked by pre-existing checksum drift on `0007_reaction_only_cleanup.sql`; `web` was restarted with `--no-deps` on port `3004` because `3000` is occupied by `efiterminal-next`.
+
+## 2026-05-09
+
 - Request: implement the Reaction Map/OI Holdings redesign with multiple agents from the saved plan.
 - Attempted: split API/model, worker/health, and UI work across agents, integrated their outputs, added structured `orderBook`, `positioning`, and `reactionZones` payload sections, added a dedicated Reaction Map panel, widened worker defaults to `5m,15m,1h,4h`, updated health reporting, and ran a challenger pass against the first integration.
 - Decision: keep order-book shelves as real liquidity, positioning as inferred buyer/seller-initiated OI builds with source caveats, and reaction zones as confluence/context. Do not color or label positioning purely by whether it is above or below spot.
 - Result: fixed challenger blockers for real 4h routing, duplicate hidden slots, confluence-only `reactionZones` that require book/stress overlap with positioning, role-aware positioning colors, live `l2Book` top-5 fallback shelves, panel/chart selection mapping, and stale naming. Docker lint, typecheck, production build, rebuilt `web` and `reaction-map` images, API smoke, health script, browser verification, and runtime logs passed. BTC/ETH/SOL now serve 5 bid shelves + 5 ask shelves; positioning returns buyer/seller builds plus hidden-slot reasons.
+
+## 2026-05-09
+
+- Request: fix Reaction Map levels clustering around current price and make the data source clearer after GPT Pro's critique.
+- Attempted: refreshed Agent OS, fetched/pulled `main`, traced the worker/API/chart path, removed the API's live top-of-book shelf overwrite, made worker-promoted/current zones the API source of truth, changed chart mode `all` to internal `confluence`, hid the unwired Stress tab, relabeled chart copy toward inferred positioning, added response metadata and algorithm versioning, widened cleanup retention, and added trade dedupe by `coin:time:tid`.
+- Decision: keep raw near-spot trade/OI buckets in the payload for diagnostics, but only promote positioning zones to the chart when they are fresh and far enough from spot. Reaction now renders far persisted book shelves/confluence, not the latest top-of-book ticks.
+- Result: Docker production build passed and rebuilt `web` plus `reaction-map`. Local Compose root restart is still blocked by the pre-existing `0007_reaction_only_cleanup.sql` checksum drift, so rebuilt services were started with `--no-deps` on port `3004`. API smoke for BTC returned `worker_promoted_plus_stream_buckets`, `reaction-map-v2.1.0`, far Reaction zones at roughly `78000` through `85000`, empty chartable positioning when the only OI build was at spot, and persisted book shelves instead of live top-of-book rows. Browser Use and Playwright were unavailable in this session, so UI verification used page/API smoke and source checks.
+- Follow-up: after the worker added volatility-aware retention, a `0.25%` zone cluster width, `0.3%` minimum zone distance, and top-10 stored zones per side, Compose was updated so Docker no longer overrides the worker's new defaults with the old `0.12%` cluster width. `docker compose config` confirms the worker environment now resolves to the intended values, but Docker Desktop was stopped before the worker could be rebuilt/restarted.
+- Follow-up: `upsertExposureZones()` was changed from "retire everything, then recreate only zones seen in the current window" into a persistent top-10 leaderboard per side. Fresh zones now compete against carried-forward active zones, and inferred zones are not removed just because the recent time window no longer contains the original flow bucket. Zones leave the current set by falling out of the top 10, moving too close to spot, or being marked stale by the volatility-aware range sweep.
+
+## 2026-05-10
+
+- Request: fix the XRP positioning band that rendered as an oversized `1.43-1.47` zone and simplify the Reaction Map layer controls.
+- Attempted: traced the wide XRP range to coarse low-price bucket sizing plus uncapped stored/display ranges, then removed the confusing chart-level `Reaction` tab so the user-facing layers are only `Positioning` and `Order Book`.
+- Decision: keep confluence/reaction scoring internally, but do not expose it as a third chart toggle. Size inferred positioning zones from each asset/window's recent average absolute move instead of a fixed cap; the worker stores the dynamic width rule with the zone.
+- Result: production web build passed, `next lint` passed, worker syntax check passed, and the worker was rebuilt/restarted. XRP 4h API smoke now returns zones around `1.4925-1.4975` and `1.4467-1.4533`, with widths of roughly `0.33%` and `0.44%` based on recent movement instead of the old `1.43-1.47` slab. The exposure-zone rank constraint was folded into the existing `0004` migration as top 10; the worker still widens the already-created local DB constraint at startup for compatibility.
+- Follow-up: split raw flushing from zone promotion after logs showed the 20-asset worker was trying to run `flush + promote` every 15s while flushes took 40-98s. Raw flush now runs every 120s, promotion runs separately every 120s, and retention avoids overlapping promotion. API smoke confirmed values were present while the logs were noisy; the new cadence removed skipped-cycle spam in the sampled window.
+- Follow-up: batched `reaction_orderbook_buckets` writes into configurable multi-row upserts (`REACTION_MAP_BOOK_FLUSH_BATCH_SIZE`, default `750`) and offset retention sweeps from promotion ticks. Fresh logs show `book=4320`+ flushes completing below the 5s slow-operation threshold, while promotion completes separately in roughly 17-19s without book-write overlap.
+- Follow-up: fixed the Reaction Map hover tooltip clipping by separating the chart's clipped canvas layer from the floating overlay layer and raising the overlay stack. Browser verification on `/markets?asset=SUI` confirmed the selected positioning tooltip renders above the chart/price-scale area.
+- Follow-up: removed near-spot suppression for inferred positioning. Worker promotion no longer drops zones inside `0.3%` of spot, API/chart display no longer hides positioning inside `0.45%`, and zones inside the current price range label as `Active test` instead of `Unknown`. Candidate lookups now use a 3x movement-based range clamped to `12%-45%` instead of fixed `65%-135%` worker and `80%-120%` API bands.
+
+## 2026-05-12
+
+- Request: make `codex/fix-reaction-map-levels` easy to merge into `main`.
+- Attempted: fetched/pulled latest refs, merged `origin/main` into the branch, resolved conflicts in the Reaction Map API route, momentum-alerts Dockerfile, Reaction Map chart mode cleanup, and the deleted `.codex` skill ledger.
+- Decision: keep main's live order-book shelf enrichment while preserving this branch's persisted Reaction Map source-of-truth changes; keep the momentum-alerts Dockerfile root-context compatible for local Compose while adding chart support from main.
+- Result: `docker compose build web`, `docker compose build momentum-alerts reaction-map`, and a recreated `reaction-map` container passed. The sampled `reaction-map` logs showed startup/subscriptions without fresh errors.
+
+## 2026-05-12
+
+- Request: make Reaction Map positioning levels reliable on `/markets`, with long imbalances green, short imbalances red, and near-flat net flow shown as yellow pivot zones.
+- Attempted: traced BTC 4h positioning through the worker table, API store, chart model, and page UI; reproduced the one-sided/near-price output; rebuilt and restarted `web` and `reaction-map` in Docker; verified the BTC 4h route and browser page on port `3004`.
+- Decision: keep worker-promoted zones as the source, but carry recent retired worker rows into the displayed top-five-per-side ladder so one-sided current flow does not erase the opposite side. Classify net buy/sell within `$100K` as `pivot`, expose a distance-based leverage-pressure proxy, and color by imbalance type instead of price location.
+- Result: `docker compose build web` and `docker compose build --no-cache reaction-map` passed. BTC 4h `/api/market/reaction-levels` returns 5 buyer-initiated long imbalance zones and 5 seller-initiated short imbalance zones with leverage proxy values; browser/API verification on `http://localhost:3004/markets` passed with no web console errors. Local full Compose startup remains blocked by the pre-existing `0007_reaction_only_cleanup.sql` checksum drift, so `web` was restarted with `--no-deps` on port `3004`.
+- Follow-up: display selection now prefers distinct positioning ranges before filling any overlapping fallback slot. BTC 4h still returns 5 long-side and 5 short-side zones, but overlapping carried rows are suppressed in favor of separate bands so the chart reads like multiple levels rather than one thick zone.
+- Follow-up: chart wheel handling now prevents the page from scrolling while the pointer is over the price chart, so wheel/trackpad gestures are reserved for chart zoom/pan. Verification was blocked after Docker Desktop began returning engine API 500s during rebuild; Docker service restart also required unavailable Windows privileges.
+- Follow-up: after Docker restart, rebuilt `web` successfully and found BTC positioning could still expose only 8 visible worker zones when fresh long-side rows were sparse. The selector now fills remaining ladder slots from carried worker rows after fresh rows are exhausted, and carried rows stay displayable with explicit carried-forward evidence instead of being re-hidden as stale.
+- Follow-up: Browser verification caught that the chart-container wheel listener did not catch every wheel path. Added a capture-phase wheel lock on the chart frame so page scroll is prevented before the event reaches the page while the chart still receives the wheel gesture.
