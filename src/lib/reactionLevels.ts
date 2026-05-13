@@ -414,6 +414,7 @@ function zoneAgeMs(level: ReactionLevel, updatedAt: number): number | null {
 
 function isStaleZone(level: ReactionLevel, updatedAt: number, windowMs: number): boolean {
   if (level.hiddenReason === "stale" || level.positioning?.role === "stale") return true;
+  if (level.tooltip?.carriedForward === true) return false;
   const ageMs = zoneAgeMs(level, updatedAt);
   return ageMs != null && ageMs > windowMs * POSITIONING_STALE_MULTIPLIER;
 }

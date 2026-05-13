@@ -212,7 +212,6 @@ function rankExposureRows(
   for (const side of ["bull", "bear"]) {
     const sideRows = rows
       .filter((row) => normalizeSide(row.side) === side)
-      .filter((row) => String(row.status ?? "active") === "active" || rowEvidenceAt(row) >= displayFreshCutoff)
       .sort((a, b) => {
         const aActive = String(a.status ?? "active") === "active" ? 0 : 1;
         const bActive = String(b.status ?? "active") === "active" ? 0 : 1;
@@ -232,6 +231,7 @@ function rankExposureRows(
 
         return rowEvidenceAt(b) - rowEvidenceAt(a);
       });
+    const freshRows = sideRows.filter((row) => String(row.status ?? "active") === "active" || rowEvidenceAt(row) >= displayFreshCutoff);
 
     const sideSelected: Array<Record<string, unknown>> = [];
     const seenRanges = new Set<string>();
@@ -246,6 +246,17 @@ function rankExposureRows(
       sideSelected.push(row);
       rank += 1;
     };
+
+    for (const row of freshRows) {
+      if (rank > DISPLAY_ZONES_PER_SIDE) break;
+      if (!isDistinctExposureRange(row, sideSelected)) continue;
+      addRow(row);
+    }
+
+    for (const row of freshRows) {
+      if (rank > DISPLAY_ZONES_PER_SIDE) break;
+      addRow(row);
+    }
 
     for (const row of sideRows) {
       if (rank > DISPLAY_ZONES_PER_SIDE) break;

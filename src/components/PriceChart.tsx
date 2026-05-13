@@ -531,6 +531,20 @@ export default function PriceChart({
   }, [selectedZoneId, zoneBands]);
 
   useEffect(() => {
+    const frame = chartFrameRef.current;
+    if (!frame) return;
+
+    const keepWheelOnChart = (event: WheelEvent) => {
+      event.preventDefault();
+    };
+
+    frame.addEventListener("wheel", keepWheelOnChart, { capture: true, passive: false });
+    return () => {
+      frame.removeEventListener("wheel", keepWheelOnChart, true);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!reactionPayload || overlayAvailability[overlayMode]) return;
     setOverlayMode(
       overlayAvailability.oi_holding ? "oi_holding" : overlayAvailability.book ? "book" : "oi_holding",
