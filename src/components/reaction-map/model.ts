@@ -40,6 +40,18 @@ function normalizeSide(side: unknown, fallback: PositioningSide): PositioningSid
   return fallback;
 }
 
+function normalizeImbalanceType(
+  value: unknown,
+  buyNotionalUsd: number | null,
+  sellNotionalUsd: number | null,
+): NormalizedPositioningZone["imbalanceType"] {
+  if (value === "long_imbalance" || value === "short_imbalance" || value === "pivot") return value;
+  if (buyNotionalUsd == null || sellNotionalUsd == null) return null;
+  const imbalanceUsd = buyNotionalUsd - sellNotionalUsd;
+  if (Math.abs(imbalanceUsd) <= 100_000) return "pivot";
+  return imbalanceUsd > 0 ? "long_imbalance" : "short_imbalance";
+}
+
 function normalizeBookSide(side: unknown, fallback: ReactionMapSide): ReactionMapSide {
   if (side === "bid" || side === "buy") return "bid";
   if (side === "ask" || side === "sell") return "ask";
@@ -69,6 +81,7 @@ function defaultInvalidation(role: string): string {
 }
 
 function roleTone(role: string): ReactionZoneTone {
+  if (role === "Pivot zone") return "pivot";
   if (role === "Long defense" || role.includes("Trapped shorts")) return "support";
   if (role === "Short defense" || role.includes("Trapped longs")) return "resistance";
   return "pivot";
@@ -178,10 +191,18 @@ function normalizePositioningZone(
   const zoneHigh = finiteNumber(raw.zoneHigh);
   const midpoint = rangeMidpoint(zoneLow, zoneHigh, price);
   const side = normalizeSide(raw.aggressorSide ?? raw.side, fallbackSide);
-  const role = raw.roleLabel || raw.role || positioningRole(side, midpoint, currentPrice);
   const inferredOiUsd = finiteNumber(raw.inferredOiUsd);
   const recentFlowUsd = finiteNumber(raw.recentFlowUsd) ?? finiteNumber(raw.tradeNotionalUsd);
   const notionalUsd = finiteNumber(raw.notionalUsd) ?? inferredOiUsd ?? recentFlowUsd;
+  const buyNotionalUsd = finiteNumber(raw.buyNotionalUsd);
+  const sellNotionalUsd = finiteNumber(raw.sellNotionalUsd);
+  const imbalanceUsd = finiteNumber(raw.imbalanceUsd) ?? (
+    buyNotionalUsd != null && sellNotionalUsd != null ? buyNotionalUsd - sellNotionalUsd : null
+  );
+  const imbalanceType = normalizeImbalanceType(raw.imbalanceType, buyNotionalUsd, sellNotionalUsd);
+  const role =
+    raw.roleLabel ||
+    (imbalanceType === "pivot" ? "Pivot zone" : raw.role || positioningRole(side, midpoint, currentPrice));
 
   return {
     id: raw.id ?? `${side}-positioning-${price}-${index}`,
@@ -196,6 +217,11 @@ function normalizePositioningZone(
     ageMs: finiteNumber(raw.ageMs) ?? freshnessMs(raw.updatedAt, updatedAt),
     windowMs: finiteNumber(raw.windowMs) ?? windowMs,
     notionalUsd,
+    buyNotionalUsd,
+    sellNotionalUsd,
+    imbalanceUsd,
+    imbalanceType,
+    leveragePressure: finiteNumber(raw.leveragePressure),
     rank: finiteNumber(raw.rank),
     triggerText: raw.triggerText ?? null,
     invalidationText: raw.invalidationText ?? null,
@@ -227,6 +253,9 @@ function levelToPositioningZone(
     recentFlowUsd: level.components.tradeNotionalUsd,
     buyNotionalUsd: level.components.buyNotionalUsd,
     sellNotionalUsd: level.components.sellNotionalUsd,
+    imbalanceUsd: level.tooltip?.imbalanceUsd ?? level.components.buyNotionalUsd - level.components.sellNotionalUsd,
+    imbalanceType: level.tooltip?.imbalanceType,
+    leveragePressure: level.tooltip?.leveragePressure,
     rank: level.zoneRank ?? level.tooltip?.rank ?? index + 1,
     sourceLevel: level,
   };

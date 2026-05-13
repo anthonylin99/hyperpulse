@@ -61,7 +61,7 @@ interface SelectedZoneReadProps {
 
 export function ReactionMapPanel({
   payload,
-  mode = "all",
+  mode = "oi_holding",
   selectedZoneId,
   onSelectZone,
   shelfLimit = 5,
@@ -76,9 +76,9 @@ export function ReactionMapPanel({
     ...model.sellerZones,
   ];
   const selectedZone = selectableZones.find((zone) => zone.id === activeId) ?? selectableZones[0] ?? null;
-  const showOrderBook = mode === "all" || mode === "book";
-  const showPositioning = mode === "all" || mode === "oi_holding";
-  const showReactionZones = mode === "all" || mode === "stress";
+  const showOrderBook = mode === "book";
+  const showPositioning = mode === "oi_holding";
+  const showReactionZones = mode === "confluence" || mode === "stress";
 
   const handleSelect = (zone: ReactionMapSelectableZone) => {
     setLocalSelectedId(zone.id);
@@ -340,7 +340,7 @@ function PositioningZoneButton({
   tone: "buyer" | "seller";
   onClick: () => void;
 }) {
-  const toneClass = tone === "buyer" ? "text-emerald-300" : "text-red-300";
+  const zoneTone = positioningZoneTone(zone, tone);
 
   return (
     <button
@@ -355,13 +355,15 @@ function PositioningZoneButton({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className={cn("font-mono text-sm", toneClass)}>{zoneRangeLabel(zone)}</div>
+          <div className={cn("font-mono text-sm", zoneTone.textClass)}>{zoneRangeLabel(zone)}</div>
           <div className="mt-1 text-[11px] font-medium text-zinc-300">{zone.role}</div>
         </div>
         <ZoneBadge label={zone.confidence} tone={zone.confidence === "high" ? "good" : zone.confidence === "low" ? "warn" : "neutral"} />
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-zinc-500">
         <MetaPill>{formatCompactUsd(zone.notionalUsd)}</MetaPill>
+        {zone.imbalanceUsd != null ? <MetaPill>net {formatSignedCompactUsd(zone.imbalanceUsd)}</MetaPill> : null}
+        {zone.leveragePressure != null ? <MetaPill>{zone.leveragePressure.toFixed(0)}x proxy</MetaPill> : null}
         <MetaPill>{ageLabel(zone.ageMs)}</MetaPill>
         <MetaPill>{windowLabel(zone.windowMs)}</MetaPill>
         {zone.rank != null ? <MetaPill>rank #{zone.rank}</MetaPill> : null}
@@ -369,6 +371,21 @@ function PositioningZoneButton({
       <div className="mt-2 text-[11px] leading-4 text-zinc-500">{zone.caveat}</div>
     </button>
   );
+}
+
+function positioningZoneTone(zone: NormalizedPositioningZone, fallback: "buyer" | "seller") {
+  if (zone.imbalanceType === "pivot") {
+    return { textClass: "text-amber-200", borderClass: "border-amber-400/30" };
+  }
+  if (zone.imbalanceType === "long_imbalance" || fallback === "buyer") {
+    return { textClass: "text-emerald-300", borderClass: "border-emerald-400/30" };
+  }
+  return { textClass: "text-red-300", borderClass: "border-red-400/30" };
+}
+
+function formatSignedCompactUsd(value: number): string {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatCompactUsd(Math.abs(value))}`;
 }
 
 function HiddenSlot({ slot }: { slot: NormalizedHiddenPositioningSlot }) {

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
+import { getPooledDatabaseUrl } from "./database-url.mjs";
 
 for (const file of [".env.local", ".env", "workers/momentum-alerts/.env"]) {
   if (!existsSync(file)) continue;
@@ -22,13 +23,7 @@ function cleanEnv(value) {
 process.env.MOMENTUM_ALERT_DRY_RUN = "false";
 process.env.MOMENTUM_ALERT_ONCE = "true";
 
-const url = cleanEnv(
-  process.env.NEON_DATABASE_URL_POOLING ??
-    process.env.NEON_DATABASE_URL ??
-    process.env.DATABASE_URL ??
-    process.env.POSTGRES_URL ??
-    "",
-);
+const url = getPooledDatabaseUrl();
 if (!url) {
   console.error("NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required.");
   process.exit(1);

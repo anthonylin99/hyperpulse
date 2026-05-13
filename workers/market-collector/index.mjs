@@ -2,6 +2,8 @@ import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { Pool } from "pg";
 import { existsSync, readFileSync } from "node:fs";
 
+const PG_SSL_MODES_TO_PIN = new Set(["prefer", "require", "verify-ca"]);
+
 function loadLocalEnv() {
   for (const file of [".env.local", ".env"]) {
     if (!existsSync(file)) continue;
@@ -20,12 +22,33 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const DATABASE_URL =
+function normalizeDatabaseUrl(value) {
+  const cleaned = String(value ?? "").trim().replace(/^["']|["']$/g, "");
+  if (!cleaned) return "";
+
+  try {
+    const url = new URL(cleaned);
+    if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return cleaned;
+
+    const sslMode = url.searchParams.get("sslmode")?.toLowerCase();
+    if (sslMode && PG_SSL_MODES_TO_PIN.has(sslMode)) {
+      url.searchParams.set("sslmode", "verify-full");
+      return url.toString();
+    }
+  } catch {
+    return cleaned;
+  }
+
+  return cleaned;
+}
+
+const DATABASE_URL = normalizeDatabaseUrl(
   process.env.NEON_DATABASE_URL_POOLING ??
-  process.env.NEON_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL ??
-  "";
+    process.env.NEON_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_URL ??
+    "",
+);
 if (!DATABASE_URL) {
   console.error("[market-collector] NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required.");
   process.exit(1);

@@ -73,10 +73,8 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
 ];
 
 const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
-  { label: "Reaction", value: "all" },
-  { label: "Order Book", value: "book" },
   { label: "Positioning", value: "oi_holding" },
-  { label: "Stress", value: "stress" },
+  { label: "Order Book", value: "book" },
 ];
 
 const CANDLE_FETCH_TIMEOUT_MS = 10_000;
@@ -213,7 +211,7 @@ function formatTimeMs(timeMs: number | null | undefined): string {
 }
 
 type LevelRead = {
-  label: "Rejection" | "Break" | "Pivot" | "Stress";
+  label: "Rejection" | "Break" | "Pivot" | "Long imbalance" | "Short imbalance" | "Stress";
   summary: string;
   reason: string;
   className: string;
@@ -246,14 +244,25 @@ function isUpsideReactionLevel(
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
   const isUpside = side === "upside";
   if (level.leverageBucket === "positioning") {
-    const likelyLong = level.flowSide === "forced_sell";
+    const imbalanceType = level.zoneTooltip?.imbalanceType;
+    if (imbalanceType === "pivot") {
+      return {
+        label: "Pivot",
+        summary: "Buy and sell flow are nearly balanced here. Treat it as a decision zone, not a one-sided wall.",
+        reason: "Net buy/sell imbalance is inside the pivot threshold, so confirmation matters more than direction.",
+        className: "border-amber-400/35 bg-amber-400/10 text-amber-200",
+      };
+    }
+    const likelyLong = imbalanceType === "long_imbalance" || level.flowSide === "forced_sell";
     return {
-      label: "Pivot",
+      label: likelyLong ? "Long imbalance" : "Short imbalance",
       summary: likelyLong
-        ? "Top inferred long holding. It can defend on retest, but a clean break can turn into sell pressure."
-        : "Top inferred short holding. It can reject on retest, but a clean hold above can turn into buy pressure.",
-      reason: "Ranked from public trade concentration allocated against positive OI change. This is not exact trader-position data.",
-      className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
+        ? "Buyer-initiated OI build. It can defend on retest, but a clean break can turn into sell pressure."
+        : "Seller-initiated OI build. It can reject on retest, but a clean reclaim can turn into buy pressure.",
+      reason: "Ranked from public trade concentration, buy/sell imbalance, and positive OI change. This is not exact trader-position data.",
+      className: likelyLong
+        ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
+        : "border-red-400/35 bg-red-400/10 text-red-200",
     };
   }
   if (isStressZone(level)) {
@@ -321,6 +330,12 @@ function formatCompactUsd(value: number | null | undefined): string {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
   return `$${value.toFixed(0)}`;
+}
+
+function formatSignedCompactUsd(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatCompactUsd(Math.abs(value))}`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -395,6 +410,15 @@ type ChartZoneTone = {
 function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): ChartZoneTone {
   const role = level.zoneTooltip?.role;
   if (level.leverageBucket === "positioning") {
+    if (level.zoneTooltip?.imbalanceType === "pivot") {
+      return { rgb: "251, 191, 36", textClass: "text-amber-200", borderClass: "border-amber-400/35" };
+    }
+    if (level.zoneTooltip?.imbalanceType === "long_imbalance") {
+      return { rgb: "52, 211, 153", textClass: "text-emerald-200", borderClass: "border-emerald-400/35" };
+    }
+    if (level.zoneTooltip?.imbalanceType === "short_imbalance") {
+      return { rgb: "248, 113, 113", textClass: "text-red-200", borderClass: "border-red-400/35" };
+    }
     if (role === "long_defense") {
       return { rgb: "45, 212, 191", textClass: "text-teal-200", borderClass: "border-teal-400/35" };
     }
@@ -406,6 +430,9 @@ function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "up
     }
     if (role === "trapped_longs") {
       return { rgb: "251, 191, 36", textClass: "text-amber-200", borderClass: "border-amber-400/35" };
+    }
+    if (role === "active_test") {
+      return { rgb: "236, 72, 153", textClass: "text-pink-200", borderClass: "border-pink-400/35" };
     }
     return { rgb: "148, 163, 184", textClass: "text-slate-200", borderClass: "border-slate-400/35" };
   }
@@ -431,7 +458,7 @@ export default function PriceChart({
   const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
-  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("all");
+  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("oi_holding");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [candleRetryNonce, setCandleRetryNonce] = useState(0);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
@@ -443,7 +470,7 @@ export default function PriceChart({
   const overlayAvailability = useMemo(() => {
     if (!reactionPayload) {
       return {
-        all: true,
+        confluence: true,
         book: false,
         oi_holding: false,
         stress: false,
@@ -461,7 +488,7 @@ export default function PriceChart({
     const hasStress = reactionPayload.levels.some((level) => level.primarySource === "stress");
 
     return {
-      all: true,
+      confluence: true,
       book: hasBook,
       oi_holding: hasPositioning,
       stress: hasStress,
@@ -504,10 +531,25 @@ export default function PriceChart({
   }, [selectedZoneId, zoneBands]);
 
   useEffect(() => {
-    if (!overlayAvailability[overlayMode]) {
-      setOverlayMode("all");
-    }
-  }, [overlayAvailability, overlayMode]);
+    const frame = chartFrameRef.current;
+    if (!frame) return;
+
+    const keepWheelOnChart = (event: WheelEvent) => {
+      event.preventDefault();
+    };
+
+    frame.addEventListener("wheel", keepWheelOnChart, { capture: true, passive: false });
+    return () => {
+      frame.removeEventListener("wheel", keepWheelOnChart, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!reactionPayload || overlayAvailability[overlayMode]) return;
+    setOverlayMode(
+      overlayAvailability.oi_holding ? "oi_holding" : overlayAvailability.book ? "book" : "oi_holding",
+    );
+  }, [overlayAvailability, overlayMode, reactionPayload]);
 
   useEffect(() => {
     let cancelled = false;
@@ -741,7 +783,11 @@ export default function PriceChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
     chart.timeScale().subscribeVisibleTimeRangeChange(scheduleZoneBandRender);
     chart.subscribeCrosshairMove(scheduleZoneBandRender);
-    container.addEventListener("wheel", scheduleZoneBandRender, { passive: true });
+    const handleChartWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      scheduleZoneBandRender();
+    };
+    container.addEventListener("wheel", handleChartWheel, { passive: false });
     container.addEventListener("pointermove", scheduleZoneBandRender);
     container.addEventListener("pointerup", scheduleZoneBandRender);
 
@@ -750,7 +796,7 @@ export default function PriceChart({
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(scheduleZoneBandRender);
       chart.unsubscribeCrosshairMove(scheduleZoneBandRender);
-      container.removeEventListener("wheel", scheduleZoneBandRender);
+      container.removeEventListener("wheel", handleChartWheel);
       container.removeEventListener("pointermove", scheduleZoneBandRender);
       container.removeEventListener("pointerup", scheduleZoneBandRender);
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
@@ -763,7 +809,7 @@ export default function PriceChart({
 
   const levelSourceNote =
     oiHoldingHidden
-      ? "Positioning zones are warming up from current public flow."
+      ? "No inferred positioning zone is far enough from spot to matter yet."
       : orderBookWarming
         ? "Order Book shelves are still collecting from recent public depth."
       : latestLevelTimeMs != null
@@ -772,7 +818,7 @@ export default function PriceChart({
         ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
         : "Reaction Map";
   const levelAvailabilityMessage = oiHoldingHidden
-    ? "Positioning needs enough recent flow and positive OI change before zones appear. Missing zones are hidden rather than forced."
+    ? "Fresh OI builds are too close to spot right now, so HyperPulse hides them instead of pretending they are useful support or resistance."
     : orderBookWarming
       ? "Order Book levels need a few clean depth samples before they appear."
     : reactionSupported
@@ -804,7 +850,7 @@ export default function PriceChart({
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Reaction combines book shelves, inferred positioning, and price behavior. Acceptance or rejection matters more than a red or green line.</div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Positioning shows inferred OI/flow zones. Order Book shows visible resting shelves.</div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
@@ -857,17 +903,17 @@ export default function PriceChart({
       <div className="p-3">
         <div
           ref={chartFrameRef}
-          className="relative h-[360px] overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
+          className="relative isolate h-[360px] overflow-visible overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
         >
           {loading ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full flex-col items-center justify-center gap-2 overflow-hidden rounded-[18px] px-6 text-center text-sm text-zinc-500">
               <div>Loading price candles...</div>
               {reactionPayload ? (
                 <div className="text-[11px] text-zinc-600">Reaction zones are ready.</div>
               ) : null}
             </div>
           ) : error || candles.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full flex-col items-center justify-center gap-3 overflow-hidden rounded-[18px] px-6 text-center text-sm text-zinc-500">
               <div>{error ?? "No price candles available."}</div>
               <button
                 type="button"
@@ -879,7 +925,9 @@ export default function PriceChart({
             </div>
           ) : (
             <>
-              <div ref={chartContainerRef} className="absolute inset-0" />
+              <div className="absolute inset-0 z-0 overflow-hidden rounded-[18px]">
+                <div ref={chartContainerRef} className="absolute inset-0" />
+              </div>
               <FlowZoneOverlay
                 bands={zoneBands}
                 activeZoneId={activeZoneId}
@@ -917,6 +965,8 @@ function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upsi
   if (role === "trapped_longs") return "Buyer build above price. Bulls need acceptance back through the zone.";
   if (role === "short_defense") return "Seller build above price. Watch rejection versus clean acceptance above.";
   if (role === "trapped_shorts") return "Seller build below price. Reclaim can turn it into squeeze fuel.";
+  if (role === "pivot_zone") return "Net buy/sell is within the pivot threshold. Let acceptance or rejection decide the read.";
+  if (role === "active_test") return "Price is inside the inferred positioning zone. Watch acceptance, rejection, or a fast reclaim.";
   if (level.leverageBucket === "book") {
     return side === "downside"
       ? "Real bid liquidity. Useful only if it stays/refills when tested."
@@ -941,7 +991,7 @@ function FlowZoneOverlay({
   const activeBand = bands.find((band) => band.id === activeZoneId) ?? null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-20">
+    <div className="pointer-events-none absolute inset-0 z-[60]">
       {bands.map((band) => {
         const read = levelReadFor(band.level, band.side);
         const tone = chartToneForLevel(band.level, band.side);
@@ -1011,7 +1061,7 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
 
   return (
     <div
-      className={`pointer-events-none absolute right-3 z-30 w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
+      className={`pointer-events-none absolute right-3 z-[90] w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
         tone.borderClass
       }`}
       style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}
@@ -1029,6 +1079,8 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
         {tooltip?.rank || band.level.flowRank ? <TooltipMetric label="Rank" value={`#${tooltip?.rank ?? band.level.flowRank}`} /> : null}
         <TooltipMetric label="Flow / OI" value={formatCompactUsd(flowSize)} />
         {tooltip?.totalRecentFlowUsd ? <TooltipMetric label="Recent flow" value={formatCompactUsd(tooltip.totalRecentFlowUsd)} /> : null}
+        {tooltip?.imbalanceUsd != null ? <TooltipMetric label="Net" value={formatSignedCompactUsd(tooltip.imbalanceUsd)} /> : null}
+        {tooltip?.leveragePressure != null ? <TooltipMetric label="Leverage proxy" value={`${tooltip.leveragePressure.toFixed(0)}x`} /> : null}
         {tooltip?.buyNotionalUsd != null && tooltip?.sellNotionalUsd != null ? (
           <TooltipMetric label="Buy / sell" value={`${formatCompactUsd(tooltip.buyNotionalUsd)} / ${formatCompactUsd(tooltip.sellNotionalUsd)}`} />
         ) : null}

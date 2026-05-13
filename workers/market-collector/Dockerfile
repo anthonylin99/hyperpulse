@@ -10,5 +10,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
 COPY migrations ./migrations
 COPY scripts/migrate.mjs ./scripts/migrate.mjs
+COPY scripts/database-url.mjs ./scripts/database-url.mjs
 COPY workers/market-collector/index.mjs ./index.mjs
 CMD ["npm", "start"]
