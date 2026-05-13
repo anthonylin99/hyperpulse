@@ -11,7 +11,7 @@ export type VaultFilterState = {
 export const DEFAULT_VAULT_FILTERS: VaultFilterState = {
   minTvl: true,
   minHistory: true,
-  sharpePositive: true,
+  sharpePositive: false,
 };
 
 export function VaultFilters({

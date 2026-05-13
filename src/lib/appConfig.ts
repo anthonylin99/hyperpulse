@@ -3,7 +3,7 @@ export const ENABLE_FACTORS_DEFAULT = false;
 export const ENABLE_FACTORS_PROD_DEFAULT = false;
 export const ENABLE_AGENT_DEV_DEFAULT = process.env.NODE_ENV !== "production";
 export const ENABLE_VAULTS_DEV_DEFAULT = true;
-export const ENABLE_VAULTS_PROD_DEFAULT = false;
+export const ENABLE_VAULTS_PROD_DEFAULT = true;
 
 function readEnvFlag(value: string | undefined): boolean | null {
   if (value === "true") return true;
