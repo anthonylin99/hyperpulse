@@ -76,6 +76,7 @@ export interface VaultListItem {
   leaderCommission: number | null;
   isClosed: boolean;
   allowDeposits: boolean;
+  sparkline: number[];
   metrics: VaultMetrics;
 }
 

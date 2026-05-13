@@ -258,6 +258,18 @@ function followerEquitySum(vault: VaultDetails): number {
   return vault.followers.reduce((s, f) => s + f.vaultEquity, 0);
 }
 
+function vaultSparkline(vault: VaultDetails, maxPoints = 28): number[] {
+  const preferred: VaultPeriod[] = ["month", "week", "allTime", "day"];
+  let history: Array<[number, number]> = [];
+  for (const period of preferred) {
+    history = getWindow(vault, period)?.accountValueHistory ?? [];
+    if (history.length >= 2) break;
+  }
+  const values = history.map(([, value]) => value).filter((value) => Number.isFinite(value) && value > 0);
+  if (values.length <= maxPoints) return values;
+  const step = (values.length - 1) / (maxPoints - 1);
+  return Array.from({ length: maxPoints }, (_, index) => values[Math.round(index * step)]);
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -632,6 +644,7 @@ export async function listVaultSummaries(
         leaderCommission: parseNullableFloat(vault.leaderCommission),
         isClosed: vault.isClosed,
         allowDeposits: vault.allowDeposits,
+        sparkline: vaultSparkline(vault),
         metrics,
       };
       return item;
