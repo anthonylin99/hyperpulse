@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { VaultFilters, DEFAULT_VAULT_FILTERS, type VaultFilterState } from "./VaultFilters";
 import { VaultsTable } from "./VaultsTable";
+import { formatCompact } from "@/lib/format";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import type { VaultListItem, VaultListResult } from "@/types/vaults";
 
@@ -49,89 +50,78 @@ export default function VaultsRoutePage() {
     });
   }, [items, filters]);
 
-  const best = useMemo(() => {
-    if (!items?.length) return null;
-    return [...items].sort((a, b) => b.metrics.score.score - a.metrics.score.score)[0];
+  const summary = useMemo(() => {
+    const vaults = items ?? [];
+    const top = vaults.length > 0
+      ? [...vaults].sort((a, b) => b.metrics.score.score - a.metrics.score.score)[0]
+      : null;
+    const watch = vaults.filter((v) => v.metrics.score.decision === "watch").length;
+    const totalTvl = vaults.reduce((sum, v) => sum + v.metrics.tvl, 0);
+    return { top, watch, totalTvl };
   }, [items]);
 
-  const watchCount = useMemo(
-    () => items?.filter((v) => v.metrics.score.decision === "watch").length ?? 0,
-    [items],
-  );
-
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-5">
-      <header className="rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-teal-950/30 p-6 md:p-8">
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px] lg:items-end">
-          <div className="max-w-3xl">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">
-              HyperPulse Vaults
-            </div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 md:text-4xl">
-              Find vaults worth watching before depositing capital.
-            </h1>
-            <p className="mt-4 text-sm leading-7 text-zinc-300">
-              HyperPulse scores Hyperliquid vaults by recent P&L, drawdown, history,
-              capital base, and depositor trust so users can quickly separate
-              watchlist candidates from risky headline returns.
-            </p>
-            <p className="mt-3 text-xs text-zinc-500">
-              Read-only analytics. Not guaranteed yield. Vault deposits can lose money.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-zinc-800 bg-black/30 p-4">
-            <div className="label">Best current candidate</div>
-            {best ? (
-              <>
-                <div className="mt-2 text-lg font-semibold text-zinc-100">{best.name}</div>
-                <div className="mt-1 font-mono text-sm text-emerald-300">{best.metrics.score.score}/100</div>
-                <div className="mt-2 text-xs leading-5 text-zinc-400">{best.metrics.score.reason}</div>
-              </>
-            ) : (
-              <div className="mt-2 text-sm text-zinc-500">Loading vault candidates...</div>
-            )}
-            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <div className="text-zinc-500">Vaults tracked</div>
-                <div className="mt-1 font-mono text-zinc-100">{items?.length ?? "—"}</div>
-              </div>
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-                <div className="text-zinc-500">Worth watching</div>
-                <div className="mt-1 font-mono text-emerald-300">{items ? watchCount : "—"}</div>
+    <div className="mx-auto max-w-[1600px] px-4 py-4 pb-20">
+      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b0d10]">
+        <header className="border-b border-zinc-800 bg-zinc-950/70 px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-400/80">Vaults</div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Hyperliquid vault directory</h1>
+                <p className="text-xs text-zinc-500">Score, compare, then inspect operator risk before depositing.</p>
               </div>
             </div>
+            <div className="grid grid-cols-3 gap-2 text-xs sm:min-w-[460px]">
+              <SummaryTile label="Tracked" value={items ? String(items.length) : "—"} />
+              <SummaryTile label="Watch" value={items ? String(summary.watch) : "—"} tone="green" />
+              <SummaryTile label="TVL" value={items ? formatCompact(summary.totalTvl) : "—"} />
+            </div>
           </div>
-        </div>
-      </header>
+          <div className="mt-3 flex flex-col gap-3 border-t border-zinc-900 pt-3 lg:flex-row lg:items-center lg:justify-between">
+            <VaultFilters state={filters} onChange={setFilters} />
+            <div className="text-xs text-zinc-500">
+              Top score: {summary.top ? <span className="text-zinc-200">{summary.top.name} · {summary.top.metrics.score.score}/100</span> : "loading"}
+            </div>
+          </div>
+        </header>
 
-      <VaultFilters state={filters} onChange={setFilters} />
+        {warnings.length > 0 ? (
+          <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-100/80">
+            Partial refresh: {warnings.slice(0, 2).join(" ")}
+          </div>
+        ) : null}
 
-      {warnings.length > 0 ? (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-100/80">
-          Vault list is partially refreshed. {warnings.slice(0, 2).join(" ")}
-        </div>
-      ) : null}
+        {error ? (
+          <div className="m-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {error}
+          </div>
+        ) : items === null ? (
+          <VaultsSkeleton />
+        ) : items.length === 0 ? (
+          <EmptyVaultNotice />
+        ) : (
+          <VaultsTable items={filtered} />
+        )}
+      </div>
+    </div>
+  );
+}
 
-      {error ? (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          {error}
-        </div>
-      ) : items === null ? (
-        <VaultsSkeleton />
-      ) : items.length === 0 ? (
-        <EmptyVaultNotice />
-      ) : (
-        <VaultsTable items={filtered} />
-      )}
+function SummaryTile({ label, value, tone }: { label: string; value: string; tone?: "green" }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-black/30 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{label}</div>
+      <div className={tone === "green" ? "mt-1 font-mono text-emerald-300" : "mt-1 font-mono text-zinc-100"}>{value}</div>
     </div>
   );
 }
 
 function VaultsSkeleton() {
   return (
-    <div className="space-y-2">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="skeleton h-14 rounded-lg" />
+    <div className="space-y-px p-3">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div key={i} className="skeleton h-12 rounded-md" />
       ))}
     </div>
   );
@@ -139,12 +129,10 @@ function VaultsSkeleton() {
 
 function EmptyVaultNotice() {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-5 py-8 text-sm text-zinc-400">
-      <div className="font-medium text-zinc-100">No vaults available in this preview yet.</div>
+    <div className="m-4 rounded-lg border border-zinc-800 bg-zinc-900/60 px-5 py-8 text-sm text-zinc-400">
+      <div className="font-medium text-zinc-100">No vaults match this view.</div>
       <div className="mt-2 max-w-2xl leading-6">
-        HyperPulse only shows vaults after they pass the curated preview list or
-        Hyperliquid&apos;s recent vault summary feed. Check back shortly, or review
-        live vaults on{" "}
+        Try relaxing filters, or review live vaults on{" "}
         <a
           href="https://app.hyperliquid.xyz/vaults"
           target="_blank"
@@ -152,8 +140,7 @@ function EmptyVaultNotice() {
           className="text-emerald-300 underline hover:text-emerald-200"
         >
           Hyperliquid
-        </a>{" "}
-        while this feature is in private testing.
+        </a>.
       </div>
     </div>
   );
