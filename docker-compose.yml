@@ -66,8 +66,8 @@ services:
 
   momentum-alerts:
     build:
-      context: .
-      dockerfile: workers/momentum-alerts/Dockerfile
+      context: workers/momentum-alerts
+      dockerfile: Dockerfile
     environment:
       NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
       NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
