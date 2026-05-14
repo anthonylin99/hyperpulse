@@ -126,11 +126,13 @@ const alert = {
 
 const png = await renderMomentumChartPng({ alert, candles });
 const caption = [
-  "HYPERPULSE · CHART TEST",
-  `${asset} LONG · Telegram chart card`,
-  `Now: ${formatPrice(alert.alertPrice)} · 1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`,
-  `Trim: ${formatPrice(alert.targetPrice)} · Invalid < ${formatPrice(alert.invalidationPrice)}`,
-  "This is a test image only.",
+  `${asset} LONG`,
+  "CHART TEST · real candle snapshot",
+  "",
+  `Price ${formatPrice(alert.alertPrice)}`,
+  `1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`,
+  "",
+  `Trim ${formatPrice(alert.targetPrice)} · Invalid below ${formatPrice(alert.invalidationPrice)}`,
 ].join("\n");
 
 const form = new FormData();

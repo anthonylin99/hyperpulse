@@ -2,7 +2,9 @@ import sharp from "sharp";
 
 const WIDTH = 1200;
 const HEIGHT = 680;
-const PLOT = { x: 72, y: 118, width: 1016, height: 454 };
+const PLOT = { x: 64, y: 132, width: 1000, height: 414 };
+const FONT_SANS = "DejaVu Sans, Arial, sans-serif";
+const FONT_MONO = "DejaVu Sans Mono, Menlo, monospace";
 
 function escapeXml(value) {
   return String(value ?? "")
@@ -55,11 +57,13 @@ function normalizedCandles(candles) {
     .slice(-96);
 }
 
-function lineLabel({ y, text, color, x = PLOT.x + PLOT.width }) {
+function lineLabel({ y, label, price, color }) {
+  const x = PLOT.x + PLOT.width - 152;
   return `
-    <line x1="${PLOT.x}" y1="${y}" x2="${x}" y2="${y}" stroke="${color}" stroke-width="2" stroke-dasharray="7 7" opacity="0.82" />
-    <rect x="${x + 8}" y="${y - 18}" width="118" height="36" rx="8" fill="${color}" opacity="0.9" />
-    <text x="${x + 67}" y="${y + 6}" fill="#06110f" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700">${escapeXml(text)}</text>
+    <line x1="${PLOT.x}" y1="${y}" x2="${PLOT.x + PLOT.width}" y2="${y}" stroke="${color}" stroke-width="1.8" stroke-dasharray="7 7" opacity="0.78" />
+    <rect x="${x}" y="${y - 17}" width="144" height="34" rx="8" fill="${color}" opacity="0.92" />
+    <text x="${x + 12}" y="${y + 5}" fill="#07110f" font-family="${FONT_MONO}" font-size="14" font-weight="800">${escapeXml(label)}</text>
+    <text x="${x + 132}" y="${y + 5}" fill="#07110f" text-anchor="end" font-family="${FONT_MONO}" font-size="14" font-weight="800">${escapeXml(formatPrice(price).replace("$", ""))}</text>
   `;
 }
 
@@ -90,7 +94,7 @@ function buildMomentumChartSvg({ alert, candles }) {
     const y = PLOT.y + (PLOT.height / 4) * i;
     const price = yMax - ((yMax - yMin) / 4) * i;
     grid.push(`<line x1="${PLOT.x}" y1="${y}" x2="${PLOT.x + PLOT.width}" y2="${y}" stroke="#1f2937" stroke-width="1" opacity="0.85" />`);
-    grid.push(`<text x="${PLOT.x + PLOT.width + 16}" y="${y + 6}" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16">${escapeXml(formatPrice(price).replace("$", ""))}</text>`);
+    grid.push(`<text x="${PLOT.x + PLOT.width - 10}" y="${y + 6}" fill="#8b949e" text-anchor="end" font-family="${FONT_MONO}" font-size="15">${escapeXml(formatPrice(price).replace("$", ""))}</text>`);
   }
   for (let i = 0; i <= 5; i += 1) {
     const x = PLOT.x + (PLOT.width / 5) * i;
@@ -122,8 +126,8 @@ function buildMomentumChartSvg({ alert, candles }) {
   const invalidY = Number.isFinite(invalidationPrice) ? yFor(invalidationPrice) : null;
   const startLabel = formatTimeEst(rows[0].time);
   const endLabel = formatTimeEst(last.time);
-  const title = `${alert.asset} ${direction} · ${alert.triggerKind === "momentum_ignition" ? (isShort ? "Breakdown" : "Breakout") : "Momentum continuation"}`;
-  const subtitle = `1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)} · vol ${Number(alert.volumeVsBaseline || 0).toFixed(1)}x`;
+  const title = `${alert.asset} ${isShort ? "SHORT BIAS" : "LONG"} · ${formatPrice(alertPrice)}`;
+  const subtitle = `Real Hyperliquid ${rows.length} x 5m candle snapshot · 1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
   <svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
@@ -140,22 +144,22 @@ function buildMomentumChartSvg({ alert, candles }) {
     </defs>
     <rect width="${WIDTH}" height="${HEIGHT}" rx="34" fill="url(#bg)" />
     <rect x="28" y="28" width="${WIDTH - 56}" height="${HEIGHT - 56}" rx="26" fill="#0a0c10" stroke="#23312f" stroke-width="1.5" />
-    <text x="72" y="72" fill="#ecfdf5" font-family="Inter, Geist, Arial, sans-serif" font-size="34" font-weight="800">${escapeXml(title)}</text>
-    <text x="72" y="104" fill="#9ca3af" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">${escapeXml(subtitle)}</text>
-    <text x="${WIDTH - 72}" y="78" fill="#34d399" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" font-weight="800">HyperPulse</text>
+    <text x="64" y="72" fill="#ecfdf5" font-family="${FONT_SANS}" font-size="34" font-weight="800">${escapeXml(title)}</text>
+    <text x="64" y="104" fill="#9ca3af" font-family="${FONT_MONO}" font-size="17">${escapeXml(subtitle)}</text>
+    <text x="${WIDTH - 64}" y="78" fill="#34d399" text-anchor="end" font-family="${FONT_MONO}" font-size="18" font-weight="800">Momentum snapshot</text>
     <rect x="${PLOT.x}" y="${PLOT.y}" width="${PLOT.width}" height="${PLOT.height}" rx="18" fill="#080b0f" stroke="#1f2937" />
     ${grid.join("")}
     ${alertY ? `<line x1="${PLOT.x}" y1="${alertY}" x2="${PLOT.x + PLOT.width}" y2="${alertY}" stroke="#f8fafc" stroke-width="1.5" stroke-dasharray="5 6" opacity="0.75" />` : ""}
-    ${targetY ? lineLabel({ y: targetY, text: "TARGET", color: targetColor }) : ""}
-    ${invalidY ? lineLabel({ y: invalidY, text: "INVALID", color: invalidColor }) : ""}
+    ${targetY ? lineLabel({ y: targetY, label: isShort ? "COVER" : "TRIM", price: targetPrice, color: targetColor }) : ""}
+    ${invalidY ? lineLabel({ y: invalidY, label: "INVALID", price: invalidationPrice, color: invalidColor }) : ""}
     ${candleSvg}
     <line x1="${PLOT.x}" y1="${currentY}" x2="${PLOT.x + PLOT.width}" y2="${currentY}" stroke="#e5e7eb" stroke-width="1.4" stroke-dasharray="4 6" opacity="0.8" />
-    <rect x="${PLOT.x + PLOT.width + 8}" y="${currentY - 18}" width="118" height="36" rx="8" fill="#e5e7eb" />
-    <text x="${PLOT.x + PLOT.width + 67}" y="${currentY + 6}" fill="#0a0c10" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="800">${escapeXml(formatPrice(last.close).replace("$", ""))}</text>
-    <text x="${PLOT.x}" y="${PLOT.y + PLOT.height + 34}" fill="#8b949e" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16">${escapeXml(startLabel)} EST</text>
-    <text x="${PLOT.x + PLOT.width}" y="${PLOT.y + PLOT.height + 34}" fill="#8b949e" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16">${escapeXml(endLabel)} EST</text>
-    <rect x="72" y="610" width="1056" height="38" rx="14" fill="#0f172a" stroke="#1f2937" />
-    <text x="92" y="635" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16">Alert price ${escapeXml(formatPrice(alertPrice))} · Target ${escapeXml(formatPrice(targetPrice))} · Invalidation ${escapeXml(formatPrice(invalidationPrice))}</text>
+    <rect x="${PLOT.x + PLOT.width - 124}" y="${currentY - 17}" width="116" height="34" rx="8" fill="#e5e7eb" />
+    <text x="${PLOT.x + PLOT.width - 66}" y="${currentY + 5}" fill="#0a0c10" text-anchor="middle" font-family="${FONT_MONO}" font-size="15" font-weight="800">${escapeXml(formatPrice(last.close).replace("$", ""))}</text>
+    <text x="${PLOT.x}" y="${PLOT.y + PLOT.height + 34}" fill="#8b949e" font-family="${FONT_MONO}" font-size="15">${escapeXml(startLabel)} EST</text>
+    <text x="${PLOT.x + PLOT.width}" y="${PLOT.y + PLOT.height + 34}" fill="#8b949e" text-anchor="end" font-family="${FONT_MONO}" font-size="15">${escapeXml(endLabel)} EST</text>
+    <rect x="64" y="606" width="1072" height="42" rx="14" fill="#0f172a" stroke="#1f2937" />
+    <text x="86" y="633" fill="#cbd5e1" font-family="${FONT_MONO}" font-size="15">Alert ${escapeXml(formatPrice(alertPrice))} · ${isShort ? "Cover" : "Trim"} ${escapeXml(formatPrice(targetPrice))} · Invalid ${isShort ? "above" : "below"} ${escapeXml(formatPrice(invalidationPrice))}</text>
   </svg>`;
 }
 

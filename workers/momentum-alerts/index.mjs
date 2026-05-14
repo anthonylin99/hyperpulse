@@ -112,7 +112,10 @@ const TELEGRAM_ENV = cleanEnv(process.env.TELEGRAM_ENABLED).toLowerCase();
 const TELEGRAM_ENABLED = TELEGRAM_ENV === "false"
   ? false
   : TELEGRAM_ENV === "true" || TELEGRAM_CONFIGURED;
-const TELEGRAM_CHARTS_ENABLED = false;
+const TELEGRAM_CHARTS_ENV = cleanEnv(process.env.TELEGRAM_CHARTS_ENABLED || process.env.MOMENTUM_ALERT_TELEGRAM_CHARTS).toLowerCase();
+const TELEGRAM_CHARTS_ENABLED = TELEGRAM_CHARTS_ENV === ""
+  ? TELEGRAM_ENABLED
+  : TELEGRAM_CHARTS_ENV === "true" || TELEGRAM_CHARTS_ENV === "1" || TELEGRAM_CHARTS_ENV === "yes";
 const DRY_RUN_REQUESTED = envFlag("MOMENTUM_ALERT_DRY_RUN");
 const DRY_RUN =
   DRY_RUN_REQUESTED &&
@@ -1019,6 +1022,7 @@ async function buildCandidate(asset, radarContext) {
     routeHref: `/markets?asset=${encodeURIComponent(asset.asset)}`,
     payload: {
       direction,
+      rawName: asset.rawName,
       signalBucket: bucket,
       easternDate: easternDateKey(),
       interval: CANDLE_INTERVAL,
@@ -1252,6 +1256,37 @@ async function sendTelegramMessage(text) {
   return telegramReceipt(payload, "sendMessage");
 }
 
+async function fetchAlertChartCandles(alert) {
+  const endTime = Date.now();
+  const startTime = endTime - LOOKBACK_MS;
+  const coin = cleanEnv(alert?.payload?.rawName) || cleanEnv(alert?.asset);
+  if (!coin) throw new Error("Chart snapshot missing asset.");
+  const rows = await withHyperliquidRetry(`telegram-chart:${coin}`, () =>
+    info.candleSnapshot({ coin, interval: CANDLE_INTERVAL, startTime, endTime }),
+  );
+  return rows.map(candleToRow).filter(Boolean).sort((a, b) => a.time - b.time);
+}
+
+async function sendTelegramPhoto({ text, alert }) {
+  const candles = await fetchAlertChartCandles(alert);
+  const { renderMomentumChartPng } = await import("./chart.mjs");
+  const png = await renderMomentumChartPng({ alert, candles });
+  const form = new FormData();
+  form.append("chat_id", TELEGRAM_CHAT_ID);
+  form.append("caption", normalizeTelegramText(text).slice(0, 1024));
+  form.append("photo", new Blob([png], { type: "image/png" }), `hyperpulse-${String(alert.asset).toLowerCase()}-momentum.png`);
+
+  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.description || `Telegram photo request failed with ${response.status}`);
+  }
+  return telegramReceipt(payload, "sendPhoto");
+}
+
 function telegramReceipt(payload, method) {
   const message = payload?.result ?? {};
   return {
@@ -1265,6 +1300,13 @@ function telegramReceipt(payload, method) {
 async function sendTelegramNotification(payload) {
   const text = payload?.text;
   if (!text) throw new Error("Notification payload missing text.");
+  if (TELEGRAM_CHARTS_ENABLED && payload?.alert) {
+    try {
+      return await sendTelegramPhoto({ text, alert: payload.alert });
+    } catch (error) {
+      console.warn("[momentum-alerts] telegram chart failed; falling back to text", error instanceof Error ? error.message : error);
+    }
+  }
   return await sendTelegramMessage(text);
 }
 
