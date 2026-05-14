@@ -1080,9 +1080,12 @@ function formatMultiple(value, digits = 1) {
   return `${value.toFixed(digits)}x`;
 }
 
-function conciseFundingTag(value) {
-  if (!Number.isFinite(value)) return "Funding n/a";
-  return `Funding ${formatPct(value)}`;
+function volumeContextTag(value) {
+  if (!Number.isFinite(value)) return "Volume confirmation n/a";
+  if (value >= 3) return `Volume surge: ${formatMultiple(value)} recent avg`;
+  if (value >= 1.5) return `Volume confirming: ${formatMultiple(value)} recent avg`;
+  if (value >= 1) return `Volume active: ${formatMultiple(value)} recent avg`;
+  return `Volume light: ${formatMultiple(value)} recent avg`;
 }
 
 function buildTelegramText(alert) {
@@ -1097,7 +1100,7 @@ function buildTelegramText(alert) {
     : alert.triggerKind === "momentum_ignition"
       ? "Breakout alert"
       : "Momentum alert";
-  const contextLine = `Vol ${formatMultiple(alert.volumeVsBaseline)} · ${conciseFundingTag(alert.fundingApr)}`;
+  const contextLine = volumeContextTag(alert.volumeVsBaseline);
   const actionLine = `${direction === "SHORT" ? "Cover" : "Trim"} ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`;
   const returnLine = `1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`;
   const qualityLine = Number.isFinite(score) ? `${severity} · ${score.toFixed(2)}σ edge` : `${severity} · breakout`;
