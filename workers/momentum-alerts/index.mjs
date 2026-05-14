@@ -1080,62 +1080,38 @@ function formatMultiple(value, digits = 1) {
   return `${value.toFixed(digits)}x`;
 }
 
-function setupLabel(alert) {
-  const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
-  if (alert.triggerKind === "momentum_ignition") {
-    return direction === "SHORT" ? "BREAKDOWN" : "BREAKOUT";
-  }
-  return direction === "SHORT" ? "DOWNSIDE CONTINUATION" : "MOMENTUM CONTINUATION";
-}
-
-function triggerLevelLine(alert) {
-  const direction = alert.payload?.direction === "short" ? "short" : "long";
-  const recentHigh = Number(alert.payload?.recentHigh);
-  const recentLow = Number(alert.payload?.recentLow);
-  const support = alert.payload?.support;
-  const resistance = alert.payload?.resistance;
-
-  if (direction === "short") {
-    if (Number.isFinite(recentLow) && alert.payload?.breakdown) return `Lost: ${formatPrice(recentLow)}`;
-    if (support?.price) return `Level: below ${formatPrice(Number(support.price))}`;
-    return `Trigger: downside momentum`;
-  }
-
-  if (Number.isFinite(recentHigh) && alert.payload?.breakout) return `Broke: ${formatPrice(recentHigh)}`;
-  if (resistance?.price) return `Level: above ${formatPrice(Number(resistance.price))}`;
-  return `Trigger: upside momentum`;
-}
-
-function fundingTag(value) {
-  if (!Number.isFinite(value)) return "funding n/a";
-  if (Math.abs(value) < 8) return `funding ${formatPct(value)}`;
-  return value > 0 ? `funding rich ${formatPct(value)}` : `funding cheap ${formatPct(value)}`;
+function conciseFundingTag(value) {
+  if (!Number.isFinite(value)) return "Funding n/a";
+  return `Funding ${formatPct(value)}`;
 }
 
 function buildTelegramText(alert) {
   const severity = alert.severity === "high" ? "HIGH" : "MED";
   const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
-  const invalidationLabel = direction === "SHORT" ? "Invalid >" : "Invalid <";
+  const headlineSide = direction === "SHORT" ? "SHORT BIAS" : "LONG";
+  const invalidationLabel = direction === "SHORT" ? "Invalid above" : "Invalid below";
   const radarEdge = alert.payload?.radarEdge;
-  const alertHeader = radarEdge?.telegramEligible
-    ? direction === "SHORT"
-      ? `Radar weakness alert · short gate is strict`
-      : `Radar momentum alert · ${Number(radarEdge.score).toFixed(2)}σ long edge`
-    : `Strict breakout alert · not every top mover qualifies`;
-  const radarLine = radarEdge
-    ? `Edge: ${Number(radarEdge.score).toFixed(2)}σ · vs BTC ${formatPct(Number(radarEdge.btcResidualPct))} · vs Basket ${formatPct(Number(radarEdge.basketResidualPct))}`
-    : null;
-  const lines = [
-    `HYPERPULSE · ${severity}`,
-    alertHeader,
-    `${alert.asset} ${direction} · ${setupLabel(alert)}`,
-    `Now: ${formatPrice(alert.alertPrice)} · 1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`,
-    radarLine,
-    triggerLevelLine(alert),
-    `Trim: ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`,
-    `Context: vol ${formatMultiple(alert.volumeVsBaseline)} · ${fundingTag(alert.fundingApr)}`,
-  ].filter(Boolean);
-  return lines.join("\n");
+  const score = Number(radarEdge?.score);
+  const edgeLine = radarEdge
+    ? `vs BTC ${formatPct(Number(radarEdge.btcResidualPct))} · vs Basket ${formatPct(Number(radarEdge.basketResidualPct))}`
+    : alert.triggerKind === "momentum_ignition"
+      ? "Breakout alert"
+      : "Momentum alert";
+  const contextLine = `Vol ${formatMultiple(alert.volumeVsBaseline)} · ${conciseFundingTag(alert.fundingApr)}`;
+  const actionLine = `${direction === "SHORT" ? "Cover" : "Trim"} ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`;
+  const returnLine = `1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`;
+  const qualityLine = Number.isFinite(score) ? `${severity} · ${score.toFixed(2)}σ edge` : `${severity} · breakout`;
+  return [
+    `${alert.asset} ${headlineSide}`,
+    qualityLine,
+    "",
+    `Price ${formatPrice(alert.alertPrice)}`,
+    returnLine,
+    edgeLine,
+    "",
+    actionLine,
+    contextLine,
+  ].filter((line) => line != null).join("\n");
 }
 
 function dbRowToAlert(row) {
