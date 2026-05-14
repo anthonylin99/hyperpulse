@@ -76,6 +76,7 @@ if (!MOMENTUM_ALERTS_ENABLED) {
 }
 
 const WORKER = "momentum-alerts";
+const BUILD_ID = cleanEnv(process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA) || "local";
 const NETWORK = cleanEnv(process.env.HYPERPULSE_NETWORK) === "testnet" ? "testnet" : "mainnet";
 const RUN_ONCE = process.argv.includes("--once") || envFlag("MOMENTUM_ALERT_ONCE");
 const LOOP_INTERVAL_MS = Math.max(envNumber("MOMENTUM_ALERT_INTERVAL_MS", 5 * 60 * 1000), 60_000);
@@ -135,6 +136,8 @@ const RAW_APP_URL = normalizeAppUrl(process.env.NEXT_PUBLIC_APP_URL || process.e
 const APP_URL = RAW_APP_URL.includes("hyperpulse-gold.vercel.app") ? "https://hyperpulsehl.com" : RAW_APP_URL;
 const CONFIGURED_ASSETS = parseList(process.env.MOMENTUM_ALERT_ASSETS);
 const DEBUG = envFlag("MOMENTUM_ALERT_DEBUG");
+const HYPERLIQUID_RETRY_ATTEMPTS = clamp(envNumber("MOMENTUM_ALERT_HL_RETRY_ATTEMPTS", 3), 1, 6);
+const HYPERLIQUID_RETRY_BASE_MS = envNumber("MOMENTUM_ALERT_HL_RETRY_BASE_MS", 1250);
 
 const PRIORITY_ASSETS = new Set([
   "BTC", "ETH", "SOL", "HYPE", "ZEC", "TAO", "TON", "AAVE", "NEAR", "LINK", "SUI", "DOGE",
@@ -161,6 +164,31 @@ function clamp(value, min, max) {
 function parseList(value, fallback = []) {
   if (!value) return fallback;
   return cleanEnv(value).split(",").map((item) => cleanEnv(item)).filter(Boolean);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableHyperliquidError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /429|Too Many Requests|rate limit|ECONNRESET|ETIMEDOUT|fetch failed/i.test(message);
+}
+
+async function withHyperliquidRetry(label, fn) {
+  let lastError;
+  for (let attempt = 1; attempt <= HYPERLIQUID_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableHyperliquidError(error) || attempt === HYPERLIQUID_RETRY_ATTEMPTS) break;
+      const waitMs = HYPERLIQUID_RETRY_BASE_MS * attempt + Math.floor(Math.random() * 350);
+      console.warn(`[momentum-alerts] ${label} retry ${attempt}/${HYPERLIQUID_RETRY_ATTEMPTS} after ${waitMs}ms`, error instanceof Error ? error.message : error);
+      await sleep(waitMs);
+    }
+  }
+  throw lastError;
 }
 
 function parseNumber(value) {
@@ -453,7 +481,7 @@ async function finishRun(id, status, message = null, payload = {}) {
 }
 
 async function loadUniverse() {
-  const [meta, ctxs] = await info.metaAndAssetCtxs();
+  const [meta, ctxs] = await withHyperliquidRetry("metaAndAssetCtxs", () => info.metaAndAssetCtxs());
   const assets = meta.universe
     .map((entry, index) => {
       const symbol = normalizeSymbol(entry.name);
@@ -636,14 +664,18 @@ function radarEdgeToScore(edge) {
 async function fetchCandles(asset) {
   const endTime = Date.now();
   const startTime = endTime - LOOKBACK_MS;
-  const rows = await info.candleSnapshot({ coin: asset.rawName, interval: CANDLE_INTERVAL, startTime, endTime });
+  const rows = await withHyperliquidRetry(`candles:${asset.asset}`, () =>
+    info.candleSnapshot({ coin: asset.rawName, interval: CANDLE_INTERVAL, startTime, endTime }),
+  );
   return rows.map(candleToRow).filter(Boolean).sort((a, b) => a.time - b.time);
 }
 
 async function fetchAlertChartCandles(asset) {
   const endTime = Date.now();
   const startTime = endTime - Math.max(LOOKBACK_MS, 30 * 60 * 60 * 1000);
-  const rows = await info.candleSnapshot({ coin: asset, interval: CANDLE_INTERVAL, startTime, endTime });
+  const rows = await withHyperliquidRetry(`chart-candles:${asset}`, () =>
+    info.candleSnapshot({ coin: asset, interval: CANDLE_INTERVAL, startTime, endTime }),
+  );
   return rows.map(candleToRow).filter(Boolean).sort((a, b) => a.time - b.time);
 }
 
@@ -1401,6 +1433,7 @@ async function recoverTelegramNotifications(now) {
 async function runCycle() {
   await assertTablesReady();
   const runId = await startRun({
+    buildId: BUILD_ID,
     network: NETWORK,
     dryRun: DRY_RUN,
     dynamicMoverLimit: DYNAMIC_MOVER_LIMIT,
@@ -1489,7 +1522,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegramHourly=${TELEGRAM_HOURLY_CAP}/hour maxCycle=${MAX_ALERTS_PER_CYCLE} maxTelegramCycle=${MAX_TELEGRAM_PER_CYCLE} radarLong>=${RADAR_LONG_STD_ALERT_THRESHOLD}σ radarShort>=${RADAR_SHORT_STD_ALERT_THRESHOLD}σ telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} charts=${TELEGRAM_CHARTS_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
+  console.log(`[momentum-alerts] starting build=${BUILD_ID.slice(0, 12)} network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegramHourly=${TELEGRAM_HOURLY_CAP}/hour maxCycle=${MAX_ALERTS_PER_CYCLE} maxTelegramCycle=${MAX_TELEGRAM_PER_CYCLE} radarLong>=${RADAR_LONG_STD_ALERT_THRESHOLD}σ radarShort>=${RADAR_SHORT_STD_ALERT_THRESHOLD}σ telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} charts=${TELEGRAM_CHARTS_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
   await runCycle();
   if (RUN_ONCE) {
     await pool.end();
