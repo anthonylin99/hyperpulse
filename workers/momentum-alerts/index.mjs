@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { Pool } from "pg";
-import { renderMomentumChartPng } from "./chart.mjs";
 
 const PG_SSL_MODES_TO_PIN = new Set(["prefer", "require", "verify-ca"]);
 
@@ -113,7 +112,7 @@ const TELEGRAM_ENV = cleanEnv(process.env.TELEGRAM_ENABLED).toLowerCase();
 const TELEGRAM_ENABLED = TELEGRAM_ENV === "false"
   ? false
   : TELEGRAM_ENV === "true" || TELEGRAM_CONFIGURED;
-const TELEGRAM_CHARTS_ENABLED = envFlag("TELEGRAM_CHARTS_ENABLED", true);
+const TELEGRAM_CHARTS_ENABLED = false;
 const DRY_RUN_REQUESTED = envFlag("MOMENTUM_ALERT_DRY_RUN");
 const DRY_RUN =
   DRY_RUN_REQUESTED &&
@@ -670,15 +669,6 @@ async function fetchCandles(asset) {
   return rows.map(candleToRow).filter(Boolean).sort((a, b) => a.time - b.time);
 }
 
-async function fetchAlertChartCandles(asset) {
-  const endTime = Date.now();
-  const startTime = endTime - Math.max(LOOKBACK_MS, 30 * 60 * 60 * 1000);
-  const rows = await withHyperliquidRetry(`chart-candles:${asset}`, () =>
-    info.candleSnapshot({ coin: asset, interval: CANDLE_INTERVAL, startTime, endTime }),
-  );
-  return rows.map(candleToRow).filter(Boolean).sort((a, b) => a.time - b.time);
-}
-
 async function getOpenInterestChangePct(asset) {
   try {
     const key = assetKey(asset.asset);
@@ -1123,7 +1113,6 @@ function fundingTag(value) {
 }
 
 function buildTelegramText(alert) {
-  const link = new URL(alert.routeHref || `/markets?asset=${encodeURIComponent(alert.asset)}`, APP_URL).toString();
   const severity = alert.severity === "high" ? "HIGH" : "MED";
   const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
   const invalidationLabel = direction === "SHORT" ? "Invalid >" : "Invalid <";
@@ -1145,7 +1134,6 @@ function buildTelegramText(alert) {
     triggerLevelLine(alert),
     `Trim: ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`,
     `Context: vol ${formatMultiple(alert.volumeVsBaseline)} · ${fundingTag(alert.fundingApr)}`,
-    `Chart: ${link}`,
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -1285,25 +1273,6 @@ async function sendTelegramMessage(text) {
   return telegramReceipt(payload, "sendMessage");
 }
 
-async function sendTelegramPhoto({ text, alert }) {
-  if (!alert?.asset) throw new Error("Chart alert payload missing asset.");
-  const candles = await fetchAlertChartCandles(alert.asset);
-  const png = await renderMomentumChartPng({ alert, candles });
-  const form = new FormData();
-  form.append("chat_id", TELEGRAM_CHAT_ID);
-  form.append("caption", normalizeTelegramText(text).slice(0, 1024));
-  form.append("photo", new Blob([png], { type: "image/png" }), `hyperpulse-${alert.asset.toLowerCase()}-momentum.png`);
-  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
-    method: "POST",
-    body: form,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.description || `Telegram photo request failed with ${response.status}`);
-  }
-  return telegramReceipt(payload, "sendPhoto");
-}
-
 function telegramReceipt(payload, method) {
   const message = payload?.result ?? {};
   return {
@@ -1317,13 +1286,6 @@ function telegramReceipt(payload, method) {
 async function sendTelegramNotification(payload) {
   const text = payload?.text;
   if (!text) throw new Error("Notification payload missing text.");
-  if (TELEGRAM_CHARTS_ENABLED && payload?.alert) {
-    try {
-      return await sendTelegramPhoto({ text, alert: payload.alert });
-    } catch (error) {
-      console.warn("[momentum-alerts] telegram chart failed; falling back to text", error instanceof Error ? error.message : error);
-    }
-  }
   return await sendTelegramMessage(text);
 }
 
