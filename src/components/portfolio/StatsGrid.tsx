@@ -29,7 +29,7 @@ function RailSkeleton() {
 }
 
 export default function StatsGrid({ density = "compact" }: { density?: "compact" | "roomy" }) {
-  const { stats, trades, loading } = usePortfolio();
+  const { stats, trades, loading, capitalSummary } = usePortfolio();
   const { accountState } = useWallet();
 
   const metrics = useMemo<RailMetric[]>(() => {
@@ -41,8 +41,15 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
     const openPositions = perpPositions + spotPositions;
     const unrealizedPnl = accountState?.unrealizedPnl ?? 0;
 
-    const netPnl =
+    const tradingPnl =
       stats ? stats.totalPnl + stats.totalFundingNet - stats.totalFeesPaid : 0;
+    const netExternalFlows = capitalSummary?.netExternalCapitalUsd ?? 0;
+    const directCashNet = capitalSummary
+      ? (capitalSummary.directDepositsUsd ?? 0) - (capitalSummary.directWithdrawalsUsd ?? 0)
+      : 0;
+    const transferNet = capitalSummary
+      ? (capitalSummary.externalTransferInUsd ?? 0) - (capitalSummary.externalTransferOutUsd ?? 0)
+      : 0;
 
     return [
       {
@@ -52,12 +59,25 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
         tone: "neutral",
       },
       {
-        label: "Net P&L",
-        value: formatUSD(netPnl),
+        label: "External flows",
+        value: capitalSummary ? formatUSD(netExternalFlows) : "--",
+        subValue: capitalSummary
+          ? `Cash ${formatUSD(directCashNet)} · transfers ${formatUSD(transferNet)}`
+          : "Waiting for ledger",
+        tone:
+          netExternalFlows > 0
+            ? "positive"
+            : netExternalFlows < 0
+              ? "negative"
+              : "neutral",
+      },
+      {
+        label: "Trading P&L",
+        value: stats ? formatUSD(tradingPnl) : "--",
         subValue: stats
-          ? `Trading ${formatUSD(stats.totalPnl)} · Funding ${formatUSD(stats.totalFundingNet)}`
+          ? `Closed ${formatUSD(stats.totalPnl)} · fees/funding ${formatUSD(stats.totalFundingNet - stats.totalFeesPaid)}`
           : "Waiting for trade history",
-        tone: netPnl > 0 ? "positive" : netPnl < 0 ? "negative" : "neutral",
+        tone: tradingPnl > 0 ? "positive" : tradingPnl < 0 ? "negative" : "neutral",
       },
       {
         label: "Win rate",
@@ -76,12 +96,6 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
         tone: "neutral",
       },
       {
-        label: "Fees",
-        value: stats ? formatUSD(stats.totalFeesPaid) : "--",
-        subValue: stats ? `Across ${trades.length} trades` : "Populates after trading",
-        tone: "neutral",
-      },
-      {
         label: "Unrealized",
         value: formatUSD(unrealizedPnl),
         subValue: "Mark-to-market",
@@ -89,7 +103,7 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
           unrealizedPnl > 0 ? "positive" : unrealizedPnl < 0 ? "negative" : "neutral",
       },
     ];
-  }, [accountState, stats, trades.length]);
+  }, [accountState, capitalSummary, stats]);
 
   if (loading && trades.length === 0 && !accountState) return <RailSkeleton />;
 
@@ -125,7 +139,7 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
         ))}
       </div>
       <div className="border-t border-zinc-800 bg-emerald-500/[0.04] px-4 py-2 text-[11px] text-zinc-500">
-        Equity = perps + full spot wallet. Staked HYPE not included.
+        External flows exclude internal spot/perp moves. Equity = perps + full spot wallet. Staked HYPE not included.
       </div>
     </section>
   );

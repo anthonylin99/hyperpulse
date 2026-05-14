@@ -142,6 +142,38 @@ export interface FundingEntry {
   nSamples: number;
 }
 
+export interface CapitalFlowEvent {
+  time: number;
+  type:
+    | "external_deposit"
+    | "external_withdrawal"
+    | "reward"
+    | "internal_transfer"
+    | "staking_transfer";
+  amountUsd: number;
+  label: string;
+  sourceType: string;
+  token?: string;
+}
+
+export interface CapitalFlowSummary {
+  directDepositsUsd: number;
+  directWithdrawalsUsd: number;
+  externalTransferInUsd: number;
+  externalTransferOutUsd: number;
+  externalDepositsUsd: number;
+  externalWithdrawalsUsd: number;
+  netExternalCapitalUsd: number;
+  rewardsUsd: number;
+  internalTransfersUsd: number;
+  stakingDeposits: number;
+  stakingWithdrawals: number;
+  flowCount: number;
+  lastFlowTime: number | null;
+  notes: string[];
+  events: CapitalFlowEvent[];
+}
+
 export interface PortfolioStats {
   totalTrades: number;
   winners: number;

@@ -22,6 +22,7 @@ import {
 } from "@/lib/analytics";
 import { generateInsights } from "@/lib/insights";
 import { withNetworkParam } from "@/lib/hyperliquid";
+import { computeCapitalAdjustedEquityCurve, summarizeCapitalFlows } from "@/lib/capitalFlows";
 import type {
   Fill,
   FundingEntry,
@@ -34,6 +35,7 @@ import type {
   Insight,
   CorrelationResult,
   TradeSizingSnapshot,
+  CapitalFlowSummary,
 } from "@/types";
 
 interface PortfolioContextValue {
@@ -47,6 +49,7 @@ interface PortfolioContextValue {
   byDay: DailyBreakdown[];
   insights: Insight[];
   sizingSnapshots: TradeSizingSnapshot[];
+  capitalSummary: CapitalFlowSummary | null;
   correlation: CorrelationResult | null;
   researchLoading: boolean;
   researchError: string | null;
@@ -78,6 +81,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [byDay, setByDay] = useState<DailyBreakdown[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [sizingSnapshots, setSizingSnapshots] = useState<TradeSizingSnapshot[]>([]);
+  const [capitalSummary, setCapitalSummary] = useState<CapitalFlowSummary | null>(null);
   const [correlation, setCorrelation] = useState<CorrelationResult | null>(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchError, setResearchError] = useState<string | null>(null);
@@ -95,16 +99,25 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         const data = JSON.parse(cached);
         if (data.fills?.length > 0) {
           setFunding(data.funding ?? []);
+          const cachedCapitalSummary = data.capitalSummary ?? null;
+          setCapitalSummary(cachedCapitalSummary);
           // Recompute analytics from cached data
           const cachedFills = (data.fills as Fill[]).filter(isPerpFill);
           setFills(cachedFills);
           const rawTrades = groupFillsIntoTrades(cachedFills);
           const tradesWithFunding = mergeFundingIntoTrades(rawTrades, data.funding ?? []);
           setTrades(tradesWithFunding);
-          const startBal = Math.max(...tradesWithFunding.map((t) => t.notional), 1000);
+          const realizedNet = tradesWithFunding.reduce((sum, trade) => sum + trade.pnl, 0);
+          const startBal =
+            cachedCapitalSummary && Math.abs(cachedCapitalSummary.netExternalCapitalUsd) > 1
+              ? Math.max(Math.abs(cachedCapitalSummary.netExternalCapitalUsd), 100)
+              : Math.max(accountValueRef.current - realizedNet, 100);
           const portfolioStats = computePortfolioStats(tradesWithFunding, data.funding ?? [], startBal);
           setStats(portfolioStats);
-          setEquityCurve(computeEquityCurve(tradesWithFunding, startBal));
+          const cachedCurve = cachedCapitalSummary
+            ? computeCapitalAdjustedEquityCurve(tradesWithFunding, cachedCapitalSummary)
+            : [];
+          setEquityCurve(cachedCurve.length > 0 ? cachedCurve : computeEquityCurve(tradesWithFunding, startBal));
           setByAsset(computeByAsset(tradesWithFunding));
           setByHour(computeByTimeOfDay(tradesWithFunding));
           setByDay(computeByDayOfWeek(tradesWithFunding));
@@ -200,7 +213,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         Date.now() - 90 * 24 * 60 * 60 * 1000,
         1,
       );
-      const [fillsRes, fundingRes, spotRes] = await Promise.all([
+      const [fillsRes, fundingRes, spotRes, ledgerRes] = await Promise.all([
         fetch(
           withNetworkParam(
             `/api/user/fills?address=${address}&startTime=${fillsStartTime}&aggregateByTime=true`,
@@ -212,6 +225,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           ),
         ),
         fetch(withNetworkParam("/api/spot")),
+        fetch(withNetworkParam(`/api/user/ledger?address=${address}&startTime=1`)),
       ]);
 
       if (!fillsRes.ok) throw new Error("Failed to fetch trade history");
@@ -219,6 +233,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       const rawFills = await fillsRes.json();
       const rawFunding = fundingRes.ok ? await fundingRes.json() : [];
       const rawSpot = spotRes.ok ? await spotRes.json() : null;
+      const rawLedger = ledgerRes.ok ? await ledgerRes.json() : [];
 
       const coinAliasMap = new Map<string, string>();
       for (const asset of Array.isArray(rawSpot?.assets) ? rawSpot.assets : []) {
@@ -255,25 +270,39 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
       const normalizedFunding: FundingEntry[] = (
         Array.isArray(rawFunding) ? rawFunding : []
-      ).map((f: Record<string, unknown>) => ({
-        time: Number(f.time ?? 0),
-        coin: String(f.coin ?? ""),
-        usdc: parseFloat(String(f.usdc ?? "0")),
-        positionSize: parseFloat(String(f.szi ?? "0")),
-        fundingRate: parseFloat(String(f.fundingRate ?? "0")),
-        nSamples: Number(f.nSamples ?? 0),
-      }));
+      ).map((f: Record<string, unknown>) => {
+        const delta =
+          f.delta && typeof f.delta === "object"
+            ? (f.delta as Record<string, unknown>)
+            : f;
+        return {
+          time: Number(f.time ?? delta.time ?? 0),
+          coin: coinAliasMap.get(String(delta.coin ?? "").toUpperCase()) ?? String(delta.coin ?? ""),
+          usdc: parseFloat(String(delta.usdc ?? "0")),
+          positionSize: parseFloat(String(delta.szi ?? "0")),
+          fundingRate: parseFloat(String(delta.fundingRate ?? "0")),
+          nSamples: Number(delta.nSamples ?? 0),
+        };
+      });
+
+      const capitalFlowSummary = summarizeCapitalFlows(rawLedger, address);
 
       const perpFills = normalizedFills.filter(isPerpFill);
 
       setFills(perpFills);
       setFunding(normalizedFunding);
+      setCapitalSummary(capitalFlowSummary);
 
       // Cache fills + funding for instant load next time
       try {
         localStorage.setItem(
           `hp_cache_${address.toLowerCase()}`,
-          JSON.stringify({ fills: perpFills, funding: normalizedFunding, cachedAt: Date.now() }),
+          JSON.stringify({
+            fills: perpFills,
+            funding: normalizedFunding,
+            capitalSummary: capitalFlowSummary,
+            cachedAt: Date.now(),
+          }),
         );
       } catch {
         // localStorage full — ignore
@@ -287,56 +316,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       );
       setTrades(tradesWithFunding);
 
-      // Calculate starting balance from deposit/withdrawal ledger
-      let startBal = 1000; // fallback
-      try {
-        const ledgerRes = await fetch(
-          withNetworkParam(`/api/user/ledger?address=${address}&startTime=1`),
-        );
-        if (ledgerRes.ok) {
-          const ledgerData = await ledgerRes.json();
-          // Sum actual deposits minus withdrawals to get net capital injected
-          let netDeposited = 0;
-          for (const entry of Array.isArray(ledgerData) ? ledgerData : []) {
-            const delta = entry.delta;
-            if (!delta || typeof delta !== "object") continue;
-            const type = String(delta.type ?? "");
-            if (type === "deposit") {
-              netDeposited += parseFloat(String(delta.usdc ?? "0"));
-            } else if (type === "withdraw") {
-              netDeposited -= parseFloat(String(delta.usdc ?? "0"));
-            } else if (type === "internalTransfer" || type === "send") {
-              // Incoming transfers = deposits, outgoing = withdrawals
-              const amt = parseFloat(String(delta.usdc ?? delta.usdcValue ?? "0"));
-              const dest = String(delta.destination ?? "").toLowerCase();
-              if (dest === address.toLowerCase()) {
-                netDeposited += amt;
-              } else {
-                netDeposited -= amt;
-              }
-            }
-          }
-          if (netDeposited > 0) {
-            startBal = netDeposited;
-          }
-        }
-      } catch {
-        // Ledger fetch failed — use fallback estimation
-      }
+      const realizedNet = tradesWithFunding.reduce((s, t) => s + t.pnl, 0);
+      let startBal =
+        Math.abs(capitalFlowSummary.netExternalCapitalUsd) > 1
+          ? Math.max(Math.abs(capitalFlowSummary.netExternalCapitalUsd), 100)
+          : Math.max(accountValueRef.current - realizedNet, 100);
 
-      // If ledger didn't give us a good number, estimate from account value
-      if (startBal <= 1000) {
-        const totalPnl = tradesWithFunding.reduce((s, t) => s + t.pnl, 0);
-        const currentValue = accountValueRef.current;
-        if (currentValue > 0) {
-          startBal = Math.max(currentValue - totalPnl, 100);
-        } else {
-          const maxNotional = Math.max(
-            ...tradesWithFunding.map((t) => t.notional),
-            0,
-          );
-          startBal = Math.max(maxNotional, Math.abs(totalPnl) * 2, 1000);
-        }
+      if (!Number.isFinite(startBal) || startBal <= 0) {
+        startBal = 1000;
       }
 
       const portfolioStats = computePortfolioStats(
@@ -346,7 +333,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       );
       setStats(portfolioStats);
 
-      const curve = computeEquityCurve(tradesWithFunding, startBal);
+      const capitalCurve = computeCapitalAdjustedEquityCurve(
+        tradesWithFunding,
+        capitalFlowSummary,
+      );
+      const curve =
+        capitalCurve.length > 0
+          ? capitalCurve
+          : computeEquityCurve(tradesWithFunding, startBal);
       setEquityCurve(curve);
 
       const assetData = computeByAsset(tradesWithFunding);
@@ -421,6 +415,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setByDay([]);
       setInsights([]);
       setSizingSnapshots([]);
+      setCapitalSummary(null);
       setCorrelation(null);
       setResearchError(null);
       setError(null);
@@ -442,6 +437,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         byDay,
         insights,
         sizingSnapshots,
+        capitalSummary,
         correlation,
         researchLoading,
         researchError,
