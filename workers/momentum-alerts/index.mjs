@@ -89,17 +89,21 @@ const LARGE_CAP_VOLUME_USD = envNumber("MOMENTUM_ALERT_LARGE_CAP_VOLUME_USD", 75
 const EXCEPTIONAL_MIN_OI_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_OI_USD", 3_000_000);
 const EXCEPTIONAL_MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_VOLUME_USD", 8_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
-const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 6), 1, 24);
-const TELEGRAM_HOURLY_CAP = clamp(envNumber("MOMENTUM_ALERT_HOURLY_CAP", 2), 1, 6);
-const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 10), TELEGRAM_DAILY_CAP, 24);
+const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 8), 1, 24);
+const TELEGRAM_HOURLY_CAP = clamp(envNumber("MOMENTUM_ALERT_HOURLY_CAP", 3), 1, 6);
+const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 30), TELEGRAM_DAILY_CAP, 60);
 const MAX_ALERTS_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_CYCLE", 3), 1, 8);
-const MAX_TELEGRAM_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_TELEGRAM_PER_CYCLE", 1), 1, 3);
+const MAX_TELEGRAM_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_TELEGRAM_PER_CYCLE", 2), 1, 3);
 const TELEGRAM_QUEUE_MAX_AGE_MS = envNumber("MOMENTUM_ALERT_QUEUE_MAX_AGE_MS", 60 * 60 * 1000);
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
 const SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_SCORE_THRESHOLD", 68);
 const HIGH_SCORE_THRESHOLD = envNumber("MOMENTUM_ALERT_HIGH_SCORE_THRESHOLD", 78);
+const RADAR_LONG_STD_ALERT_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_LONG_STD_THRESHOLD", 2);
+const RADAR_SHORT_STD_ALERT_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_SHORT_STD_THRESHOLD", 2.6);
+const RADAR_LONG_STORE_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_LONG_STORE_THRESHOLD", 1.35);
+const RADAR_SHORT_STORE_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_SHORT_STORE_THRESHOLD", 1.9);
 const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 const TELEGRAM_CHAT_ID = cleanEnv(process.env.TELEGRAM_CHAT_ID);
@@ -187,6 +191,47 @@ function average(values) {
   const clean = values.filter((value) => Number.isFinite(value));
   if (!clean.length) return null;
   return clean.reduce((sum, value) => sum + value, 0) / clean.length;
+}
+
+function median(values) {
+  const clean = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!clean.length) return 0;
+  const mid = Math.floor(clean.length / 2);
+  return clean.length % 2 === 0 ? (clean[mid - 1] + clean[mid]) / 2 : clean[mid];
+}
+
+function standardDeviation(values) {
+  const clean = values.filter(Number.isFinite);
+  if (clean.length < 2) return 0;
+  const mean = clean.reduce((sum, value) => sum + value, 0) / clean.length;
+  const variance = clean.reduce((sum, value) => sum + (value - mean) ** 2, 0) / clean.length;
+  return Math.sqrt(variance);
+}
+
+function robustStats(values) {
+  const clean = values.filter(Number.isFinite);
+  if (!clean.length) return { center: 0, scale: 1 };
+  const center = median(clean);
+  const mad = median(clean.map((value) => Math.abs(value - center))) * 1.4826;
+  return { center, scale: Math.max(mad, standardDeviation(clean), 0.0001) };
+}
+
+function robustZ(value, stats) {
+  return clampFloat(((Number.isFinite(value) ? value : 0) - stats.center) / stats.scale, -5, 5);
+}
+
+function clampFloat(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function liquidityWeight(asset) {
+  return Math.sqrt(Math.max(asset.dayVolumeUsd, 0) + Math.max(asset.openInterestUsd, 0) * 0.35);
+}
+
+function weightedAverage(items) {
+  const totalWeight = items.reduce((sum, item) => sum + Math.max(item.weight, 0), 0);
+  if (totalWeight <= 0) return average(items.map((item) => item.value)) ?? 0;
+  return items.reduce((sum, item) => sum + item.value * Math.max(item.weight, 0), 0) / totalWeight;
 }
 
 function formatPrice(value) {
@@ -465,6 +510,129 @@ async function loadUniverse() {
   return [...selected.values()].sort((a, b) => Math.abs(b.dayChangePct) - Math.abs(a.dayChangePct) || b.score - a.score);
 }
 
+function buildRadarContext(universe) {
+  const liquid = universe.filter((asset) => asset.markPx > 0 && Number.isFinite(asset.dayChangePct));
+  if (!liquid.length) return null;
+  const btcReturn = liquid.find((asset) => asset.asset === "BTC")?.dayChangePct ?? 0;
+  const basketReturn = weightedAverage(
+    liquid.map((asset) => ({
+      value: asset.dayChangePct,
+      weight: liquidityWeight(asset),
+    })),
+  );
+  const rawReturns = liquid.map((asset) => asset.dayChangePct);
+  const btcResiduals = liquid.map((asset) => asset.dayChangePct - btcReturn);
+  const basketResiduals = liquid.map((asset) => asset.dayChangePct - basketReturn);
+  return {
+    btcReturn,
+    basketReturn,
+    rawStats: robustStats(rawReturns),
+    btcResidualStats: robustStats(btcResiduals),
+    basketResidualStats: robustStats(basketResiduals),
+  };
+}
+
+function radarQualityScore(edgeScore, direction) {
+  const base = direction === "short" ? 76 : 78;
+  return clampFloat(base + Math.max(edgeScore, 0) * 7, HIGH_SCORE_THRESHOLD, 100);
+}
+
+function computeRadarEdge(asset, features, radarContext, direction) {
+  if (!radarContext) return null;
+  const rawReturn24hPct = Number.isFinite(features.return24h) ? features.return24h : asset.dayChangePct;
+  const btcResidualPct = rawReturn24hPct - radarContext.btcReturn;
+  const basketResidualPct = rawReturn24hPct - radarContext.basketReturn;
+  const rawReturnZ = robustZ(rawReturn24hPct, radarContext.rawStats);
+  const btcResidualZ = robustZ(btcResidualPct, radarContext.btcResidualStats);
+  const basketResidualZ = robustZ(basketResidualPct, radarContext.basketResidualStats);
+  const return1h = features.return1h ?? 0;
+  const return4h = features.return4h ?? 0;
+  const accelerationRaw = return1h - return4h / 4 + (return4h - rawReturn24hPct / 6) * 0.35;
+  const accelerationScore = clampFloat(accelerationRaw / 1.5, -2.5, 2.5);
+  const volumeVs = features.volumeVsBaseline ?? 1;
+  const participationScore = clampFloat((volumeVs - 1) * 0.55 + (asset.liquidityQualified ? 0.25 : 0), -0.75, 1.5);
+
+  if (direction === "long") {
+    const structureScore = features.breakout ? 1.2 : features.nearHigh ? 0.55 : 0;
+    const score =
+      0.35 * btcResidualZ +
+      0.25 * basketResidualZ +
+      0.15 * rawReturnZ +
+      0.15 * structureScore +
+      0.07 * accelerationScore +
+      0.03 * participationScore;
+    const outperformanceBreakout =
+      rawReturn24hPct >= 8 &&
+      btcResidualPct >= 5 &&
+      basketResidualPct >= 3 &&
+      (features.breakout || features.nearHigh || return4h >= 2);
+    return {
+      direction,
+      score,
+      rawReturn24hPct,
+      btcReturn24hPct: radarContext.btcReturn,
+      basketReturn24hPct: radarContext.basketReturn,
+      btcResidualPct,
+      basketResidualPct,
+      rawReturnZ,
+      btcResidualZ,
+      basketResidualZ,
+      structureScore,
+      accelerationScore,
+      participationScore,
+      storeEligible: score >= RADAR_LONG_STORE_THRESHOLD || outperformanceBreakout,
+      telegramEligible: score >= RADAR_LONG_STD_ALERT_THRESHOLD || outperformanceBreakout,
+      triggerLabel: outperformanceBreakout ? "relative breakout" : "relative momentum",
+    };
+  }
+
+  const weakBtcResidualPct = -btcResidualPct;
+  const weakBasketResidualPct = -basketResidualPct;
+  const weakRawZ = -rawReturnZ;
+  const weakBtcZ = -btcResidualZ;
+  const weakBasketZ = -basketResidualZ;
+  const structureScore = features.breakdown ? 1.25 : features.nearLow ? 0.65 : 0;
+  const score =
+    0.35 * weakBtcZ +
+    0.25 * weakBasketZ +
+    0.15 * weakRawZ +
+    0.15 * structureScore +
+    0.07 * -accelerationScore +
+    0.03 * participationScore;
+  const downsidePressure =
+    weakBtcResidualPct >= 4.5 &&
+    weakBasketResidualPct >= 3.5 &&
+    (rawReturn24hPct <= -2 || features.breakdown || features.nearLow);
+  return {
+    direction,
+    score,
+    rawReturn24hPct,
+    btcReturn24hPct: radarContext.btcReturn,
+    basketReturn24hPct: radarContext.basketReturn,
+    btcResidualPct,
+    basketResidualPct,
+    rawReturnZ,
+    btcResidualZ: weakBtcZ,
+    basketResidualZ: weakBasketZ,
+    structureScore,
+    accelerationScore: -accelerationScore,
+    participationScore,
+    storeEligible: score >= RADAR_SHORT_STORE_THRESHOLD && downsidePressure,
+    telegramEligible: score >= RADAR_SHORT_STD_ALERT_THRESHOLD && downsidePressure,
+    triggerLabel: "relative weakness",
+  };
+}
+
+function radarEdgeToScore(edge) {
+  return {
+    direction: edge.direction,
+    triggerKind: edge.direction === "short" ? "momentum_continuation" : "momentum_continuation",
+    score: radarQualityScore(edge.score, edge.direction),
+    severity: edge.telegramEligible ? "high" : "medium",
+    radarEdge: edge,
+  };
+}
+
 async function fetchCandles(asset) {
   const endTime = Date.now();
   const startTime = endTime - LOOKBACK_MS;
@@ -609,7 +777,7 @@ function scoreCandidate(asset, features, oiChangePct, direction = "long") {
 
 async function hasRecentAssetAlert(asset, direction, now) {
   const result = await pool.query(
-    `select id, score
+    `select id, score, payload
      from momentum_alert_events
      where asset = $1
        and coalesce(payload->>'direction', 'long') = $2
@@ -619,6 +787,19 @@ async function hasRecentAssetAlert(asset, direction, now) {
     [asset, direction, now - PER_ASSET_COOLDOWN_MS],
   );
   return result.rows[0] ?? null;
+}
+
+function shouldSkipForRecentAlert(recent, candidate) {
+  if (!recent) return false;
+  const candidateTelegram = candidate.payload?.telegramEligible === true;
+  const recentTelegram = recent.payload?.telegramEligible === true;
+  const candidateRadar = candidate.payload?.radarEdge?.telegramEligible === true;
+  const recentRadar = recent.payload?.radarEdge?.telegramEligible === true;
+  // Let a new website-aligned high-conviction radar signal upgrade an older
+  // stored-only row, otherwise the 12h cooldown can hide the exact alert the UI
+  // is currently recommending.
+  if (candidateTelegram && candidateRadar && (!recentTelegram || !recentRadar)) return false;
+  return true;
 }
 
 async function countAlertsToday(easternDate) {
@@ -683,6 +864,9 @@ function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direc
   const liquidityOk = asset.liquidityQualified || isLargeCapLike(asset);
   const highQualityScore = score.score >= HIGH_SCORE_THRESHOLD;
   const confirmedMove = structureBreak || nearExtreme;
+  if (score.radarEdge?.telegramEligible && liquidityOk) {
+    return true;
+  }
   const strictLongBreakout =
     direction === "long" &&
     d24h >= 10 &&
@@ -702,6 +886,7 @@ function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direc
 
 function isStoredTelegramQualityAlert(alert) {
   const direction = alert.payload?.direction === "short" ? "short" : "long";
+  if (alert.payload?.radarEdge?.telegramEligible === true) return true;
   const d1h = directionalReturn(direction, alert.return1hPct);
   const d4h = directionalReturn(direction, alert.return4hPct);
   const d24h = directionalReturn(direction, alert.return24hPct);
@@ -724,14 +909,37 @@ function isStoredTelegramQualityAlert(alert) {
   return alert.score >= HIGH_SCORE_THRESHOLD && confirmedMove && volumeVs >= 1.2 && (strictLongBreakout || strictShortBreakdown);
 }
 
-async function buildCandidate(asset) {
+async function buildCandidate(asset, radarContext) {
   const candles = await fetchCandles(asset);
   const features = computeMomentumFeatures(asset.asset, candles, asset.markPx);
   if (!features) return null;
   const oiChangePct = await getOpenInterestChangePct(asset);
   const longScore = scoreCandidate(asset, features, oiChangePct, "long");
   const shortScore = scoreCandidate(asset, features, oiChangePct, "short");
-  const score = !shortScore || (longScore && longScore.score >= shortScore.score) ? longScore : shortScore;
+  const longRadar = computeRadarEdge(asset, features, radarContext, "long");
+  const shortRadar = computeRadarEdge(asset, features, radarContext, "short");
+  const scoreOptions = [longScore, shortScore];
+  if (longRadar?.storeEligible) scoreOptions.push(radarEdgeToScore(longRadar));
+  if (shortRadar?.storeEligible) scoreOptions.push(radarEdgeToScore(shortRadar));
+  const scoredOptions = scoreOptions
+    .filter(Boolean)
+    .map((option) => ({
+      ...option,
+      telegramEligible: isTelegramQualityCandidate({
+        asset,
+        features,
+        oiChangePct,
+        score: option,
+        direction: option.direction,
+        volumeVs: features.volumeVsBaseline ?? 1,
+      }),
+    }))
+    .sort((a, b) =>
+      Number(b.telegramEligible) - Number(a.telegramEligible) ||
+      Number(Boolean(b.radarEdge)) - Number(Boolean(a.radarEdge)) ||
+      b.score - a.score,
+    );
+  const score = scoredOptions[0] ?? null;
   if (!score) return null;
   const direction = score.direction;
 
@@ -758,17 +966,15 @@ async function buildCandidate(asset) {
   const volumeVs = features.volumeVsBaseline ?? 1;
   const oiText = oiChangePct == null ? "OI context limited" : `OI ${formatPct(oiChangePct)}`;
   const bucket = momentumBucket(asset.asset);
-  const telegramEligible = isTelegramQualityCandidate({
-    asset,
-    features,
-    oiChangePct,
-    score,
-    direction,
-    volumeVs,
-  });
-  const reason = direction === "short"
-    ? `${asset.asset} broke lower with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h downside momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`
-    : `${asset.asset} broke higher with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`;
+  const telegramEligible = score.telegramEligible;
+  const radarEdge = score.radarEdge ?? null;
+  const reason = radarEdge
+    ? direction === "short"
+      ? `${asset.asset} is a ${radarEdge.score.toFixed(2)}σ relative weakness signal: lags BTC by ${Math.abs(radarEdge.btcResidualPct).toFixed(1)}%, lags basket by ${Math.abs(radarEdge.basketResidualPct).toFixed(1)}%, and ${oiText}.`
+      : `${asset.asset} is a ${radarEdge.score.toFixed(2)}σ long momentum leader: outperformed BTC by ${formatPct(radarEdge.btcResidualPct)}, outperformed basket by ${formatPct(radarEdge.basketResidualPct)}, and ${oiText}.`
+    : direction === "short"
+      ? `${asset.asset} broke lower with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h downside momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`
+      : `${asset.asset} broke higher with ${formatPct(features.return1h)} 1h / ${formatPct(features.return4h)} 4h momentum, ${volumeVs.toFixed(1)}x recent volume, and ${oiText}.`;
 
   return {
     asset: asset.asset,
@@ -804,6 +1010,25 @@ async function buildCandidate(asset) {
       resistance,
       atr,
       fundingPenaltyApplied: direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65,
+      radarEdge: radarEdge
+        ? {
+            direction: radarEdge.direction,
+            score: Number(radarEdge.score.toFixed(2)),
+            rawReturn24hPct: Number(radarEdge.rawReturn24hPct.toFixed(2)),
+            btcReturn24hPct: Number(radarEdge.btcReturn24hPct.toFixed(2)),
+            basketReturn24hPct: Number(radarEdge.basketReturn24hPct.toFixed(2)),
+            btcResidualPct: Number(radarEdge.btcResidualPct.toFixed(2)),
+            basketResidualPct: Number(radarEdge.basketResidualPct.toFixed(2)),
+            rawReturnZ: Number(radarEdge.rawReturnZ.toFixed(2)),
+            btcResidualZ: Number(radarEdge.btcResidualZ.toFixed(2)),
+            basketResidualZ: Number(radarEdge.basketResidualZ.toFixed(2)),
+            structureScore: Number(radarEdge.structureScore.toFixed(2)),
+            accelerationScore: Number(radarEdge.accelerationScore.toFixed(2)),
+            participationScore: Number(radarEdge.participationScore.toFixed(2)),
+            triggerLabel: radarEdge.triggerLabel,
+            telegramEligible: radarEdge.telegramEligible,
+          }
+        : null,
       liquidity: {
         minOiUsd: MIN_OI_USD,
         minVolumeUsd: MIN_VOLUME_USD,
@@ -870,16 +1095,26 @@ function buildTelegramText(alert) {
   const severity = alert.severity === "high" ? "HIGH" : "MED";
   const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
   const invalidationLabel = direction === "SHORT" ? "Invalid >" : "Invalid <";
+  const radarEdge = alert.payload?.radarEdge;
+  const alertHeader = radarEdge?.telegramEligible
+    ? direction === "SHORT"
+      ? `Radar weakness alert · short gate is strict`
+      : `Radar momentum alert · ${Number(radarEdge.score).toFixed(2)}σ long edge`
+    : `Strict breakout alert · not every top mover qualifies`;
+  const radarLine = radarEdge
+    ? `Edge: ${Number(radarEdge.score).toFixed(2)}σ · vs BTC ${formatPct(Number(radarEdge.btcResidualPct))} · vs Basket ${formatPct(Number(radarEdge.basketResidualPct))}`
+    : null;
   const lines = [
     `HYPERPULSE · ${severity}`,
-    `Strict breakout alert · not every top mover qualifies`,
+    alertHeader,
     `${alert.asset} ${direction} · ${setupLabel(alert)}`,
     `Now: ${formatPrice(alert.alertPrice)} · 1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`,
+    radarLine,
     triggerLevelLine(alert),
     `Trim: ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`,
     `Context: vol ${formatMultiple(alert.volumeVsBaseline)} · ${fundingTag(alert.fundingApr)}`,
     `Chart: ${link}`,
-  ];
+  ].filter(Boolean);
   return lines.join("\n");
 }
 
@@ -1178,18 +1413,21 @@ async function runCycle() {
     telegramDailyCap: TELEGRAM_DAILY_CAP,
     telegramHourlyCap: TELEGRAM_HOURLY_CAP,
     maxTelegramPerCycle: MAX_TELEGRAM_PER_CYCLE,
+    radarLongStdAlertThreshold: RADAR_LONG_STD_ALERT_THRESHOLD,
+    radarShortStdAlertThreshold: RADAR_SHORT_STD_ALERT_THRESHOLD,
   });
   const now = Date.now();
   const easternDate = easternDateKey(now);
   try {
     const universe = await loadUniverse();
+    const radarContext = buildRadarContext(universe);
     const candidates = [];
     for (const asset of universe) {
       try {
-        const candidate = await buildCandidate(asset);
+        const candidate = await buildCandidate(asset, radarContext);
         if (!candidate) continue;
         const recent = await hasRecentAssetAlert(candidate.asset, candidate.payload?.direction ?? "long", now);
-        if (recent) continue;
+        if (shouldSkipForRecentAlert(recent, candidate)) continue;
         candidates.push(candidate);
       } catch (error) {
         console.warn(`[momentum-alerts] candidate failed ${asset.asset}`, error instanceof Error ? error.message : error);
@@ -1236,6 +1474,12 @@ async function runCycle() {
       selected,
       buckets: Object.fromEntries(bucketCounts.entries()),
       easternDate,
+      radarContext: radarContext
+        ? {
+            btcReturn: Number(radarContext.btcReturn.toFixed(2)),
+            basketReturn: Number(radarContext.basketReturn.toFixed(2)),
+          }
+        : null,
     });
     console.log(`[momentum-alerts] success scanned=${universe.length} candidates=${candidates.length} inserted=${inserted} queued=${queued} requeued=${requeued} sent=${sent}`);
   } catch (error) {
@@ -1245,7 +1489,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegramHourly=${TELEGRAM_HOURLY_CAP}/hour maxCycle=${MAX_ALERTS_PER_CYCLE} maxTelegramCycle=${MAX_TELEGRAM_PER_CYCLE} telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} charts=${TELEGRAM_CHARTS_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
+  console.log(`[momentum-alerts] starting network=${NETWORK} interval=${LOOP_INTERVAL_MS}ms storeCap=${STORE_DAILY_CAP}/day telegramCap=${TELEGRAM_DAILY_CAP}/day telegramHourly=${TELEGRAM_HOURLY_CAP}/hour maxCycle=${MAX_ALERTS_PER_CYCLE} maxTelegramCycle=${MAX_TELEGRAM_PER_CYCLE} radarLong>=${RADAR_LONG_STD_ALERT_THRESHOLD}σ radarShort>=${RADAR_SHORT_STD_ALERT_THRESHOLD}σ telegram=${TELEGRAM_ENABLED ? "enabled" : "disabled"} charts=${TELEGRAM_CHARTS_ENABLED ? "enabled" : "disabled"} dynamicMovers=${DYNAMIC_MOVER_LIMIT} exceptionalMove=${EXCEPTIONAL_MOVE_PCT}% assets=${CONFIGURED_ASSETS.join(",") || `liquid top ${ASSET_LIMIT} + gated movers`}`);
   await runCycle();
   if (RUN_ONCE) {
     await pool.end();
