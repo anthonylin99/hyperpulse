@@ -299,6 +299,13 @@
 - Decision: keep active containers/images and non-HyperPulse project volumes; the worker image can be rebuilt from `docker-compose.reaction-map.yml` when needed.
 - Result: Docker build cache is now `0B`, images dropped to seven active images with `0B` reclaimable, and `localhost:3004/api/health` still returns `200`.
 
+## 2026-05-13
+
+- Request: pull latest `main` and make Reaction Map zone hover tooltips fall away when the pointer leaves or the user clicks away.
+- Attempted: refreshed Agent OS, fast-forwarded this branch from `origin/main`, traced the stuck tooltip to `PriceChart.tsx`, and separated hover tooltip state from clicked zone highlight state.
+- Decision: keep click selection as a visual highlight, but render the tooltip only from hover/focus state. Any pointer click outside a zone trigger clears the highlight and tooltip state.
+- Result: `docker compose build web` and `docker compose run --rm --no-deps web npm run lint` passed. Rebuilt `web` was restarted on port `3004`; Browser Use confirmed zone triggers render, click-away removes the tooltip, and the page has no console warnings/errors. Runtime `web` logs show clean Next.js startup.
+
 ## 2026-05-08
 
 - Request: check whether legacy/whale Neon tables are intentional or being recreated, add a read-only Reaction Map health script, and reduce the OI-level stream to the current BTC/ETH/SOL use case.
@@ -378,3 +385,17 @@
 - Follow-up: chart wheel handling now prevents the page from scrolling while the pointer is over the price chart, so wheel/trackpad gestures are reserved for chart zoom/pan. Verification was blocked after Docker Desktop began returning engine API 500s during rebuild; Docker service restart also required unavailable Windows privileges.
 - Follow-up: after Docker restart, rebuilt `web` successfully and found BTC positioning could still expose only 8 visible worker zones when fresh long-side rows were sparse. The selector now fills remaining ladder slots from carried worker rows after fresh rows are exhausted, and carried rows stay displayable with explicit carried-forward evidence instead of being re-hidden as stale.
 - Follow-up: Browser verification caught that the chart-container wheel listener did not catch every wheel path. Added a capture-phase wheel lock on the chart frame so page scroll is prevented before the event reaches the page while the chart still receives the wheel gesture.
+
+## 2026-05-13
+
+- Request: make Reaction Map useful for longer trades instead of showing a stack of tiny near-price positioning bands, and collect zones for every Hyperliquid perp.
+- Attempted: traced the weak-zone output through worker asset selection, zone window support, worker ranking, API distance math, table setup scanning, and chart rendering; rebuilt/restarted `web` and `reaction-map`; verified the browser on `/markets?asset=BTC`.
+- Decision: default the chart to 4h candles/zones, support `1d` Reaction Map windows, hide weak near-price bands in swing views, show only the strongest farther zone per side, add tooltip entry/stop/target framing, and let the worker discover all Hyperliquid perps by default while preserving exchange ticker casing.
+- Result: `docker compose build web reaction-map`, `docker compose run --rm --no-deps web npm run lint`, and `docker compose run --rm --no-deps reaction-map node --check index.mjs` passed. The worker started in all-asset mode with `assetCount=183` and no sampled fatal/listener errors after the casing fix. Browser Use confirmed BTC defaults to `4h candles` / `4h zones`, renders one swing positioning band instead of the prior 10 overlapping triggers, includes tooltip stop/target fields, and reports no browser console warnings/errors.
+
+## 2026-05-14
+
+- Request: keep Reaction Map level targets inside the chart and add TradingView-style candle hover context.
+- Attempted: clipped chart zone hit targets and price chips to the chart frame, added a compact BTC O/H/L/C candle readout with per-candle percent change, rebuilt the `web` Docker image, and restarted `web` on port `3004`.
+- Decision: hide fully off-screen zone bands rather than letting invisible hover targets spill into the panel chrome; keep the candle readout visible with the latest candle and update it from crosshair hover when the chart reports a candle.
+- Result: `docker compose build web` passed. Browser Use DOM verification on `/markets?asset=BTC` showed the new `BTC O/H/L/C ... +%` readout and only contained chart-level controls. Full Compose startup remains blocked by the existing local `0007_reaction_only_cleanup.sql` checksum mismatch, so `web` was restarted with `WEB_PORT=3004 docker compose up -d --no-deps web`.

@@ -18,6 +18,7 @@ const WINDOW_MS: Record<string, number> = {
   "30m": 30 * 60 * 1000,
   "1h": 60 * 60 * 1000,
   "4h": 4 * 60 * 60 * 1000,
+  "1d": 24 * 60 * 60 * 1000,
 };
 
 function parseWindowMs(value: string | null): number {

@@ -9,6 +9,7 @@ import {
   createChart,
   type CandlestickData,
   type IChartApi,
+  type MouseEventParams,
   type UTCTimestamp,
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
@@ -30,7 +31,7 @@ interface PriceChartProps {
 }
 
 type TradingInterval = "5" | "15" | "60" | "240" | "D";
-const DEFAULT_INTERVAL: TradingInterval = "15";
+const DEFAULT_INTERVAL: TradingInterval = "240";
 
 const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> = {
   "5": "5m",
@@ -40,12 +41,12 @@ const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> =
   D: "1d",
 };
 
-const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h" | "4h"> = {
+const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> = {
   "5": "5m",
   "15": "15m",
   "60": "1h",
   "240": "4h",
-  D: "4h",
+  D: "1d",
 };
 
 const LOOKBACK_MS: Record<TradingInterval, number> = {
@@ -369,10 +370,12 @@ function levelAlpha(level: SupportResistanceLevel, index: number): number {
   return Number(clamp(0.2 + strength * 0.72, 0.28, 0.96).toFixed(3));
 }
 
-function reactionDisplayPriority(level: SupportResistanceLevel): number {
+function reactionDisplayPriority(level: SupportResistanceLevel, swingOnly = false): number {
   const score = level.lfxScore ?? level.pressureScore ?? level.strength;
   const distance = Math.abs(level.distancePct ?? 0);
-  const distanceBonus = clamp(distance / 4, 0, 1) * 18;
+  const distanceBonus = clamp(distance / (swingOnly ? 8 : 4), 0, 1) * (swingOnly ? 34 : 18);
+  const nearPricePenalty = swingOnly && distance < 0.75 ? 42 : 0;
+  const notionalBonus = level.notionalUsd == null ? 0 : clamp(Math.log10(level.notionalUsd + 1) - 6, 0, 4) * 4;
   const sourceBonus =
     level.leverageBucket === "stress"
       ? 10
@@ -381,13 +384,32 @@ function reactionDisplayPriority(level: SupportResistanceLevel): number {
         : level.leverageBucket === "positioning"
           ? 14
           : 0;
-  return score + distanceBonus + sourceBonus;
+  return score + distanceBonus + notionalBonus + sourceBonus - nearPricePenalty;
 }
 
-function selectVisibleReactionLevels(levels: SupportResistanceLevel[], limit = 4): SupportResistanceLevel[] {
-  return [...levels]
-    .sort((a, b) => reactionDisplayPriority(b) - reactionDisplayPriority(a))
-    .slice(0, limit)
+function selectVisibleReactionLevels(
+  levels: SupportResistanceLevel[],
+  limit = 4,
+  options: { swingOnly?: boolean; minDistancePct?: number; minSpacingPct?: number } = {},
+): SupportResistanceLevel[] {
+  const swingOnly = options.swingOnly === true;
+  const minDistancePct = options.minDistancePct ?? (swingOnly ? 0.75 : 0);
+  const minSpacingPct = options.minSpacingPct ?? (swingOnly ? 1.15 : 0.35);
+  const candidates = [...levels]
+    .filter((level) => Math.abs(level.distancePct ?? 0) >= minDistancePct)
+    .sort((a, b) => reactionDisplayPriority(b, swingOnly) - reactionDisplayPriority(a, swingOnly));
+  const selected: SupportResistanceLevel[] = [];
+
+  for (const candidate of candidates) {
+    const tooClose = selected.some(
+      (level) => Math.abs((level.distancePct ?? 0) - (candidate.distancePct ?? 0)) < minSpacingPct,
+    );
+    if (tooClose) continue;
+    selected.push(candidate);
+    if (selected.length >= limit) break;
+  }
+
+  return selected
     .sort((a, b) => a.price - b.price);
 }
 
@@ -398,7 +420,17 @@ type ChartZoneBand = {
   top: number;
   height: number;
   centerY: number;
+  labelY: number;
   alpha: number;
+};
+
+type CandleHoverReadout = {
+  timeMs: number | null;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  changePct: number;
 };
 
 type ChartZoneTone = {
@@ -406,6 +438,41 @@ type ChartZoneTone = {
   textClass: string;
   borderClass: string;
 };
+
+function candleReadoutFromData(data: CandlestickData | null | undefined): CandleHoverReadout | null {
+  if (!data) return null;
+  const open = Number(data.open);
+  const high = Number(data.high);
+  const low = Number(data.low);
+  const close = Number(data.close);
+  if (![open, high, low, close].every(Number.isFinite) || open <= 0) return null;
+
+  const timeMs = typeof data.time === "number" ? normalizeTime(data.time) : null;
+  return {
+    timeMs,
+    open,
+    high,
+    low,
+    close,
+    changePct: ((close - open) / open) * 100,
+  };
+}
+
+function candleReadoutFromRawCandle(candle: CandleDatum | null | undefined): CandleHoverReadout | null {
+  if (!candle) return null;
+  return candleReadoutFromData({
+    time: toChartTime(candle.time),
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+  });
+}
+
+function formatCandleChangePct(value: number): string {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
+}
 
 function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "upside"): ChartZoneTone {
   const role = level.zoneTooltip?.role;
@@ -464,6 +531,7 @@ export default function PriceChart({
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [hoverCandle, setHoverCandle] = useState<CandleHoverReadout | null>(null);
 
   const reactionSupported = marketType === "perp";
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
@@ -506,29 +574,59 @@ export default function PriceChart({
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
   const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
+  const swingPositioningView = overlayMode === "oi_holding" && (interval === "240" || interval === "D");
   const visibleDownsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
         levels.filter((level) => isDownsideReactionLevel(level, currentPrice, overlayMode)),
-        overlayMode === "oi_holding" ? 5 : 4,
+        swingPositioningView ? 1 : overlayMode === "oi_holding" ? 3 : 4,
+        {
+          swingOnly: swingPositioningView,
+          minDistancePct: interval === "D" ? 1.25 : swingPositioningView ? 0.75 : 0,
+          minSpacingPct: interval === "D" ? 1.75 : swingPositioningView ? 1.15 : 0.35,
+        },
       ),
-    [currentPrice, levels, overlayMode],
+    [currentPrice, interval, levels, overlayMode, swingPositioningView],
   );
   const visibleUpsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
         levels.filter((level) => isUpsideReactionLevel(level, currentPrice, overlayMode)),
-        overlayMode === "oi_holding" ? 5 : 4,
+        swingPositioningView ? 1 : overlayMode === "oi_holding" ? 3 : 4,
+        {
+          swingOnly: swingPositioningView,
+          minDistancePct: interval === "D" ? 1.25 : swingPositioningView ? 0.75 : 0,
+          minSpacingPct: interval === "D" ? 1.75 : swingPositioningView ? 1.15 : 0.35,
+        },
       ),
-    [currentPrice, levels, overlayMode],
+    [currentPrice, interval, levels, overlayMode, swingPositioningView],
   );
-  const activeZoneId = hoveredZoneId ?? selectedZoneId;
+  const noVisibleSwingZones =
+    swingPositioningView &&
+    reactionSupported &&
+    levels.length > 0 &&
+    visibleDownsideFlows.length + visibleUpsideFlows.length === 0;
+  const highlightedZoneId = hoveredZoneId ?? selectedZoneId;
+  const activeCandleReadout = hoverCandle ?? candleReadoutFromRawCandle(candles.at(-1));
 
   useEffect(() => {
     if (selectedZoneId && !zoneBands.some((band) => band.id === selectedZoneId)) {
       setSelectedZoneId(null);
     }
   }, [selectedZoneId, zoneBands]);
+
+  useEffect(() => {
+    const clearZoneSelection = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-zone-trigger='true']")) return;
+      setHoveredZoneId(null);
+      setSelectedZoneId(null);
+    };
+
+    document.addEventListener("pointerdown", clearZoneSelection);
+    return () => document.removeEventListener("pointerdown", clearZoneSelection);
+  }, []);
 
   useEffect(() => {
     const frame = chartFrameRef.current;
@@ -730,6 +828,11 @@ export default function PriceChart({
     let zoneFrame: number | null = null;
     const renderZoneBands = () => {
       const nextBands: ChartZoneBand[] = [];
+      const chartHeight = container.clientHeight;
+      if (chartHeight <= 0) {
+        setZoneBands([]);
+        return;
+      }
 
       [
         ...visibleDownsideFlows.map((level, index) => ({ level, index, side: "downside" as const })),
@@ -743,8 +846,14 @@ export default function PriceChart({
         if (yLow == null || yHigh == null || yCenter == null) return;
 
         const alpha = levelAlpha(level, index);
-        const top = Math.min(yLow, yHigh);
-        const height = Math.max(4, Math.abs(yLow - yHigh));
+        const rawTop = Math.min(yLow, yHigh);
+        const rawBottom = Math.max(yLow, yHigh);
+        if (rawBottom < 0 || rawTop > chartHeight) return;
+
+        const top = clamp(rawTop, 0, chartHeight);
+        const bottom = clamp(rawBottom, 0, chartHeight);
+        const height = Math.max(4, bottom - top);
+        const labelY = clamp(yCenter - 10, 8, Math.max(8, chartHeight - 26));
 
         nextBands.push({
           id: level.id,
@@ -753,6 +862,7 @@ export default function PriceChart({
           top,
           height,
           centerY: yCenter,
+          labelY,
           alpha,
         });
       });
@@ -780,9 +890,24 @@ export default function PriceChart({
       scheduleZoneBandRender();
     });
     resizeObserver.observe(container);
+    const handleCrosshairMove = (param: MouseEventParams) => {
+      scheduleZoneBandRender();
+      if (!param.point || !param.time) {
+        setHoverCandle(null);
+        return;
+      }
+
+      const dataItem = param.seriesData.get(candleSeries);
+      const nextHover =
+        dataItem && "open" in dataItem && "high" in dataItem && "low" in dataItem && "close" in dataItem
+          ? candleReadoutFromData(dataItem as CandlestickData)
+          : null;
+      setHoverCandle(nextHover);
+    };
+
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
     chart.timeScale().subscribeVisibleTimeRangeChange(scheduleZoneBandRender);
-    chart.subscribeCrosshairMove(scheduleZoneBandRender);
+    chart.subscribeCrosshairMove(handleCrosshairMove);
     const handleChartWheel = (event: WheelEvent) => {
       event.preventDefault();
       scheduleZoneBandRender();
@@ -795,13 +920,14 @@ export default function PriceChart({
       resizeObserver.disconnect();
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleZoneBandRender);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(scheduleZoneBandRender);
-      chart.unsubscribeCrosshairMove(scheduleZoneBandRender);
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
       container.removeEventListener("wheel", handleChartWheel);
       container.removeEventListener("pointermove", scheduleZoneBandRender);
       container.removeEventListener("pointerup", scheduleZoneBandRender);
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
       setZoneBands([]);
       setHoveredZoneId(null);
+      setHoverCandle(null);
       chart.remove();
       chartRef.current = null;
     };
@@ -818,13 +944,15 @@ export default function PriceChart({
         ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
         : "Reaction Map";
   const levelAvailabilityMessage = oiHoldingHidden
-    ? "Fresh OI builds are too close to spot right now, so HyperPulse hides them instead of pretending they are useful support or resistance."
+    ? "No swing-worthy positioning zone is far enough from spot right now."
     : orderBookWarming
       ? "Order Book levels need a few clean depth samples before they appear."
     : reactionSupported
       ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
       : "Reaction Map is limited to major liquid perps so smaller names do not show noisy pressure bands.";
-  const compactStatus = reactionUnavailable || (reactionSupported && levels.length === 0)
+  const compactStatus = noVisibleSwingZones
+    ? "No swing-worthy positioning zone is far enough from spot right now."
+    : reactionUnavailable || (reactionSupported && levels.length === 0)
     ? levelAvailabilityMessage
     : levelSourceNote;
 
@@ -850,7 +978,7 @@ export default function PriceChart({
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Positioning shows inferred OI/flow zones. Order Book shows visible resting shelves.</div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Positioning favors fewer swing zones with enough room for a target and stop.</div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
@@ -903,7 +1031,7 @@ export default function PriceChart({
       <div className="p-3">
         <div
           ref={chartFrameRef}
-          className="relative isolate h-[360px] overflow-visible overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
+          className="relative isolate h-[360px] overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
         >
           {loading ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 overflow-hidden rounded-[18px] px-6 text-center text-sm text-zinc-500">
@@ -928,9 +1056,11 @@ export default function PriceChart({
               <div className="absolute inset-0 z-0 overflow-hidden rounded-[18px]">
                 <div ref={chartContainerRef} className="absolute inset-0" />
               </div>
+              {activeCandleReadout ? <CandleHoverLegend coin={coin} readout={activeCandleReadout} /> : null}
               <FlowZoneOverlay
                 bands={zoneBands}
-                activeZoneId={activeZoneId}
+                highlightedZoneId={highlightedZoneId}
+                tooltipZoneId={hoveredZoneId}
                 onHover={setHoveredZoneId}
                 onSelect={setSelectedZoneId}
               />
@@ -939,7 +1069,7 @@ export default function PriceChart({
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] leading-5 text-zinc-500">
           <span>{compactStatus}</span>
-          <span className="text-zinc-600">Hover a band for context. Details stay on-chart to keep the drawer compact.</span>
+          <span className="text-zinc-600">Hover a band for context. Weak near-price bands stay hidden in swing views.</span>
         </div>
         {showReactionProgress ? (
           <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">
@@ -977,18 +1107,38 @@ function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upsi
     : "Upside reaction area; wait for acceptance or rejection.";
 }
 
+function CandleHoverLegend({ coin, readout }: { coin: string; readout: CandleHoverReadout }) {
+  const positive = readout.changePct >= 0;
+  const changeClass = positive ? "text-emerald-300" : "text-red-300";
+  const timestamp = readout.timeMs ? formatEasternChartTick(readout.timeMs / 1000, "datetime") : null;
+
+  return (
+    <div className="pointer-events-none absolute left-3 top-3 z-[70] flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-zinc-800/90 bg-zinc-950/85 px-2.5 py-1.5 font-mono text-[11px] leading-4 text-zinc-300 shadow-lg shadow-black/30 backdrop-blur-md">
+      <span className="font-semibold text-zinc-100">{coin}</span>
+      <span>O {formatLevelPrice(readout.open)}</span>
+      <span>H {formatLevelPrice(readout.high)}</span>
+      <span>L {formatLevelPrice(readout.low)}</span>
+      <span>C {formatLevelPrice(readout.close)}</span>
+      <span className={changeClass}>{formatCandleChangePct(readout.changePct)}</span>
+      {timestamp ? <span className="hidden text-zinc-500 md:inline">{timestamp}</span> : null}
+    </div>
+  );
+}
+
 function FlowZoneOverlay({
   bands,
-  activeZoneId,
+  highlightedZoneId,
+  tooltipZoneId,
   onHover,
   onSelect,
 }: {
   bands: ChartZoneBand[];
-  activeZoneId: string | null;
+  highlightedZoneId: string | null;
+  tooltipZoneId: string | null;
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
 }) {
-  const activeBand = bands.find((band) => band.id === activeZoneId) ?? null;
+  const tooltipBand = bands.find((band) => band.id === tooltipZoneId) ?? null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-[60]">
@@ -998,11 +1148,12 @@ function FlowZoneOverlay({
         const color = tone.rgb;
         const idleBandAlpha = band.alpha * 0.045;
         const idleBorderAlpha = band.alpha * 0.24;
-        const active = activeZoneId === band.id;
+        const active = highlightedZoneId === band.id;
         return (
           <div key={band.id}>
             <button
               type="button"
+              data-zone-trigger="true"
               className={`pointer-events-auto absolute left-0 right-[58px] cursor-crosshair border-y border-transparent bg-transparent transition focus:outline-none focus:ring-1 focus:ring-white/40 ${
                 active ? "shadow-[0_0_22px_rgba(255,255,255,0.10)]" : ""
               }`}
@@ -1025,9 +1176,10 @@ function FlowZoneOverlay({
 
             <button
               type="button"
+              data-zone-trigger="true"
               className={`pointer-events-auto absolute right-2 max-w-[calc(100%_-_1rem)] cursor-crosshair truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-16 sm:max-w-[112px] ${tone.borderClass} ${tone.textClass}`}
               style={{
-                top: Math.max(8, band.centerY - 10),
+                top: band.labelY,
                 backgroundColor: `rgba(9, 9, 11, ${Math.max(0.74, 0.94 - band.alpha * 0.14)})`,
                 borderColor: `rgba(${color}, ${Math.max(0.24, band.alpha * 0.58)})`,
                 boxShadow: active ? `0 0 ${Math.round(10 + band.alpha * 14)}px rgba(${color}, ${band.alpha * 0.14})` : "none",
@@ -1045,15 +1197,16 @@ function FlowZoneOverlay({
           </div>
         );
       })}
-      {activeBand ? <ZoneHoverTooltip band={activeBand} /> : null}
+      {tooltipBand ? <ZoneHoverTooltip band={tooltipBand} bands={bands} /> : null}
     </div>
   );
 }
 
-function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
+function ZoneHoverTooltip({ band, bands }: { band: ChartZoneBand; bands: ChartZoneBand[] }) {
   const read = levelReadFor(band.level, band.side);
   const tooltip = band.level.zoneTooltip;
   const tone = chartToneForLevel(band.level, band.side);
+  const plan = tradePlanForBand(band, bands);
   const flowSize = tooltip?.inferredOiUsd ?? tooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
   const refreshed = tooltip?.refreshedAtMs ? formatTimeMs(tooltip.refreshedAtMs) : null;
   const sideLabel = tooltip?.roleLabel ?? (tooltip?.side === "bear" ? "Seller-initiated build" : tooltip?.side === "bull" ? "Buyer-initiated build" : zoneRoleLabel(band));
@@ -1085,6 +1238,11 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
           <TooltipMetric label="Buy / sell" value={`${formatCompactUsd(tooltip.buyNotionalUsd)} / ${formatCompactUsd(tooltip.sellNotionalUsd)}`} />
         ) : null}
       </div>
+      <div className="mt-2 grid grid-cols-3 gap-1.5 text-[11px]">
+        <TooltipMetric label={plan.label} value={plan.entry} />
+        <TooltipMetric label="Stop" value={plan.stop} />
+        <TooltipMetric label="Target" value={plan.target} />
+      </div>
       <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/55 px-2.5 py-2 text-[11px] leading-4 text-zinc-400">
         {reason}
       </div>
@@ -1093,6 +1251,38 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
       </div>
     </div>
   );
+}
+
+function tradePlanForBand(band: ChartZoneBand, bands: ChartZoneBand[]): {
+  label: string;
+  entry: string;
+  stop: string;
+  target: string;
+} {
+  const zoneLow = band.level.zoneLow ?? band.level.price;
+  const zoneHigh = band.level.zoneHigh ?? band.level.price;
+  const zoneWidth = Math.max(zoneHigh - zoneLow, band.level.price * 0.0015);
+  const isBounce = band.side === "downside";
+  const entry = isBounce ? zoneHigh : zoneLow;
+  const stop = isBounce ? zoneLow - zoneWidth * 0.35 : zoneHigh + zoneWidth * 0.35;
+  const opposite = bands
+    .filter((candidate) =>
+      isBounce
+        ? candidate.side === "upside" && candidate.level.price > zoneHigh
+        : candidate.side === "downside" && candidate.level.price < zoneLow,
+    )
+    .sort((a, b) =>
+      isBounce ? a.level.price - b.level.price : b.level.price - a.level.price,
+    )[0];
+  const fallbackTarget = isBounce ? entry * 1.025 : entry * 0.975;
+  const target = opposite?.level.price ?? fallbackTarget;
+
+  return {
+    label: isBounce ? "Bounce entry" : "Reject entry",
+    entry: formatLevelPrice(entry),
+    stop: formatLevelPrice(stop),
+    target: formatLevelPrice(target),
+  };
 }
 
 function TooltipMetric({ label, value }: { label: string; value: string }) {

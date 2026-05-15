@@ -329,7 +329,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
       const zoneLow = asNumber(row.zone_low) ?? asNumber(row.weighted_price) ?? currentPrice;
       const zoneHigh = asNumber(row.zone_high) ?? asNumber(row.weighted_price) ?? currentPrice;
       const price = asNumber(row.weighted_price) ?? asNumber(row.zone_mid) ?? (zoneLow + zoneHigh) / 2;
-      const distancePct = asNumber(row.distance_pct) ?? ((price - currentPrice) / currentPrice) * 100;
+      const distancePct = ((price - currentPrice) / currentPrice) * 100;
       const dynamicZoneWidthPct = asNumber(payload.dynamicZoneWidthPct) ?? asNumber(tooltip.dynamicZoneWidthPct);
       const carriedForward =
         status !== "active" ||

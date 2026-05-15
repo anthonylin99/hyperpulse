@@ -315,7 +315,7 @@ export default function MarketTable({
             batch.map(async (coin) => {
               const response = await fetch(
                 withNetworkParam(
-                  `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=15m`,
+                  `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=4h`,
                 ),
               );
               if (!response.ok) return;
