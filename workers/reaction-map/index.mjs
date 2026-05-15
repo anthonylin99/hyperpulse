@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { setMaxListeners } from "node:events";
 import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
-import { SubscriptionClient, WebSocketTransport } from "@nktkas/hyperliquid";
+import { HttpTransport, InfoClient, SubscriptionClient, WebSocketTransport } from "@nktkas/hyperliquid";
 
 const PG_SSL_MODES_TO_PIN = new Set(["prefer", "require", "verify-ca"]);
 
@@ -79,9 +79,9 @@ const DEFAULT_ASSETS = [
   "ENA",
   "WIF",
 ];
-const ASSETS = parseList(process.env.REACTION_MAP_ASSETS, DEFAULT_ASSETS).map((asset) => asset.toUpperCase());
-setMaxListeners(Math.max(64, ASSETS.length * 4));
-const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["5m", "15m", "1h", "4h"])
+let ASSETS = [];
+const CONFIGURED_ASSETS = parseList(process.env.REACTION_MAP_ASSETS ?? "all", []);
+const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["15m", "1h", "4h", "1d"])
   .map(windowMsFromLabel)
   .filter((value) => value != null);
 const WIDE_BOOK_N_SIG_FIGS = parseList(process.env.REACTION_MAP_WIDE_BOOK_N_SIG_FIGS, ["3", "2"])
@@ -123,6 +123,8 @@ const CARRIED_ZONE_LOOKBACK_MS = envNumber(
 );
 const ALGORITHM_VERSION = "reaction-map-v2.1.0";
 const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
+const httpTransport = new HttpTransport({ isTestnet: NETWORK === "testnet" });
+const infoClient = new InfoClient({ transport: httpTransport });
 const transport = new WebSocketTransport({ isTestnet: NETWORK === "testnet" });
 const subscriptions = new SubscriptionClient({ transport });
 const assetStates = new Map();
@@ -136,6 +138,48 @@ function parseList(value, fallback = []) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function uniqueAssets(assets) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const rawAsset of assets) {
+    const asset = String(rawAsset ?? "").trim().replace(/\/USDC$/i, "");
+    if (!asset) continue;
+    const key = asset.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(asset);
+  }
+
+  return unique;
+}
+
+function shouldDiscoverAllAssets() {
+  return CONFIGURED_ASSETS.length === 0 || CONFIGURED_ASSETS.some((asset) => asset.toLowerCase() === "all");
+}
+
+async function resolveReactionAssets() {
+  if (!shouldDiscoverAllAssets()) {
+    return uniqueAssets(CONFIGURED_ASSETS);
+  }
+
+  try {
+    const data = await infoClient.metaAndAssetCtxs();
+    const meta = Array.isArray(data) ? data[0] : data;
+    const universe = Array.isArray(meta?.universe) ? meta.universe : [];
+    const discovered = uniqueAssets(
+      universe
+        .filter((asset) => asset && asset.isDelisted !== true)
+        .map((asset) => asset.name),
+    );
+    if (discovered.length > 0) return discovered;
+  } catch (error) {
+    console.warn("[reaction-map] asset discovery failed; falling back to curated assets", error);
+  }
+
+  return uniqueAssets(DEFAULT_ASSETS);
 }
 
 function envNumber(key, fallback, min = 0) {
@@ -162,6 +206,10 @@ function windowMsFromLabel(value) {
   if (normalized.endsWith("h")) {
     const hours = Number(normalized.slice(0, -1));
     return Number.isFinite(hours) ? hours * 60 * 60 * 1000 : null;
+  }
+  if (normalized.endsWith("d")) {
+    const days = Number(normalized.slice(0, -1));
+    return Number.isFinite(days) ? days * 24 * 60 * 60 * 1000 : null;
   }
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
@@ -659,12 +707,20 @@ async function recentMoveStdevPct(asset, cutoff, currentPrice) {
   return Math.min(ZONE_RANGE_MAX_PCT, Math.max(ZONE_RANGE_MIN_PCT, stats.stdevPct * ZONE_RANGE_STDEV_MULTIPLIER));
 }
 
-function dynamicZoneWidthPct(stats) {
+function dynamicZoneWidthPct(stats, windowMs) {
   const averageAbsMovePct = Number(stats?.averageAbsMovePct);
+  const stdevPct = Number(stats?.stdevPct);
+  const swingFloor =
+    windowMs >= 24 * 60 * 60 * 1000
+      ? 0.75
+      : windowMs >= 4 * 60 * 60 * 1000
+        ? 0.45
+        : ZONE_WIDTH_MIN_PCT;
   const widthPct = Number.isFinite(averageAbsMovePct)
     ? averageAbsMovePct * ZONE_WIDTH_AVG_MOVE_MULTIPLIER
     : ZONE_WIDTH_MIN_PCT;
-  return Math.min(ZONE_WIDTH_MAX_PCT, Math.max(ZONE_WIDTH_MIN_PCT, widthPct));
+  const stdevWidthPct = Number.isFinite(stdevPct) ? stdevPct * ZONE_RANGE_STDEV_MULTIPLIER : 0;
+  return Math.min(ZONE_WIDTH_MAX_PCT, Math.max(swingFloor, ZONE_WIDTH_MIN_PCT, widthPct, stdevWidthPct));
 }
 
 function dynamicCandidateRangePct(stats) {
@@ -817,7 +873,7 @@ function clusterCandidates(candidates, currentPrice, zoneWidthPct) {
       const lastCluster = clusters[clusters.length - 1];
       const center = lastCluster ? weightedZonePrice(lastCluster) : null;
       const distance = center == null ? Infinity : Math.abs(((candidate.priceBucket - center) / currentPrice) * 100);
-      if (!lastCluster || distance > ZONE_CLUSTER_WIDTH_PCT) clusters.push([candidate]);
+      if (!lastCluster || distance > Math.max(ZONE_CLUSTER_WIDTH_PCT, zoneWidthPct)) clusters.push([candidate]);
       else lastCluster.push(candidate);
     }
     bySide[side] = clusters
@@ -961,6 +1017,16 @@ function carriedZoneFromRow(row, currentPrice, zoneWidthPct) {
   };
 }
 
+function zoneStoragePriority(zone) {
+  const distance = Math.abs(zone.distancePct);
+  const nearPricePenalty = distance < 0.45 ? 28 : 0;
+  const distanceBonus = Math.min(24, distance * 6);
+  const flowScore = Math.log10(zone.tradeNotionalUsd + 1) * 5;
+  const oiScore = Math.log10(zone.inferredOiNotionalUsd + 1) * 3;
+  const carriedPenalty = zone.carriedForward ? 4 : 0;
+  return zone.score * 2 + flowScore + oiScore + distanceBonus - nearPricePenalty - carriedPenalty;
+}
+
 async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWidthPct) {
   const now = Date.now();
   const carryCutoff = now - CARRIED_ZONE_LOOKBACK_MS;
@@ -1005,7 +1071,7 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
         .map((row) => carriedZoneFromRow(row, currentPrice, zoneWidthPct))
         .filter((zone) => zone != null);
       const ranked = [...freshZones, ...carriedZones]
-        .sort((a, b) => b.score - a.score || b.tradeNotionalUsd - a.tradeNotionalUsd)
+        .sort((a, b) => zoneStoragePriority(b) - zoneStoragePriority(a) || b.tradeNotionalUsd - a.tradeNotionalUsd)
         .slice(0, MAX_ZONES_STORED_PER_SIDE);
 
       for (const [index, zone] of ranked.entries()) {
@@ -1035,6 +1101,7 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
           clusterWidthPct: zone.clusterWidthPct,
           dynamicZoneWidthPct: zone.dynamicZoneWidthPct,
           distancePct: zone.distancePct,
+          setupRoomPct: Math.abs(zone.distancePct),
           reasonSelected: zone.reasonSelected,
           carriedForward: zone.carriedForward,
           lastEvidenceAtMs: lastSeenAt,
@@ -1212,7 +1279,7 @@ async function promoteExposureZones() {
       const currentPrice = parseNumber(context?.mark_px) ?? parseNumber(context?.mid_px) ?? parseNumber(context?.oracle_px);
       if (!currentPrice || currentPrice <= 0) continue;
       const moveStats = await recentMoveStatsPct(asset, cutoff, currentPrice);
-      const zoneWidthPct = dynamicZoneWidthPct(moveStats);
+      const zoneWidthPct = dynamicZoneWidthPct(moveStats, windowMs);
       const candidateRangePct = dynamicCandidateRangePct(moveStats);
       const candidates = await loadZoneCandidates(asset, windowMs, currentPrice, candidateRangePct);
       const zones = clusterCandidates(candidates, currentPrice, zoneWidthPct);
@@ -1344,18 +1411,30 @@ const retentionStateKey = {
 };
 
 async function subscribeAsset(asset) {
-  await subscriptions.activeAssetCtx({ coin: asset }, (event) => handleContext(asset, event));
-  await subscriptions.l2Book({ coin: asset }, (event) => handleBook(asset, event));
-  for (const nSigFigs of WIDE_BOOK_N_SIG_FIGS) {
-    await subscriptions.l2Book({ coin: asset, nSigFigs }, (event) => handleBook(asset, event));
+  try {
+    await subscriptions.activeAssetCtx({ coin: asset }, (event) => handleContext(asset, event));
+    await subscriptions.l2Book({ coin: asset }, (event) => handleBook(asset, event));
+    for (const nSigFigs of WIDE_BOOK_N_SIG_FIGS) {
+      await subscriptions.l2Book({ coin: asset, nSigFigs }, (event) => handleBook(asset, event));
+    }
+    await subscriptions.trades({ coin: asset }, (event) => handleTrades(asset, event));
+    console.log(`[reaction-map] subscribed ${asset} wideBooks=${WIDE_BOOK_N_SIG_FIGS.join(",") || "off"}`);
+    return true;
+  } catch (error) {
+    console.warn(`[reaction-map] skipped ${asset}; subscription failed`, error);
+    return false;
   }
-  await subscriptions.trades({ coin: asset }, (event) => handleTrades(asset, event));
-  console.log(`[reaction-map] subscribed ${asset} wideBooks=${WIDE_BOOK_N_SIG_FIGS.join(",") || "off"}`);
 }
 
 async function main() {
   await assertSchemaReady();
-  console.log(`[reaction-map] starting network=${NETWORK} assets=${ASSETS.join(",")} bucketMs=${BUCKET_MS}`);
+  ASSETS = await resolveReactionAssets();
+  const listenerLimit = Math.max(64, ASSETS.length * (WIDE_BOOK_N_SIG_FIGS.length + 3));
+  setMaxListeners(listenerLimit, transport._hlEvents, transport.socket);
+  setMaxListeners(listenerLimit);
+  console.log(
+    `[reaction-map] starting network=${NETWORK} assetCount=${ASSETS.length} assets=${ASSETS.slice(0, 24).join(",")}${ASSETS.length > 24 ? ",..." : ""} bucketMs=${BUCKET_MS}`,
+  );
 
   for (const asset of ASSETS) {
     getAssetState(asset);
