@@ -174,6 +174,24 @@ export interface CapitalFlowSummary {
   events: CapitalFlowEvent[];
 }
 
+export interface PortfolioAnalyticsCoverage {
+  generatedAt: number;
+  fillsStartTime: number;
+  fundingStartTime: number;
+  ledgerStartTime: number;
+  fillsAvailable: boolean;
+  fundingAvailable: boolean;
+  ledgerAvailable: boolean;
+  spotAliasAvailable: boolean;
+  rawFillCount: number;
+  perpFillCount: number;
+  excludedFillCount: number;
+  fundingEntryCount: number;
+  ledgerEventCount: number;
+  fundingLookbackDays: number;
+  notes: string[];
+}
+
 export interface PortfolioStats {
   totalTrades: number;
   winners: number;

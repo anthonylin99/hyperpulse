@@ -14,6 +14,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { deploymentMode } = useAppConfig();
   const { lastUpdated } = useMarket();
+  if (pathname === "/world" || pathname.startsWith("/world/")) {
+    return <div className="min-h-screen bg-[#050807] text-zinc-100">{children}</div>;
+  }
+
   const usesWorkspaceShell =
     pathname === "/markets" ||
     pathname.startsWith("/markets/") ||

@@ -175,22 +175,29 @@ export default function AlertsPage() {
             <div className="mx-auto mt-2 max-w-xl text-sm text-zinc-500">{diagnostics?.message ?? "When the worker spots a selective liquid-perp momentum setup, it will appear here with the exact alert price."}</div>
           </div>
         ) : (
-          <div className="min-w-full overflow-x-auto">
-            <div className="grid min-w-[1180px] grid-cols-[92px_150px_120px_170px_170px_128px_128px_minmax(220px,1fr)_190px] border-b border-zinc-800 bg-zinc-950/60 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-zinc-600">
-              <div>Time</div>
-              <div>Asset</div>
-              <div>Signal</div>
-              <div>Momentum</div>
-              <div>Participation</div>
-              <div>Alert</div>
-              <div>Now</div>
-              <div>Reason</div>
-              <div className="text-right">Actions</div>
+          <>
+            <div className="divide-y divide-zinc-900 md:hidden">
+              {alerts.map((alert) => (
+                <MobileAlertCard key={alert.id} alert={alert} />
+              ))}
             </div>
-            {alerts.map((alert) => (
-              <AlertCard key={alert.id} alert={alert} />
-            ))}
-          </div>
+            <div className="hidden min-w-full overflow-x-auto md:block">
+              <div className="grid min-w-[1180px] grid-cols-[92px_150px_120px_170px_170px_128px_128px_minmax(220px,1fr)_190px] border-b border-zinc-800 bg-zinc-950/60 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-zinc-600">
+                <div>Time</div>
+                <div>Asset</div>
+                <div>Signal</div>
+                <div>Momentum</div>
+                <div>Participation</div>
+                <div>Alert</div>
+                <div>Now</div>
+                <div>Reason</div>
+                <div className="text-right">Actions</div>
+              </div>
+              {alerts.map((alert) => (
+                <AlertCard key={alert.id} alert={alert} />
+              ))}
+            </div>
+          </>
         )}
       </section>
     </div>
@@ -206,22 +213,35 @@ function DiagnosticBanner({ diagnostics }: { diagnostics: MomentumDiagnostics })
       : "border-rose-500/25 bg-rose-500/10 text-rose-100";
   const worker = diagnostics.worker;
   return (
-    <section className={cn("rounded-2xl border px-4 py-3", tone)}>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <details open={!isHealthy} className={cn("group rounded-2xl border", tone)}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
         <div>
-          <div className="text-sm font-medium">{diagnostics.message}</div>
+          <div className="text-sm font-medium">Alert system status</div>
           <div className="mt-1 text-xs opacity-75">
-            Latest cycle: scanned {worker?.scanned ?? "n/a"} · candidates {worker?.candidates ?? "n/a"} · inserted {worker?.inserted ?? "n/a"} · queued {worker?.queued ?? "n/a"} · sent {worker?.sent ?? "n/a"}
+            {diagnostics.message}
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px]">
           <span className="rounded-full border border-current/20 px-2 py-1 font-mono uppercase">{diagnostics.status.replaceAll("_", " ")}</span>
-          <span className="rounded-full border border-current/20 px-2 py-1 font-mono">queued {diagnostics.delivery.queued}</span>
-          <span className="rounded-full border border-current/20 px-2 py-1 font-mono">sent {diagnostics.delivery.sent}</span>
-          {diagnostics.delivery.failed ? <span className="rounded-full border border-current/20 px-2 py-1 font-mono">failed {diagnostics.delivery.failed}</span> : null}
+          <span className="hidden rounded-full border border-current/20 px-2 py-1 font-mono sm:inline-flex">sent {diagnostics.delivery.sent}</span>
+          <span className="text-xs transition-transform group-open:rotate-180">⌃</span>
         </div>
+      </summary>
+      <div className="border-t border-current/10 px-4 py-3">
+        <div className="grid gap-2 text-[11px] sm:grid-cols-2 lg:grid-cols-5">
+          <span className="rounded-lg border border-current/15 px-3 py-2 font-mono">scanned {worker?.scanned ?? "n/a"}</span>
+          <span className="rounded-lg border border-current/15 px-3 py-2 font-mono">candidates {worker?.candidates ?? "n/a"}</span>
+          <span className="rounded-lg border border-current/15 px-3 py-2 font-mono">inserted {worker?.inserted ?? "n/a"}</span>
+          <span className="rounded-lg border border-current/15 px-3 py-2 font-mono">queued {diagnostics.delivery.queued}</span>
+          <span className="rounded-lg border border-current/15 px-3 py-2 font-mono">sent {diagnostics.delivery.sent}</span>
+        </div>
+        {diagnostics.delivery.failed || diagnostics.delivery.recentError ? (
+          <div className="mt-2 rounded-lg border border-current/15 px-3 py-2 text-xs">
+            Failed {diagnostics.delivery.failed}. {diagnostics.delivery.recentError ?? "No recent error message."}
+          </div>
+        ) : null}
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -242,6 +262,105 @@ function StatCard({ label, value, helper }: { label: string; value: string; help
       <div className="mt-2 font-mono text-2xl font-semibold text-zinc-50">{value}</div>
       <div className="mt-1 text-xs text-zinc-500">{helper}</div>
     </div>
+  );
+}
+
+function MobileAlertCard({ alert }: { alert: MomentumAlert }) {
+  const { openTicket } = useShadowBook();
+  const direction = alert.payload?.direction === "short" ? "short" : "long";
+  const positive = (alert.returnSinceAlertPct ?? 0) >= 0;
+  const delivery = deliveryLabel(alert);
+  return (
+    <article className="space-y-3 px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-lg font-semibold text-zinc-50">{alert.asset}</span>
+            <span
+              className={cn(
+                "rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]",
+                severityTone(alert.severity),
+              )}
+            >
+              {alert.severity}
+            </span>
+            <span
+              className={cn(
+                "rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]",
+                direction === "short"
+                  ? "border-rose-500/25 bg-rose-500/10 text-rose-300"
+                  : "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+              )}
+            >
+              {direction}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-zinc-500">
+            {triggerLabel(alert.triggerKind)} · {formatEasternDateTime(alert.createdAt, true)}
+          </div>
+        </div>
+        <div className={cn("font-mono text-sm font-semibold", positive ? "text-emerald-300" : "text-rose-300")}>
+          {formatPct(alert.returnSinceAlertPct)}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+          <div className="label">Alert price</div>
+          <div className="mt-1 font-mono text-sm text-zinc-100">{formatChartPrice(alert.alertPrice)}</div>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+          <div className="label">Current</div>
+          <div className="mt-1 font-mono text-sm text-zinc-100">
+            {alert.currentPrice == null ? "n/a" : formatChartPrice(alert.currentPrice)}
+          </div>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+          <div className="label">Momentum</div>
+          <div className="mt-1 font-mono text-xs text-zinc-300">
+            {formatPct(alert.return1hPct)} · {formatPct(alert.return4hPct)} · {formatPct(alert.return24hPct)}
+          </div>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+          <div className="label">Risk</div>
+          <div className="mt-1 font-mono text-xs text-zinc-300">
+            Inv {alert.invalidationPrice == null ? "n/a" : formatChartPrice(alert.invalidationPrice)}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-xs leading-5 text-zinc-400">
+        {alert.reason}
+        <div className="mt-1 font-mono text-[11px] text-zinc-600">
+          target {alert.targetPrice == null ? "n/a" : formatChartPrice(alert.targetPrice)}
+          <span className="mx-1 text-zinc-800">·</span>
+          {delivery}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() =>
+            openTicket({
+              asset: alert.asset,
+              side: direction,
+              entryPrice: alert.currentPrice ?? alert.alertPrice,
+              stopPrice: alert.invalidationPrice,
+              targetPrice: alert.targetPrice,
+              source: "momentum_alert",
+              sourceId: alert.id,
+            })
+          }
+          className="inline-flex h-8 items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 text-xs text-emerald-200"
+        >
+          <BookOpenCheck className="h-3.5 w-3.5" />
+          Track paper
+        </button>
+        <Link href={alert.routeHref} className="inline-flex h-8 items-center gap-1 rounded-full border border-teal-500/25 bg-teal-500/10 px-3 text-xs text-teal-200">
+          Open market <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    </article>
   );
 }
 

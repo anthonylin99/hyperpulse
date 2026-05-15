@@ -5,6 +5,7 @@ import { BarChart3, BookOpenCheck, FolderKanban, Rows3, SlidersHorizontal } from
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import StatsGrid from "@/components/portfolio/StatsGrid";
+import PortfolioTrustPanel from "@/components/portfolio/PortfolioTrustPanel";
 import RiskStrip from "@/components/portfolio/RiskStrip";
 import CorrelationMap from "@/components/portfolio/CorrelationMap";
 import PositionsTable from "@/components/portfolio/PositionsTable";
@@ -142,6 +143,7 @@ export default function PortfolioWorkspace() {
       <>
         {hasTrades && <EquityCurve density={density} />}
         <StatsGrid density={density} />
+        <PortfolioTrustPanel />
         <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
           <div className="space-y-4">
             <RiskStrip density={density} />

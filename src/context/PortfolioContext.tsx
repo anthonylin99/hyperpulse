@@ -36,6 +36,7 @@ import type {
   CorrelationResult,
   TradeSizingSnapshot,
   CapitalFlowSummary,
+  PortfolioAnalyticsCoverage,
 } from "@/types";
 
 interface PortfolioContextValue {
@@ -50,6 +51,7 @@ interface PortfolioContextValue {
   insights: Insight[];
   sizingSnapshots: TradeSizingSnapshot[];
   capitalSummary: CapitalFlowSummary | null;
+  analyticsCoverage: PortfolioAnalyticsCoverage | null;
   correlation: CorrelationResult | null;
   researchLoading: boolean;
   researchError: string | null;
@@ -82,6 +84,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [sizingSnapshots, setSizingSnapshots] = useState<TradeSizingSnapshot[]>([]);
   const [capitalSummary, setCapitalSummary] = useState<CapitalFlowSummary | null>(null);
+  const [analyticsCoverage, setAnalyticsCoverage] = useState<PortfolioAnalyticsCoverage | null>(null);
   const [correlation, setCorrelation] = useState<CorrelationResult | null>(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchError, setResearchError] = useState<string | null>(null);
@@ -101,6 +104,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           setFunding(data.funding ?? []);
           const cachedCapitalSummary = data.capitalSummary ?? null;
           setCapitalSummary(cachedCapitalSummary);
+          setAnalyticsCoverage(data.analyticsCoverage ?? null);
           // Recompute analytics from cached data
           const cachedFills = (data.fills as Fill[]).filter(isPerpFill);
           setFills(cachedFills);
@@ -213,6 +217,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         Date.now() - 90 * 24 * 60 * 60 * 1000,
         1,
       );
+      const ledgerStartTime = 1;
       const [fillsRes, fundingRes, spotRes, ledgerRes] = await Promise.all([
         fetch(
           withNetworkParam(
@@ -225,7 +230,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           ),
         ),
         fetch(withNetworkParam("/api/spot")),
-        fetch(withNetworkParam(`/api/user/ledger?address=${address}&startTime=1`)),
+        fetch(withNetworkParam(`/api/user/ledger?address=${address}&startTime=${ledgerStartTime}`)),
       ]);
 
       if (!fillsRes.ok) throw new Error("Failed to fetch trade history");
@@ -288,10 +293,44 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       const capitalFlowSummary = summarizeCapitalFlows(rawLedger, address);
 
       const perpFills = normalizedFills.filter(isPerpFill);
+      const coverageNotes: string[] = [];
+      const excludedFillCount = Math.max(normalizedFills.length - perpFills.length, 0);
+      if (excludedFillCount > 0) {
+        coverageNotes.push(`${excludedFillCount} non-perp or unsupported fills are excluded from perp trade review.`);
+      }
+      if (!fundingRes.ok) {
+        coverageNotes.push("Funding history was unavailable for this refresh; funding-sensitive stats may be incomplete.");
+      } else {
+        coverageNotes.push("Funding coverage uses the latest 90 days from Hyperliquid.");
+      }
+      if (!ledgerRes.ok || !Array.isArray(rawLedger)) {
+        coverageNotes.push("Ledger flow was unavailable; external capital reconciliation may be incomplete.");
+      }
+      if (!spotRes.ok) {
+        coverageNotes.push("Spot alias metadata was unavailable; some HIP-3 symbols may appear as raw venue tickers.");
+      }
+      const coverage: PortfolioAnalyticsCoverage = {
+        generatedAt: Date.now(),
+        fillsStartTime,
+        fundingStartTime,
+        ledgerStartTime,
+        fillsAvailable: fillsRes.ok,
+        fundingAvailable: fundingRes.ok,
+        ledgerAvailable: ledgerRes.ok && Array.isArray(rawLedger),
+        spotAliasAvailable: spotRes.ok,
+        rawFillCount: normalizedFills.length,
+        perpFillCount: perpFills.length,
+        excludedFillCount,
+        fundingEntryCount: normalizedFunding.length,
+        ledgerEventCount: Array.isArray(rawLedger) ? rawLedger.length : 0,
+        fundingLookbackDays: 90,
+        notes: coverageNotes,
+      };
 
       setFills(perpFills);
       setFunding(normalizedFunding);
       setCapitalSummary(capitalFlowSummary);
+      setAnalyticsCoverage(coverage);
 
       // Cache fills + funding for instant load next time
       try {
@@ -301,6 +340,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
             fills: perpFills,
             funding: normalizedFunding,
             capitalSummary: capitalFlowSummary,
+            analyticsCoverage: coverage,
             cachedAt: Date.now(),
           }),
         );
@@ -416,6 +456,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       setInsights([]);
       setSizingSnapshots([]);
       setCapitalSummary(null);
+      setAnalyticsCoverage(null);
       setCorrelation(null);
       setResearchError(null);
       setError(null);
@@ -438,6 +479,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         insights,
         sizingSnapshots,
         capitalSummary,
+        analyticsCoverage,
         correlation,
         researchLoading,
         researchError,
