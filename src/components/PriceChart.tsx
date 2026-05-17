@@ -17,7 +17,6 @@ import { formatEasternChartTick, formatEasternDateTime } from "@/lib/time";
 import {
   reactionLevelsToSupportResistanceLevels,
   type ReactionLevelsPayload,
-  type ReactionOverlayMode,
 } from "@/lib/reactionLevels";
 import { SectionEyebrow } from "@/components/trading-ui";
 import type { SupportResistanceLevel } from "@/types";
@@ -71,11 +70,6 @@ const INTERVAL_OPTIONS: Array<{ label: string; value: TradingInterval }> = [
   { label: "1h", value: "60" },
   { label: "4h", value: "240" },
   { label: "1d", value: "D" },
-];
-
-const OVERLAY_OPTIONS: Array<{ label: string; value: ReactionOverlayMode }> = [
-  { label: "Positioning", value: "oi_holding" },
-  { label: "Order Book", value: "book" },
 ];
 
 const CANDLE_FETCH_TIMEOUT_MS = 10_000;
@@ -212,7 +206,7 @@ function formatTimeMs(timeMs: number | null | undefined): string {
 }
 
 type LevelRead = {
-  label: "Rejection" | "Break" | "Pivot" | "Long imbalance" | "Short imbalance" | "Stress";
+  label: "Rejection" | "Break" | "Pivot" | "Long imbalance" | "Short imbalance" | "Stress" | "Stacked";
   summary: string;
   reason: string;
   className: string;
@@ -225,25 +219,35 @@ function isStressZone(level: SupportResistanceLevel): boolean {
 function isDownsideReactionLevel(
   level: SupportResistanceLevel,
   currentPrice: number | null,
-  overlayMode: ReactionOverlayMode,
 ): boolean {
+  if (level.exposureSide === "bull") return true;
+  if (level.exposureSide === "bear") return false;
   if (level.kind !== "support") return false;
-  if (overlayMode === "oi_holding" && level.exposureSide === "bull") return true;
   return currentPrice == null || level.price < currentPrice;
 }
 
 function isUpsideReactionLevel(
   level: SupportResistanceLevel,
   currentPrice: number | null,
-  overlayMode: ReactionOverlayMode,
 ): boolean {
+  if (level.exposureSide === "bear") return true;
+  if (level.exposureSide === "bull") return false;
   if (level.kind !== "resistance") return false;
-  if (overlayMode === "oi_holding" && level.exposureSide === "bear") return true;
   return currentPrice == null || level.price > currentPrice;
 }
 
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
   const isUpside = side === "upside";
+  if (level.leverageBucket === "mixed") {
+    return {
+      label: "Stacked",
+      summary: isUpside
+        ? "Positioning and visible asks overlap here. A clean hold above matters more than the raw wall."
+        : "Positioning and visible bids overlap here. A clean hold below matters more than the raw wall.",
+      reason: "Strength blends inferred positioning with visible order book depth. Opposing depth can weaken the read.",
+      className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
+    };
+  }
   if (level.leverageBucket === "positioning") {
     const imbalanceType = level.zoneTooltip?.imbalanceType;
     if (imbalanceType === "pivot") {
@@ -389,28 +393,30 @@ function reactionDisplayPriority(level: SupportResistanceLevel, swingOnly = fals
 
 function selectVisibleReactionLevels(
   levels: SupportResistanceLevel[],
-  limit = 4,
-  options: { swingOnly?: boolean; minDistancePct?: number; minSpacingPct?: number } = {},
+  limit = 5,
 ): SupportResistanceLevel[] {
-  const swingOnly = options.swingOnly === true;
-  const minDistancePct = options.minDistancePct ?? (swingOnly ? 0.75 : 0);
-  const minSpacingPct = options.minSpacingPct ?? (swingOnly ? 1.15 : 0.35);
-  const candidates = [...levels]
-    .filter((level) => Math.abs(level.distancePct ?? 0) >= minDistancePct)
-    .sort((a, b) => reactionDisplayPriority(b, swingOnly) - reactionDisplayPriority(a, swingOnly));
-  const selected: SupportResistanceLevel[] = [];
+  const ranked = [...levels].sort((a, b) => {
+    const rankA = a.flowRank ?? Number.MAX_SAFE_INTEGER;
+    const rankB = b.flowRank ?? Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return reactionDisplayPriority(b) - reactionDisplayPriority(a);
+  });
+  const bookLevels = ranked.filter((level) => level.leverageBucket === "book");
+  const contextSlots = Math.min(bookLevels.length, 2, Math.max(limit - 1, 0));
+  const selected = new Map<string, SupportResistanceLevel>();
 
-  for (const candidate of candidates) {
-    const tooClose = selected.some(
-      (level) => Math.abs((level.distancePct ?? 0) - (candidate.distancePct ?? 0)) < minSpacingPct,
-    );
-    if (tooClose) continue;
-    selected.push(candidate);
-    if (selected.length >= limit) break;
+  for (const level of ranked.filter((candidate) => candidate.leverageBucket !== "book").slice(0, limit - contextSlots)) {
+    selected.set(level.id, level);
+  }
+  for (const level of bookLevels.slice(0, contextSlots)) {
+    selected.set(level.id, level);
+  }
+  for (const level of ranked) {
+    if (selected.size >= limit) break;
+    selected.set(level.id, level);
   }
 
-  return selected
-    .sort((a, b) => a.price - b.price);
+  return [...selected.values()].sort((a, b) => a.price - b.price);
 }
 
 type ChartZoneBand = {
@@ -525,7 +531,6 @@ export default function PriceChart({
   const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
-  const [overlayMode, setOverlayMode] = useState<ReactionOverlayMode>("oi_holding");
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [candleRetryNonce, setCandleRetryNonce] = useState(0);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
@@ -535,77 +540,31 @@ export default function PriceChart({
 
   const reactionSupported = marketType === "perp";
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
-  const overlayAvailability = useMemo(() => {
-    if (!reactionPayload) {
-      return {
-        confluence: true,
-        book: false,
-        oi_holding: false,
-        stress: false,
-      } satisfies Record<ReactionOverlayMode, boolean>;
-    }
-
-    const hasBook =
-      reactionPayload.levels.some((level) => level.primarySource === "book") ||
-      (reactionPayload.orderBook?.bidShelves?.length ?? 0) > 0 ||
-      (reactionPayload.orderBook?.askShelves?.length ?? 0) > 0;
-    const hasPositioning =
-      (reactionPayload.overlayLevels?.oiHolding?.length ?? 0) > 0 ||
-      (reactionPayload.positioning?.buyerInitiatedBuilds?.length ?? 0) > 0 ||
-      (reactionPayload.positioning?.sellerInitiatedBuilds?.length ?? 0) > 0;
-    const hasStress = reactionPayload.levels.some((level) => level.primarySource === "stress");
-
-    return {
-      confluence: true,
-      book: hasBook,
-      oi_holding: hasPositioning,
-      stress: hasStress,
-    } satisfies Record<ReactionOverlayMode, boolean>;
-  }, [reactionPayload]);
   const levels = useMemo(
-    () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, overlayMode) : []),
-    [overlayMode, reactionPayload, reactionSupported],
+    () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, "confluence") : []),
+    [reactionPayload, reactionSupported],
   );
-  const oiHoldingHidden =
-    overlayMode === "oi_holding" && reactionSupported && reactionPayload != null && levels.length === 0;
-  const orderBookWarming =
-    overlayMode === "book" && reactionSupported && reactionPayload != null && levels.length === 0;
-  const showReactionProgress = reactionLoading || orderBookWarming;
+  const combinedMapWarming = reactionSupported && reactionPayload != null && levels.length === 0;
+  const showReactionProgress = reactionLoading || combinedMapWarming;
   const lastCandleTimeMs = candles.at(-1)?.time ? normalizeTime(candles.at(-1)!.time) : null;
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
   const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
-  const swingPositioningView = overlayMode === "oi_holding" && (interval === "240" || interval === "D");
   const visibleDownsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => isDownsideReactionLevel(level, currentPrice, overlayMode)),
-        swingPositioningView ? 1 : overlayMode === "oi_holding" ? 3 : 4,
-        {
-          swingOnly: swingPositioningView,
-          minDistancePct: interval === "D" ? 1.25 : swingPositioningView ? 0.75 : 0,
-          minSpacingPct: interval === "D" ? 1.75 : swingPositioningView ? 1.15 : 0.35,
-        },
+        levels.filter((level) => isDownsideReactionLevel(level, currentPrice)),
+        5,
       ),
-    [currentPrice, interval, levels, overlayMode, swingPositioningView],
+    [currentPrice, levels],
   );
   const visibleUpsideFlows = useMemo(
     () =>
       selectVisibleReactionLevels(
-        levels.filter((level) => isUpsideReactionLevel(level, currentPrice, overlayMode)),
-        swingPositioningView ? 1 : overlayMode === "oi_holding" ? 3 : 4,
-        {
-          swingOnly: swingPositioningView,
-          minDistancePct: interval === "D" ? 1.25 : swingPositioningView ? 0.75 : 0,
-          minSpacingPct: interval === "D" ? 1.75 : swingPositioningView ? 1.15 : 0.35,
-        },
+        levels.filter((level) => isUpsideReactionLevel(level, currentPrice)),
+        5,
       ),
-    [currentPrice, interval, levels, overlayMode, swingPositioningView],
+    [currentPrice, levels],
   );
-  const noVisibleSwingZones =
-    swingPositioningView &&
-    reactionSupported &&
-    levels.length > 0 &&
-    visibleDownsideFlows.length + visibleUpsideFlows.length === 0;
   const highlightedZoneId = hoveredZoneId ?? selectedZoneId;
   const activeCandleReadout = hoverCandle ?? candleReadoutFromRawCandle(candles.at(-1));
 
@@ -641,13 +600,6 @@ export default function PriceChart({
       frame.removeEventListener("wheel", keepWheelOnChart, true);
     };
   }, []);
-
-  useEffect(() => {
-    if (!reactionPayload || overlayAvailability[overlayMode]) return;
-    setOverlayMode(
-      overlayAvailability.oi_holding ? "oi_holding" : overlayAvailability.book ? "book" : "oi_holding",
-    );
-  }, [overlayAvailability, overlayMode, reactionPayload]);
 
   useEffect(() => {
     let cancelled = false;
@@ -934,25 +886,19 @@ export default function PriceChart({
   }, [candles, currentPrice, interval, visibleDownsideFlows, visibleUpsideFlows]);
 
   const levelSourceNote =
-    oiHoldingHidden
-      ? "No inferred positioning zone is far enough from spot to matter yet."
-      : orderBookWarming
-        ? "Order Book shelves are still collecting from recent public depth."
+    combinedMapWarming
+      ? "Reaction Map is still ranking positioning levels."
       : latestLevelTimeMs != null
       ? `Reaction Map - refreshed ${formatTimeMs(latestLevelTimeMs)}`
       : dataThroughTimeMs != null
         ? `Reaction Map - candles through ${formatTimeMs(dataThroughTimeMs)}`
         : "Reaction Map";
-  const levelAvailabilityMessage = oiHoldingHidden
-    ? "No swing-worthy positioning zone is far enough from spot right now."
-    : orderBookWarming
-      ? "Order Book levels need a few clean depth samples before they appear."
+  const levelAvailabilityMessage = combinedMapWarming
+    ? "Positioning levels need a few clean public-stream buckets before they appear."
     : reactionSupported
       ? "Reaction Map is warming up. It needs recent public stream buckets before it can rank levels."
       : "Reaction Map is limited to major liquid perps so smaller names do not show noisy pressure bands.";
-  const compactStatus = noVisibleSwingZones
-    ? "No swing-worthy positioning zone is far enough from spot right now."
-    : reactionUnavailable || (reactionSupported && levels.length === 0)
+  const compactStatus = reactionUnavailable || (reactionSupported && levels.length === 0)
     ? levelAvailabilityMessage
     : levelSourceNote;
 
@@ -978,34 +924,14 @@ export default function PriceChart({
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">Positioning favors fewer swing zones with enough room for a target and stop.</div>
+            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
+              Positioning and order-book reaction zones are shown together when available.
+            </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
-              <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
-                {OVERLAY_OPTIONS.map((option) => {
-                  const available = overlayAvailability[option.value];
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      disabled={!available}
-                      title={available ? `${option.label} overlay` : `${option.label} data is still warming up for ${coin}`}
-                      onClick={() => {
-                        if (available) setOverlayMode(option.value);
-                      }}
-                      className={`rounded-full px-2 py-0.5 transition ${
-                        overlayMode === option.value
-                          ? "bg-sky-500/15 text-sky-200"
-                          : available
-                            ? "text-zinc-500 hover:text-zinc-200"
-                            : "cursor-not-allowed text-zinc-700"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+              <div className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-1 tracking-normal text-sky-200">
+                Combined
               </div>
             ) : null}
             <div className="flex rounded-full border border-zinc-800 bg-zinc-950/70 p-0.5 tracking-normal">
@@ -1069,7 +995,7 @@ export default function PriceChart({
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] leading-5 text-zinc-500">
           <span>{compactStatus}</span>
-          <span className="text-zinc-600">Hover a band for context. Weak near-price bands stay hidden in swing views.</span>
+          <span className="text-zinc-600">Hover a band for context.</span>
         </div>
         {showReactionProgress ? (
           <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">

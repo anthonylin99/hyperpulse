@@ -321,6 +321,7 @@ const MIN_OI_HOLDING_TRADE_NOTIONAL_USD = 250_000;
 const POSITIONING_PIVOT_NET_USD = 100_000;
 const POSITIONING_STALE_MULTIPLIER = 2;
 const REACTION_ALGORITHM_VERSION = "reaction-map-v2.1.0";
+const STACKED_LEVEL_WIDTH_PCT = 0.45;
 
 const MARKET_STREAM_CAVEAT: ReactionSourceCaveat = {
   exactPositions: false,
@@ -1552,6 +1553,144 @@ function reactionLabelForSignal(label: ReactionLabel): string {
   }
 }
 
+function sourceLevelsForOverlay(
+  payload: ReactionLevelsPayload,
+  overlay: ReactionOverlayMode,
+  currentPrice: number,
+): ReactionLevel[] {
+  if (overlay === "oi_holding") {
+    return (payload.overlayLevels?.oiHolding ?? []).filter((level) =>
+      isPositioningDisplayable(level, payload.updatedAt, payload.windowMs),
+    );
+  }
+  if (overlay !== "confluence") {
+    return payload.levels.filter((level) => level.primarySource === overlay);
+  }
+
+  const byId = new Map<string, ReactionLevel>();
+  for (const level of payload.levels) {
+    if (isPositioningDisplayable(level, payload.updatedAt, payload.windowMs)) {
+      byId.set(level.id, level);
+    }
+  }
+  for (const level of payload.overlayLevels?.oiHolding ?? []) {
+    if (isPositioningDisplayable(level, payload.updatedAt, payload.windowMs)) {
+      byId.set(level.id, level);
+    }
+  }
+
+  return combineStackedReactionLevels([...byId.values()], currentPrice);
+}
+
+function levelStackSide(level: ReactionLevel, currentPrice: number): "support" | "resistance" {
+  return reactionKind(level, currentPrice);
+}
+
+function combineStackedReactionLevels(levels: ReactionLevel[], currentPrice: number): ReactionLevel[] {
+  const sorted = [...levels].sort((a, b) => a.price - b.price);
+  const groups: ReactionLevel[][] = [];
+
+  for (const level of sorted) {
+    const side = levelStackSide(level, currentPrice);
+    const group = groups.find((candidate) => {
+      const groupPrice = weightedPrice(candidate);
+      const groupSide = levelStackSide(candidate[0], currentPrice);
+      const gapPct = Math.abs(((level.price - groupPrice) / currentPrice) * 100);
+      return groupSide === side && gapPct <= STACKED_LEVEL_WIDTH_PCT;
+    });
+
+    if (group) {
+      group.push(level);
+    } else {
+      groups.push([level]);
+    }
+  }
+
+  return groups.map((group) => mergeStackedLevelGroup(group, currentPrice)).sort((a, b) => a.price - b.price);
+}
+
+function mergeStackedLevelGroup(group: ReactionLevel[], currentPrice: number): ReactionLevel {
+  if (group.length === 1) return group[0];
+
+  const dominant = [...group].sort((a, b) => reactionLevelPriority(b) - reactionLevelPriority(a))[0];
+  const side = levelStackSide(dominant, currentPrice);
+  const price = weightedPrice(group);
+  const zoneLow = Math.min(...group.map((level) => level.zoneLow ?? level.price));
+  const zoneHigh = Math.max(...group.map((level) => level.zoneHigh ?? level.price));
+  const distancePct = ((price - currentPrice) / currentPrice) * 100;
+  const components = group.reduce(
+    (sum, level) => ({
+      bookDepthUsd: sum.bookDepthUsd + level.components.bookDepthUsd,
+      tradeNotionalUsd: sum.tradeNotionalUsd + level.components.tradeNotionalUsd,
+      oiEntryNotionalUsd: sum.oiEntryNotionalUsd + level.components.oiEntryNotionalUsd,
+      trackedLiqNotionalUsd: sum.trackedLiqNotionalUsd + level.components.trackedLiqNotionalUsd,
+      fundingBias: Math.max(sum.fundingBias, level.components.fundingBias),
+      buyNotionalUsd: sum.buyNotionalUsd + level.components.buyNotionalUsd,
+      sellNotionalUsd: sum.sellNotionalUsd + level.components.sellNotionalUsd,
+      bidDepthUsd: sum.bidDepthUsd + level.components.bidDepthUsd,
+      askDepthUsd: sum.askDepthUsd + level.components.askDepthUsd,
+      longLiqNotionalUsd: sum.longLiqNotionalUsd + level.components.longLiqNotionalUsd,
+      shortLiqNotionalUsd: sum.shortLiqNotionalUsd + level.components.shortLiqNotionalUsd,
+      uniqueTraderCount: Math.max(sum.uniqueTraderCount, level.components.uniqueTraderCount),
+    }),
+    {
+      bookDepthUsd: 0,
+      tradeNotionalUsd: 0,
+      oiEntryNotionalUsd: 0,
+      trackedLiqNotionalUsd: 0,
+      fundingBias: 0,
+      buyNotionalUsd: 0,
+      sellNotionalUsd: 0,
+      bidDepthUsd: 0,
+      askDepthUsd: 0,
+      longLiqNotionalUsd: 0,
+      shortLiqNotionalUsd: 0,
+      uniqueTraderCount: 0,
+    },
+  );
+  const sideDepthUsd = side === "support" ? components.bidDepthUsd : components.askDepthUsd;
+  const opposingDepthUsd = side === "support" ? components.askDepthUsd : components.bidDepthUsd;
+  const positioningUsd = components.tradeNotionalUsd + components.oiEntryNotionalUsd;
+  const hasBook = components.bookDepthUsd > 0;
+  const hasPositioning = positioningUsd > 0;
+  const alignedDepthRatio = sideDepthUsd / Math.max(sideDepthUsd + opposingDepthUsd, 1);
+  const stackBonus = hasBook && hasPositioning ? Math.round(18 * alignedDepthRatio) : 0;
+  const opposingPenalty = opposingDepthUsd > sideDepthUsd * 1.25 ? 10 : 0;
+  const score = Math.round(clamp(Math.max(...group.map((level) => level.score)) + stackBonus - opposingPenalty, 0, 100));
+  const primarySources = new Set(group.map((level) => level.primarySource));
+  const sourceCaveat = hasBook && hasPositioning ? COMBINED_CAVEAT : caveatForLevel(dominant);
+  const stackEvidence =
+    hasBook && hasPositioning
+      ? `Stacked ${compactUsd(positioningUsd)} inferred positioning with ${compactUsd(sideDepthUsd)} same-side visible depth`
+      : `Stacked ${group.length} nearby Reaction Map levels`;
+  const depthEvidence = hasBook
+    ? opposingDepthUsd > sideDepthUsd * 1.25
+      ? `${compactUsd(opposingDepthUsd)} opposing visible depth weakens the read`
+      : `${compactUsd(sideDepthUsd)} same-side visible depth supports the read`
+    : "No visible book shelf is stacked with this positioning zone yet";
+
+  return {
+    ...dominant,
+    id: `stacked-${group.map((level) => level.id).join("-")}`,
+    price,
+    zoneLow,
+    zoneHigh,
+    distancePct,
+    score,
+    confidence: score >= 70 ? "high" : score >= 42 ? "medium" : dominant.confidence,
+    primarySource: primarySources.size > 1 || (hasBook && hasPositioning) ? "mixed" : dominant.primarySource,
+    evidence: [stackEvidence, depthEvidence, ...dominant.evidence].slice(0, 7),
+    tooltip: {
+      ...dominant.tooltip,
+      sourceCaveat: sourceCaveat.text,
+      reasonSelected: stackEvidence,
+    },
+    ageMs: Math.min(...group.map((level) => level.ageMs ?? 0)),
+    sourceCaveat,
+    components,
+  };
+}
+
 export function buildReactionSetupSignal(payload: ReactionLevelsPayload): MarketSetupSignal {
   const dominant = payload.levels[0] ?? null;
   if (!dominant || payload.currentPrice == null) {
@@ -1604,15 +1743,7 @@ export function reactionLevelsToSupportResistanceLevels(
   const currentPrice = payload.currentPrice;
   if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return [];
 
-  const reactionZoneLevelIds = new Set((payload.reactionZones ?? []).map((zone) => zone.levelId));
-  const sourceLevels =
-    overlay === "confluence"
-      ? payload.levels.filter((level) => reactionZoneLevelIds.has(level.id))
-      : overlay === "oi_holding"
-        ? (payload.overlayLevels?.oiHolding ?? []).filter((level) =>
-            isPositioningDisplayable(level, payload.updatedAt, payload.windowMs),
-          )
-        : payload.levels.filter((level) => level.primarySource === overlay);
+  const sourceLevels = sourceLevelsForOverlay(payload, overlay, currentPrice);
 
   return sourceLevels
     .map((level, index) => {
