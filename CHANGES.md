@@ -399,3 +399,31 @@
 - Attempted: clipped chart zone hit targets and price chips to the chart frame, added a compact BTC O/H/L/C candle readout with per-candle percent change, rebuilt the `web` Docker image, and restarted `web` on port `3004`.
 - Decision: hide fully off-screen zone bands rather than letting invisible hover targets spill into the panel chrome; keep the candle readout visible with the latest candle and update it from crosshair hover when the chart reports a candle.
 - Result: `docker compose build web` passed. Browser Use DOM verification on `/markets?asset=BTC` showed the new `BTC O/H/L/C ... +%` readout and only contained chart-level controls. Full Compose startup remains blocked by the existing local `0007_reaction_only_cleanup.sql` checksum mismatch, so `web` was restarted with `WEB_PORT=3004 docker compose up -d --no-deps web`.
+
+## 2026-05-16
+
+- Request: show the top five bull and top five bear BTC Reaction Map levels without hiding near-price or tightly spaced bands.
+- Attempted: removed the chart-side distance and spacing suppression from Reaction Map level selection, switched the chart back to the worker positioning ladder for this view, and updated chart copy so it no longer says near-price bands stay hidden.
+- Decision: show up to five bull-side and up to five bear-side positioning levels from the source ranking, with no chart-side distance or spacing suppression.
+- Result: Docker web image build and lint passed. Browser Use verified `/markets?asset=BTC` renders 10 positioning detail buttons, split as 5 long/bull and 5 short/bear, with no browser console errors. Web runtime logs show the service ready.
+
+## 2026-05-16
+
+- Request: combine Reaction Map positioning and order-book levels into one chart view instead of forcing a Positioning vs Order Book selector.
+- Attempted: refreshed Agent OS, fetched/pulled the branch, traced the chart/API level conversion, removed the exposed overlay selector, made the chart use the internal confluence mode, and added stacking logic that merges nearby inferred positioning with visible order-book depth.
+- Decision: keep separate sources in the payload, but present one combined trader-facing level ladder. Same-side depth strengthens a stacked level, while opposing depth can weaken the score and tooltip evidence.
+- Result: Docker web image build passed after fixing the new hover label type, `docker compose exec web npm run lint` passed, Browser Use verified `/markets` BTC detail shows `COMBINED` and no old Positioning/Order Book selector, and web logs show the service ready. Full Compose startup remains blocked by the existing local `0007_reaction_only_cleanup.sql` checksum drift, so `web` was started with `--no-deps` on port `3001` for verification.
+
+## 2026-05-16
+
+- Request: move the local HyperPulse web URL off `localhost:3000`.
+- Attempted: refreshed Agent OS, fetched/pulled the branch, inspected Docker Compose service bindings, pinned the local web host port to `3005`, rebuilt/recreated the `web` container, and verified the app in the in-app browser.
+- Decision: keep the container listening on internal port `3000`, but bind the host to `http://localhost:3005` via `WEB_PORT` and align `NEXT_PUBLIC_APP_URL` with that local URL.
+- Result: `docker compose up -d --build --no-deps web` passed, Browser Use verified `http://localhost:3005/` loads HyperPulse with no console errors, and web logs show the service ready.
+
+## 2026-05-16
+
+- Request: investigate why the chart's positioning view does not show the order-book zones.
+- Attempted: queried the live `/api/market/reaction-levels?coin=BTC&interval=4h` payload, checked the current browser DOM, and traced the chart conversion path in `PriceChart.tsx`.
+- Decision: the API already returns both order-book shelves and book-derived reaction zones, but the chart was still converting the payload with the positioning-only `oi_holding` overlay and the five-level picker could crowd pure book zones out. Switch the chart back to `confluence`, reserve visible slots for book zones, and update the badge/copy to `Combined`.
+- Result: after Docker recovered, `docker compose build web`, `docker compose up -d --no-deps --force-recreate web`, and `docker compose exec web npm run lint` passed. Browser Use verified `/markets?asset=BTC` now shows `Combined`, the combined positioning/order-book copy, book-derived `Rejection` bands, and `Stacked` bands with no browser console errors. Recent web logs show the service ready.
