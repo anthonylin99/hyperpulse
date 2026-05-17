@@ -83,7 +83,7 @@ HyperPulse now includes a lean warehouse foundation for market capture and marke
 - Reaction Map read-only health check via `npm run reaction:health`
 - Reaction-level API at `/api/market/reaction-levels?coin=BTC&window=15m`
 - Current exposure-zone serving table with ranked Long OI and Short OI holding zones per asset/window
-- Docker Compose local stack via `npm run docker:up`
+- Docker Compose local stack via `npm run docker:up`, using Neon env values rather than a local database container
 - Worker-only DigitalOcean Compose path via `docker-compose.reaction-map.yml`
 - Private read-only MCP server via `npm run mcp:start`
 

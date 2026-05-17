@@ -9,7 +9,7 @@ Production stays simple:
 - Vercel serves the public Next.js app.
 - A DigitalOcean Docker droplet runs always-on ingestion workers.
 - Neon Postgres is the canonical warehouse.
-- Docker Compose is for local multi-service parity and worker packaging.
+- Docker Compose is for local multi-service parity and worker packaging. It uses Neon connection env values; the repo does not start a local database container.
 
 No Kafka, ClickHouse, Kubernetes, or full web Docker migration is required in this phase.
 
@@ -61,6 +61,8 @@ Run migrations:
 npm run db:migrate
 ```
 
+Migrations run against Neon. Use `NEON_DATABASE_URL` for direct migration access and `NEON_DATABASE_URL_POOLING` for app and worker runtime reads/writes. Do not point local Compose at a disposable Postgres fallback.
+
 Run market collector once:
 
 ```bash
@@ -91,7 +93,7 @@ Run local Docker stack:
 npm run docker:up
 ```
 
-Local Docker Postgres is exposed on `localhost:15432` to avoid colliding with any Mac Postgres already using `5432`.
+The local Docker stack expects Neon env values in your shell or `.env`. It does not create a local database service; run `docker compose run --rm migrate` only when you intentionally want to apply migrations to Neon.
 
 ## Market Collector Defaults
 

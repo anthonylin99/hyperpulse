@@ -1,32 +1,18 @@
-services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: hyperpulse
-      POSTGRES_PASSWORD: hyperpulse
-      POSTGRES_DB: hyperpulse
-    ports:
-      - "15432:5432"
-    volumes:
-      - hyperpulse_pg:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hyperpulse -d hyperpulse"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+x-database-env: &database-env
+  NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+  NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
+  DATABASE_URL: ${DATABASE_URL:-}
+  POSTGRES_URL: ${POSTGRES_URL:-}
 
+services:
   migrate:
+    profiles: ["tools"]
     build:
       context: .
       dockerfile: workers/market-collector/Dockerfile
     command: ["npm", "run", "db:migrate"]
     environment:
-      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
-      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
-      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
-    depends_on:
-      db:
-        condition: service_healthy
+      <<: *database-env
 
   web:
     build:
@@ -35,33 +21,23 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
     environment:
-      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
-      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
-      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      <<: *database-env
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       ENABLE_TRADING: "false"
       ENABLE_FACTORS: "false"
       NEXT_PUBLIC_ENABLE_TRADING: "false"
       NEXT_PUBLIC_ENABLE_FACTORS: "false"
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
 
   market-collector:
     build:
       context: .
       dockerfile: workers/market-collector/Dockerfile
     environment:
-      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
-      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
-      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      <<: *database-env
       MARKET_COLLECTOR_ASSET_LIMIT: ${MARKET_COLLECTOR_ASSET_LIMIT:-15}
       MARKET_COLLECTOR_INTERVAL_MS: ${MARKET_COLLECTOR_INTERVAL_MS:-300000}
       MARKET_COLLECTOR_INTERVALS: ${MARKET_COLLECTOR_INTERVALS:-5m,15m,1h,1d}
       MARKET_COLLECTOR_LEVEL_INTERVALS: ${MARKET_COLLECTOR_LEVEL_INTERVALS:-15m,1h}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   momentum-alerts:
@@ -69,9 +45,7 @@ services:
       context: workers/momentum-alerts
       dockerfile: Dockerfile
     environment:
-      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
-      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
-      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      <<: *database-env
       MOMENTUM_ALERT_INTERVAL_MS: ${MOMENTUM_ALERT_INTERVAL_MS:-300000}
       MOMENTUM_ALERT_ASSET_LIMIT: ${MOMENTUM_ALERT_ASSET_LIMIT:-45}
       MOMENTUM_ALERT_DAILY_CAP: ${MOMENTUM_ALERT_DAILY_CAP:-8}
@@ -81,9 +55,6 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     restart: unless-stopped
 
   reaction-map:
@@ -91,9 +62,7 @@ services:
       context: .
       dockerfile: workers/reaction-map/Dockerfile
     environment:
-      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
-      NEON_DATABASE_URL_POOLING: ${NEON_DATABASE_URL_POOLING:-}
-      DATABASE_URL: ${DATABASE_URL:-postgres://hyperpulse:hyperpulse@db:5432/hyperpulse}
+      <<: *database-env
       REACTION_MAP_ASSETS: ${REACTION_MAP_ASSETS:-all}
       REACTION_MAP_BUCKET_MS: ${REACTION_MAP_BUCKET_MS:-60000}
       REACTION_MAP_FLUSH_MS: ${REACTION_MAP_FLUSH_MS:-120000}
@@ -113,10 +82,4 @@ services:
       REACTION_MAP_ZONE_WIDTH_AVG_MOVE_X: ${REACTION_MAP_ZONE_WIDTH_AVG_MOVE_X:-4}
       REACTION_MAP_MAX_ZONES_STORED_PER_SIDE: ${REACTION_MAP_MAX_ZONES_STORED_PER_SIDE:-10}
       REACTION_MAP_RETENTION_MS: ${REACTION_MAP_RETENTION_MS:-86400000}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     restart: unless-stopped
-
-volumes:
-  hyperpulse_pg:
