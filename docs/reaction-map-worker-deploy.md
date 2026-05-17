@@ -1,6 +1,6 @@
 # Reaction Map Worker Deployment
 
-Use this path when a Linux host or DigitalOcean droplet should run only the Reaction Map stream worker. It does not start the web app, local Postgres, migrations, market collector, or whale indexer.
+Use this path when a Linux host or DigitalOcean droplet should run only the Reaction Map stream worker. It does not start the web app, migrations, market collector, or whale indexer.
 
 The worker expects the Neon schema to already be migrated. Run migrations from the app/deploy pipeline with `NEON_DATABASE_URL` before starting the worker. If startup logs mention missing tables or columns, apply the migrations first and restart the worker after the schema is ready.
 
@@ -89,9 +89,9 @@ docker compose -f docker-compose.reaction-map.yml down
 
 ## Avoid the full local stack on DigitalOcean
 
-The root `docker-compose.yml` is for local full-stack development and includes `db`, `migrate`, `web`, `market-collector`, and `reaction-map`.
+The root `docker-compose.yml` is for local multi-service development and includes `web`, `market-collector`, `momentum-alerts`, and `reaction-map`. The `migrate` service is an explicit tool profile and must be run intentionally against Neon.
 
-For a worker-only droplet, prefer `docker-compose.reaction-map.yml`. If you intentionally use the root compose file for a one-off smoke, run `docker compose run -d --no-deps reaction-map`; otherwise Compose may try to resolve the local `db` service.
+For a worker-only droplet, prefer `docker-compose.reaction-map.yml`. If you intentionally use the root compose file for a one-off smoke, keep `NEON_DATABASE_URL` and `NEON_DATABASE_URL_POOLING` set in the environment so the worker talks to the same Neon project as the frontend.
 
 ## Frontend pickup check
 

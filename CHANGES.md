@@ -427,3 +427,10 @@
 - Attempted: queried the live `/api/market/reaction-levels?coin=BTC&interval=4h` payload, checked the current browser DOM, and traced the chart conversion path in `PriceChart.tsx`.
 - Decision: the API already returns both order-book shelves and book-derived reaction zones, but the chart was still converting the payload with the positioning-only `oi_holding` overlay and the five-level picker could crowd pure book zones out. Switch the chart back to `confluence`, reserve visible slots for book zones, and update the badge/copy to `Combined`.
 - Result: after Docker recovered, `docker compose build web`, `docker compose up -d --no-deps --force-recreate web`, and `docker compose exec web npm run lint` passed. Browser Use verified `/markets?asset=BTC` now shows `Combined`, the combined positioning/order-book copy, book-derived `Rejection` bands, and `Stacked` bands with no browser console errors. Recent web logs show the service ready.
+
+## 2026-05-17
+
+- Request: remove the local Docker Postgres path and make the local stack use Neon instead.
+- Attempted: fetched latest `main`, fast-forwarded the branch, inspected Compose/database env paths, removed the root Compose `db` service and local connection-string fallbacks, moved `migrate` behind an explicit `tools` profile, and updated docs to state that local Docker expects Neon env values.
+- Decision: keep `migrate` as an intentional schema tool for Neon, but stop app/worker startup from depending on it or creating a local database service.
+- Result: `docker compose config --services` now lists only app/worker services by default; `docker compose --profile tools config --services` includes `migrate` when explicitly requested.
