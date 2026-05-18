@@ -313,14 +313,18 @@ export default function MarketTable({
           if (cancelled || batch.length === 0) return;
           await Promise.all(
             batch.map(async (coin) => {
-              const response = await fetch(
-                withNetworkParam(
-                  `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=4h`,
-                ),
-              );
-              if (!response.ok) return;
-              const payload = (await response.json()) as ReactionLevelsPayload;
-              nextSignals[coin] = buildReactionSetupSignal(payload);
+              try {
+                const response = await fetch(
+                  withNetworkParam(
+                    `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=4h`,
+                  ),
+                );
+                if (!response.ok) return;
+                const payload = (await response.json()) as ReactionLevelsPayload;
+                nextSignals[coin] = buildReactionSetupSignal(payload);
+              } catch {
+                // Ignore per-asset scan failures so one transient request does not fail the full table scan.
+              }
             }),
           );
         }),

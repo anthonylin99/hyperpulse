@@ -83,6 +83,8 @@ export function parseTimestamp(
     fallback?: number;
     min?: number;
     max?: number;
+    maxSkewMs?: number;
+    clampToMax?: boolean;
   } = {},
 ): number | null {
   if (value == null || value === "") {
@@ -93,7 +95,11 @@ export function parseTimestamp(
   if (!Number.isFinite(parsed)) return null;
   if (!Number.isInteger(parsed)) return null;
   if (options.min != null && parsed < options.min) return null;
-  if (options.max != null && parsed > options.max) return null;
+  if (options.max != null && parsed > options.max) {
+    const skewLimit = options.max + (options.maxSkewMs ?? 0);
+    if (parsed > skewLimit) return null;
+    return options.clampToMax ? options.max : null;
+  }
   return parsed;
 }
 

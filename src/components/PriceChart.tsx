@@ -48,14 +48,6 @@ const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"
   D: "1d",
 };
 
-const LOOKBACK_MS: Record<TradingInterval, number> = {
-  "5": 2 * 24 * 60 * 60 * 1000,
-  "15": 5 * 24 * 60 * 60 * 1000,
-  "60": 30 * 24 * 60 * 60 * 1000,
-  "240": 90 * 24 * 60 * 60 * 1000,
-  D: 119 * 24 * 60 * 60 * 1000,
-};
-
 const INTERVAL_MS: Record<TradingInterval, number> = {
   "5": 5 * 60 * 1000,
   "15": 15 * 60 * 1000,
@@ -124,7 +116,7 @@ function wait(ms: number): Promise<void> {
   });
 }
 
-async function fetchCandleRows(url: string): Promise<Array<Record<string, string | number>>> {
+async function fetchChartContext(url: string): Promise<ChartContextResponse> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= CANDLE_FETCH_RETRIES; attempt += 1) {
@@ -143,9 +135,9 @@ async function fetchCandleRows(url: string): Promise<Array<Record<string, string
         lastError = new Error(upstreamMessage || "Unable to fetch price candles.");
         if (!transient || attempt === CANDLE_FETCH_RETRIES) throw lastError;
       } else {
-        const payload = await response.json();
-        if (!Array.isArray(payload)) throw new Error("Price candle response was not usable.");
-        return payload as Array<Record<string, string | number>>;
+        const payload = (await response.json()) as ChartContextResponse;
+        if (!Array.isArray(payload.candles)) throw new Error("Price candle response was not usable.");
+        return payload;
       }
     } catch (error) {
       const aborted = error instanceof DOMException && error.name === "AbortError";
@@ -445,6 +437,20 @@ type ChartZoneTone = {
   borderClass: string;
 };
 
+type ChartPivotLine = {
+  id: string;
+  level: SupportResistanceLevel;
+  y: number;
+  labelY: number;
+};
+
+type ChartContextResponse = {
+  currentPrice: number;
+  candles: Array<Record<string, string | number>>;
+  pivotLevels?: SupportResistanceLevel[];
+  generatedAt: number;
+};
+
 function candleReadoutFromData(data: CandlestickData | null | undefined): CandleHoverReadout | null {
   if (!data) return null;
   const open = Number(data.open);
@@ -517,6 +523,27 @@ function chartToneForLevel(level: SupportResistanceLevel, side: "downside" | "up
     : { rgb: "244, 63, 94", textClass: "text-rose-200", borderClass: "border-rose-400/35" };
 }
 
+function isBreakoutPivot(level: SupportResistanceLevel): boolean {
+  return level.label.toLowerCase().includes("breakout") || level.label.toLowerCase().includes("breakdown");
+}
+
+function pivotTone(level: SupportResistanceLevel): ChartZoneTone {
+  if (isBreakoutPivot(level)) {
+    return { rgb: "56, 189, 248", textClass: "text-sky-200", borderClass: "border-sky-400/35" };
+  }
+  return { rgb: "251, 191, 36", textClass: "text-amber-200", borderClass: "border-amber-400/35" };
+}
+
+function pivotLineTitle(level: SupportResistanceLevel): string {
+  if (isBreakoutPivot(level)) return level.kind === "support" ? "BO retest" : "BD retest";
+  return level.kind === "support" ? "Pivot low" : "Pivot high";
+}
+
+function pivotShortLabel(level: SupportResistanceLevel): string {
+  if (isBreakoutPivot(level)) return level.kind === "support" ? "Breakout" : "Breakdown";
+  return level.kind === "support" ? "Pivot low" : "Pivot high";
+}
+
 export default function PriceChart({
   coin,
   marketType = "perp",
@@ -529,12 +556,15 @@ export default function PriceChart({
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
   const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
+  const [pivotLevels, setPivotLevels] = useState<SupportResistanceLevel[]>([]);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
   const [interval, setInterval] = useState<TradingInterval>(DEFAULT_INTERVAL);
   const [candleRetryNonce, setCandleRetryNonce] = useState(0);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
+  const [pivotLineMarkers, setPivotLineMarkers] = useState<ChartPivotLine[]>([]);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
+  const [hoveredPivotId, setHoveredPivotId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [hoverCandle, setHoverCandle] = useState<CandleHoverReadout | null>(null);
 
@@ -608,14 +638,12 @@ export default function PriceChart({
       setLoading(true);
       setError(null);
       try {
-        const now = Date.now();
-        const startTime = now - LOOKBACK_MS[interval];
-        const rawCandles = await fetchCandleRows(
+        const chartContext = await fetchChartContext(
           withNetworkParam(
-            `/api/market/candles?coin=${encodeURIComponent(coin)}&marketType=${marketType}&interval=${API_INTERVAL[interval]}&startTime=${startTime}&endTime=${now}`,
+            `/api/market/chart-context?coin=${encodeURIComponent(coin)}&marketType=${marketType}&interval=${API_INTERVAL[interval]}`,
           ),
         );
-        const nextCandles = rawCandles
+        const nextCandles = chartContext.candles
           .map((candle) => ({
             time: Number(candle.t ?? candle.T ?? candle.time),
             open: Number(candle.o ?? candle.open),
@@ -626,10 +654,14 @@ export default function PriceChart({
           }))
           .filter((candle) => Number.isFinite(candle.close) && candle.close > 0)
           .sort((a, b) => normalizeTime(a.time) - normalizeTime(b.time));
-        if (!cancelled) setCandles(nextCandles);
+        if (!cancelled) {
+          setCandles(nextCandles);
+          setPivotLevels(Array.isArray(chartContext.pivotLevels) ? chartContext.pivotLevels : []);
+        }
       } catch (err) {
         if (!cancelled) {
           setCandles([]);
+          setPivotLevels([]);
           setError(err instanceof Error ? err.message : "Unable to fetch price candles.");
         }
       } finally {
@@ -777,12 +809,28 @@ export default function PriceChart({
         });
       }
     };
+    const renderPivotLine = (level: SupportResistanceLevel) => {
+      const tone = pivotTone(level);
+      const alpha = level.confidence === "high" ? 0.95 : level.confidence === "medium" ? 0.78 : 0.6;
+      const color = `rgba(${tone.rgb}, ${alpha})`;
+
+      candleSeries.createPriceLine({
+        price: level.price,
+        color,
+        lineWidth: level.confidence === "high" ? 2 : 1,
+        lineStyle: isBreakoutPivot(level) ? LineStyle.Solid : LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: pivotLineTitle(level),
+      });
+    };
     let zoneFrame: number | null = null;
     const renderZoneBands = () => {
       const nextBands: ChartZoneBand[] = [];
+      const nextPivotLines: ChartPivotLine[] = [];
       const chartHeight = container.clientHeight;
       if (chartHeight <= 0) {
         setZoneBands([]);
+        setPivotLineMarkers([]);
         return;
       }
 
@@ -818,7 +866,18 @@ export default function PriceChart({
           alpha,
         });
       });
+      pivotLevels.forEach((level) => {
+        const y = candleSeries.priceToCoordinate(level.price);
+        if (y == null || y < 0 || y > chartHeight) return;
+        nextPivotLines.push({
+          id: level.id,
+          level,
+          y,
+          labelY: clamp(y - 10, 8, Math.max(8, chartHeight - 26)),
+        });
+      });
       setZoneBands(nextBands);
+      setPivotLineMarkers(nextPivotLines);
     };
     const scheduleZoneBandRender = () => {
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
@@ -829,6 +888,7 @@ export default function PriceChart({
     };
     visibleDownsideFlows.forEach((level, index) => renderLevel(level, index, "downside"));
     visibleUpsideFlows.forEach((level, index) => renderLevel(level, index, "upside"));
+    pivotLevels.forEach(renderPivotLine);
 
     chart.timeScale().fitContent();
     renderZoneBands();
@@ -878,12 +938,14 @@ export default function PriceChart({
       container.removeEventListener("pointerup", scheduleZoneBandRender);
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
       setZoneBands([]);
+      setPivotLineMarkers([]);
       setHoveredZoneId(null);
+      setHoveredPivotId(null);
       setHoverCandle(null);
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, currentPrice, interval, visibleDownsideFlows, visibleUpsideFlows]);
+  }, [candles, currentPrice, interval, pivotLevels, visibleDownsideFlows, visibleUpsideFlows]);
 
   const levelSourceNote =
     combinedMapWarming
@@ -918,6 +980,11 @@ export default function PriceChart({
                   {REACTION_WINDOW[interval]} zones
                 </div>
               ) : null}
+              {marketType === "perp" && pivotLevels.length > 0 ? (
+                <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] text-amber-200">
+                  {pivotLevels.length} pivot lines
+                </div>
+              ) : null}
               {currentPrice != null && (
                 <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-300">
                   {formatLevelPrice(currentPrice)}
@@ -925,7 +992,7 @@ export default function PriceChart({
               )}
             </div>
             <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Positioning and order-book reaction zones are shown together when available.
+              Reaction zones show inferred flow. Pivot lines mark reversal extremes and breakout-close retests.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -990,12 +1057,17 @@ export default function PriceChart({
                 onHover={setHoveredZoneId}
                 onSelect={setSelectedZoneId}
               />
+              <PivotLineOverlay
+                lines={pivotLineMarkers}
+                hoveredPivotId={hoveredPivotId}
+                onHover={setHoveredPivotId}
+              />
             </>
           )}
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] leading-5 text-zinc-500">
           <span>{compactStatus}</span>
-          <span className="text-zinc-600">Hover a band for context.</span>
+          <span className="text-zinc-600">Hover a band or pivot line for context.</span>
         </div>
         {showReactionProgress ? (
           <div className="mt-2 overflow-hidden rounded-full border border-zinc-800 bg-zinc-950" aria-label="Reaction Map levels loading">
@@ -1047,6 +1119,91 @@ function CandleHoverLegend({ coin, readout }: { coin: string; readout: CandleHov
       <span>C {formatLevelPrice(readout.close)}</span>
       <span className={changeClass}>{formatCandleChangePct(readout.changePct)}</span>
       {timestamp ? <span className="hidden text-zinc-500 md:inline">{timestamp}</span> : null}
+    </div>
+  );
+}
+
+function PivotLineOverlay({
+  lines,
+  hoveredPivotId,
+  onHover,
+}: {
+  lines: ChartPivotLine[];
+  hoveredPivotId: string | null;
+  onHover: (id: string | null) => void;
+}) {
+  const hoveredLine = lines.find((line) => line.id === hoveredPivotId) ?? null;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[65]">
+      {lines.map((line) => {
+        const tone = pivotTone(line.level);
+        const active = hoveredPivotId === line.id;
+        return (
+          <button
+            key={line.id}
+            type="button"
+            className={`pointer-events-auto absolute left-2 max-w-[calc(100%-5rem)] truncate rounded-full border bg-zinc-950/85 px-2 py-0.5 text-[10px] leading-4 shadow-lg shadow-black/25 backdrop-blur-md transition focus:outline-none focus:ring-1 focus:ring-white/40 md:left-3 ${tone.borderClass} ${tone.textClass}`}
+            style={{
+              top: line.labelY,
+              opacity: active ? 1 : 0.82,
+              transform: active ? "translateX(2px)" : "none",
+            }}
+            aria-label={`${pivotShortLabel(line.level)} ${formatLevelPrice(line.level.price)}`}
+            onMouseEnter={() => onHover(line.id)}
+            onMouseLeave={() => onHover(null)}
+            onFocus={() => onHover(line.id)}
+            onBlur={() => onHover(null)}
+          >
+            {pivotShortLabel(line.level)} {formatLevelPrice(line.level.price)}
+          </button>
+        );
+      })}
+      {hoveredLine ? <PivotLineTooltip line={hoveredLine} /> : null}
+    </div>
+  );
+}
+
+function PivotLineTooltip({ line }: { line: ChartPivotLine }) {
+  const tone = pivotTone(line.level);
+  const timestamp = line.level.pivotTimeMs ? formatTimeMs(line.level.pivotTimeMs) : null;
+  const evidence = line.level.evidence ?? [];
+
+  return (
+    <div
+      className={`pointer-events-none absolute left-3 z-[95] w-[min(320px,calc(100%-1.5rem))] rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md md:left-36 ${tone.borderClass}`}
+      style={{ top: `min(max(${Math.round(line.y - 58)}px, 84px), calc(100% - 132px))` }}
+      role="tooltip"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className={`text-[10px] uppercase tracking-[0.16em] ${tone.textClass}`}>
+            {pivotShortLabel(line.level)}
+          </div>
+          <div className="mt-1 font-mono text-lg font-semibold text-zinc-100">
+            {formatLevelPrice(line.level.price)}
+          </div>
+        </div>
+        {line.level.distancePct != null ? (
+          <div className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 font-mono text-[10px] text-zinc-300">
+            {line.level.distancePct > 0 ? "+" : ""}
+            {line.level.distancePct.toFixed(Math.abs(line.level.distancePct) < 1 ? 2 : 1)}%
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-2 text-xs leading-5 text-zinc-400">
+        {line.level.reason ?? "Closed-candle liquidity line."}
+      </div>
+      {timestamp ? <div className="mt-2 text-[11px] text-zinc-500">Formed {timestamp}</div> : null}
+      {evidence.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {evidence.slice(0, 3).map((item) => (
+            <span key={item} className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400">
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

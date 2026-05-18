@@ -11,6 +11,8 @@ import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 
 export const dynamic = "force-dynamic";
 
+const CLIENT_CLOCK_SKEW_MS = 10 * 60 * 1000;
+
 export async function GET(request: Request) {
   const limited = enforceRateLimit(request, {
     key: "api-market-funding",
@@ -30,6 +32,8 @@ export async function GET(request: Request) {
     min: 1,
     max: now,
     fallback: now,
+    maxSkewMs: CLIENT_CLOCK_SKEW_MS,
+    clampToMax: true,
   });
 
   if (!coin || startTime == null || endTime == null) {

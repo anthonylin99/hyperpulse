@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 const CANDLE_UPSTREAM_RETRIES = 2;
 const CANDLE_UPSTREAM_RETRY_DELAY_MS = 250;
+const CLIENT_CLOCK_SKEW_MS = 10 * 60 * 1000;
 
 function normalizeCandleSnapshot(data: unknown): unknown {
   if (typeof data !== "string") return data;
@@ -54,6 +55,8 @@ export async function GET(request: Request) {
     min: 1,
     max: now,
     fallback: now,
+    maxSkewMs: CLIENT_CLOCK_SKEW_MS,
+    clampToMax: true,
   });
 
   if (!coin || startTime == null || endTime == null) {
