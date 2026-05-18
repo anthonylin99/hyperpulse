@@ -434,3 +434,18 @@
 - Attempted: fetched latest `main`, fast-forwarded the branch, inspected Compose/database env paths, removed the root Compose `db` service and local connection-string fallbacks, moved `migrate` behind an explicit `tools` profile, and updated docs to state that local Docker expects Neon env values.
 - Decision: keep `migrate` as an intentional schema tool for Neon, but stop app/worker startup from depending on it or creating a local database service.
 - Result: `docker compose config --services` now lists only app/worker services by default; `docker compose --profile tools config --services` includes `migrate` when explicitly requested.
+
+## 2026-05-17
+
+- Request: diagnose production `400` errors from market candle/funding requests and a Privy CSP violation.
+- Attempted: refreshed Agent OS, fetched/pulled the branch, traced the API validation paths, compared the failing timestamps to current time, checked the CSP header, and reviewed Privy's CSP guidance.
+- Decision: keep future timestamp validation, but allow a 10-minute browser/server clock-skew tolerance for public market `endTime` values and clamp accepted skew to server time. Add Privy's required auth, iframe, WalletConnect, WalletLink, and Privy RPC sources to CSP.
+- Result: `docker compose build web` passed, `web` was recreated on port `3005`, skewed `/api/market/funding` and `/api/market/candles` requests returned `200`, `/markets` returned `200`, CSP includes Privy/WalletConnect sources, and recent web logs show the service ready.
+
+## 2026-05-17
+
+- Request: make the main price chart use the more reliable Liquidity Map-style server candle fetch and add line-only pivot liquidity levels for reversal pivots and breakout-close retests.
+- Attempted: added `/api/market/chart-context`, moved `PriceChart` candle loading to that server-owned payload, added reversal/body-pivot and breakout-close line detection, rendered pivot lines separately from Reaction Map zones, and hardened the market table's background reaction scan against single-asset fetch failures.
+- Decision: keep Liquidity Map in place for now, but stop borrowing its shaded technical zones. The main chart now uses line labels for pivot levels so they can be identified without turning into zones.
+- Result: Docker web build passed before the final background-scan hardening, Browser Use verified `/markets?asset=BTC` renders `12 pivot lines`, `Breakout`, `Pivot low`, `Pivot high`, and `78,741`. The chart-context API returns 541 BTC 4h candles and 12 pivot lines, including the `78,741` breakout-close level. Final rebuild/log verification was blocked by Docker Desktop engine 500/EOF failures.
+- Follow-up: tightened pivot liquidity levels to only show fresh, untested lines. Any retest or break after the level is created now invalidates it, so stale breakout lines like the `78,741` BTC 4h level are removed after the May 13 tag. `docker compose build web` passed, `web` was recreated on port `3005`, the BTC 4h chart-context API now returns 6 active-only pivot lines with `has78741=false`, Browser Use verified `/markets?asset=BTC` shows `6 pivot lines` without `78,741`, and recent web logs show the service ready.
