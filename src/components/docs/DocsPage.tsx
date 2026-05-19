@@ -1,158 +1,37 @@
 "use client";
 
+import Link from "next/link";
 import { useAppConfig } from "@/context/AppConfigContext";
 
 const quickLinks = [
   { href: "#overview", label: "Overview" },
-  { href: "#data-sources", label: "Data Sources" },
-  { href: "#portfolio", label: "Portfolio Analytics" },
-  { href: "#vaults", label: "Vault Analytics" },
-  { href: "#signals", label: "Market Signals" },
-  { href: "#market-radar", label: "Market Radar" },
-  { href: "#pressure-levels", label: "Pressure Levels" },
-  { href: "#sentiment", label: "Next 24h Bias" },
-  { href: "#wallets", label: "Wallet Modes" },
-  { href: "#limits", label: "Limitations" },
-  { href: "#faq", label: "FAQ" },
+  { href: "#portfolio", label: "Portfolio" },
+  { href: "#markets", label: "Markets & Alerts" },
+  { href: "#vaults", label: "Vaults" },
+  { href: "#privacy", label: "Privacy" },
+  { href: "#limits", label: "Limits" },
 ];
 
-const principles = [
-  "Read-only analytics first. HyperPulse can analyze any wallet address without asking for a private key.",
-  "Evidence over vibes. Funding and sentiment labels are only meant to be directional when the underlying sample is meaningful.",
-  "Public methodology. The docs below describe the current production calculations in plain English.",
-];
-
-const portfolioMetrics = [
+const productCards = [
   {
-    name: "Net P&L",
-    formula: "Closed trading P&L + net funding - fees",
-    detail:
-      "This is the top-line realized result from completed trades in the selected history window.",
+    title: "Portfolio",
+    href: "/portfolio",
+    body: "Paste a wallet and separate trading P&L, fees, funding, open risk, and behavior patterns.",
   },
   {
-    name: "Win Rate",
-    formula: "Winning round trips / total round trips",
-    detail:
-      "Trades are grouped into round trips by asset and direction. Open positions are not counted as wins or losses until closed.",
+    title: "Markets",
+    href: "/markets",
+    body: "Scan liquid Hyperliquid perps by momentum, funding, OI, pressure levels, and relative strength.",
   },
   {
-    name: "Fees Paid",
-    formula: "Sum of fill fees across the selected trade set",
-    detail:
-      "Shown separately because fee drag matters for active strategies, especially short-horizon systems.",
+    title: "Alerts",
+    href: "/alerts",
+    body: "Review stored momentum alerts with exact alert price, timestamp, TP/SL outcome, and delivery status.",
   },
   {
-    name: "Equity / Account Value",
-    formula: "Perps equity + full marked spot wallet",
-    detail:
-      "Perps equity comes from Hyperliquid margin account value. The spot wallet adds idle USDC plus marked non-USDC balances such as HIP-3 spot holdings. Staked HYPE is not included.",
-  },
-  {
-    name: "Drawdown",
-    formula: "Largest peak-to-trough decline on cumulative realized P&L",
-    detail:
-      "Used for risk-adjusted metrics such as Calmar and recovery factor.",
-  },
-  {
-    name: "Expectancy",
-    formula: "(Win rate × average win) - (Loss rate × average loss)",
-    detail:
-      "Useful for understanding whether the system has a positive edge per completed trade.",
-  },
-];
-
-const vaultMetrics = [
-  {
-    name: "Vault equity / TVL",
-    formula: "latest accountValueHistory, then vault summary TVL, then follower equity sum",
-    detail:
-      "HyperPulse prefers the latest vault account value when available because follower-only sums can undercount vault equity. If account value is unavailable, it falls back to Hyperliquid's vault summary TVL or follower equity.",
-  },
-  {
-    name: "30d return",
-    formula: "(pnl_now - pnl_30d_start) / starting_equity",
-    detail:
-      "Computed from the vault's P&L history divided by starting equity where available, which is less flow-contaminated than raw account value changes.",
-  },
-  {
-    name: "Max drawdown (90d)",
-    formula: "Largest peak-to-trough fall in cumulative daily P&L-return index",
-    detail:
-      "Shown as a positive percentage with the date of the trough. HyperPulse uses P&L-return observations instead of raw equity drawdown when enough history exists.",
-  },
-  {
-    name: "Sharpe (90d, annualized)",
-    formula: "(mean(daily_returns) / stdev(daily_returns)) × √365",
-    detail:
-      "Risk-free rate is set to zero, the standard convention for crypto. Suppressed with an Insufficient history label until at least 30 daily return observations are available — HyperPulse refuses to display a Sharpe built on a handful of points.",
-  },
-  {
-    name: "Calmar (90d, annualized)",
-    formula: "annualized_return / abs(max_drawdown)",
-    detail:
-      "Same 30-sample minimum as Sharpe. Useful as a complement: Sharpe punishes volatility, Calmar punishes the worst drawdown specifically.",
-  },
-  {
-    name: "Strategy fingerprint",
-    formula: "Top 5 traded coins, buy/sell flow bias, trades/day, median hold time, top-asset concentration",
-    detail:
-      "Derived from normalized operator fills over the last 30 days. Buy/sell flow bias is based on execution side, not a claim about the operator's current net exposure.",
-  },
-];
-
-const vaultLimitations = [
-  "Vault discovery uses a curated seed list plus Hyperliquid's recent vault summaries when available. It is not a complete all-time vault leaderboard yet.",
-  "The equity curve is account value and can include deposits or withdrawals. Performance tiles prefer P&L-history calculations where available.",
-  "Strategy fingerprint and operator track record cover the trailing 30–90 days. A vault that recently changed strategy will read differently than its all-time profile.",
-  "Sharpe and Calmar are suppressed below 30 daily observations to avoid false precision on short-lived vaults.",
-];
-
-const signalStates = [
-  {
-    label: "Crowded Long / Crowded Short",
-    detail:
-      "Only shown when current funding is extreme relative to history and forward returns have shown a material relationship with funding.",
-  },
-  {
-    label: "Funding Elevated / Funding Cheap",
-    detail:
-      "Used when funding is rich or cheap versus recent history, but the correlation with forward returns is too weak to make a stronger claim.",
-  },
-  {
-    label: "Neutral / Low Confidence",
-    detail:
-      "Default state when history is too sparse or the relationship between funding and forward returns is not reliable enough.",
-  },
-];
-
-const limitations = [
-  "HyperPulse is analytics software, not a custody layer. It does not take possession of user funds.",
-  "Signals are descriptive and probabilistic, not guaranteed forecasts. A strong historical relationship can still fail in live markets.",
-  "Some analytics are intentionally gated behind minimum sample sizes to avoid false precision.",
-  "Displayed account value is optimized for trading clarity, not tax or brokerage-style reporting.",
-  "Open positions can change faster than the portfolio polling interval, so intraminute UI differences versus Hyperliquid may occur.",
-];
-
-const faqs = [
-  {
-    q: "Why can HyperPulse show a wallet without connecting a browser wallet?",
-    a: "Because wallet analytics are built on public account state and public fill history. Read-only mode only needs the wallet address.",
-  },
-  {
-    q: "Does Privy email login automatically connect my Hyperliquid trading wallet?",
-    a: "Not always. Privy can authenticate you by email and may also expose an embedded wallet, but your actual Hyperliquid trading account is often a separate linked external address. HyperPulse now lets you explicitly choose which Privy wallet to view or trade from, and you can always paste the exact address you trade on.",
-  },
-  {
-    q: "Why might HyperPulse differ slightly from Hyperliquid?",
-    a: "The app groups fills into round trips and computes portfolio metrics on top of those trades. Hyperliquid is the source of truth for raw balances, positions, fills, and funding.",
-  },
-  {
-    q: "Does HyperPulse include staked HYPE in equity?",
-    a: "No. The current production calculation uses perps equity plus the full marked spot wallet. Staked HYPE is excluded so the trading balance stays interpretable.",
-  },
-  {
-    q: "When are AI Insights hidden?",
-    a: "If the underlying trade sample is too small. HyperPulse suppresses asset, hour, and performance claims when sample thresholds are not met.",
+    title: "Market Brief",
+    href: "/docs/factors",
+    body: "Read the biweekly HyperPulse tape note: top performers, themes, catalysts, and direct asset links.",
   },
 ];
 
@@ -168,39 +47,45 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-24 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 md:p-8">
-      <div className="mb-5">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">
-          {eyebrow}
-        </div>
-        <h2 className="mt-2 text-2xl font-semibold text-zinc-100">{title}</h2>
-      </div>
-      <div className="space-y-4 text-sm leading-7 text-zinc-300">{children}</div>
+    <section id={id} className="scroll-mt-24 rounded-2xl border border-zinc-800 bg-[#10151b] p-5 md:p-6">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-teal-300/80">{eyebrow}</div>
+      <h2 className="mt-2 text-xl font-semibold text-zinc-100 md:text-2xl">{title}</h2>
+      <div className="mt-4 space-y-4 text-sm leading-7 text-zinc-300">{children}</div>
     </section>
+  );
+}
+
+function MiniCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+      <div className="text-sm font-medium text-zinc-100">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-zinc-400">{children}</div>
+    </div>
+  );
+}
+
+function Formula({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</div>
+      <div className="mt-2 font-mono text-xs leading-6 text-teal-200">{value}</div>
+    </div>
   );
 }
 
 export default function DocsPage() {
   const { vaultsEnabled } = useAppConfig();
-  const visibleQuickLinks = vaultsEnabled
-    ? quickLinks
-    : quickLinks.filter((item) => item.href !== "#vaults");
+  const visibleQuickLinks = vaultsEnabled ? quickLinks : quickLinks.filter((item) => item.href !== "#vaults");
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 pb-20">
-      <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="mx-auto max-w-6xl px-4 py-6 pb-20">
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
-          <div className="sticky top-24 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-              Docs
-            </div>
+          <div className="sticky top-24 rounded-2xl border border-zinc-800 bg-[#10151b] p-4">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Docs</div>
             <div className="mt-3 space-y-1">
               {visibleQuickLinks.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className="block rounded-md px-3 py-2 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
-                >
+                <a key={item.href} href={item.href} className="block rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-100">
                   {item.label}
                 </a>
               ))}
@@ -208,326 +93,112 @@ export default function DocsPage() {
           </div>
         </aside>
 
-        <main className="space-y-6">
-          <section className="rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-teal-950/30 p-6 md:p-8">
+        <main className="space-y-5">
+          <section className="rounded-2xl border border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.14),transparent_32%),#10151b] p-6 md:p-8">
             <div className="max-w-3xl">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-teal-400/80">
-                HyperPulse Docs
-              </div>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-100 md:text-4xl">
-                Public methodology for wallet analytics, funding signals, and tomorrow&apos;s market bias.
-              </h1>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-teal-300/80">HyperPulse Docs</div>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">The short version.</h1>
               <p className="mt-4 text-sm leading-7 text-zinc-300">
-                HyperPulse is a Hyperliquid analytics layer built for active traders. It combines public wallet data,
-                fill history, funding history, and market structure to explain what happened in a portfolio and what
-                the tape has historically implied next.
+                HyperPulse is a read-only Hyperliquid trader OS. It explains portfolio performance, market momentum,
+                alert quality, and vault risk using public Hyperliquid data plus compact stored alert snapshots.
               </p>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-2">
+            <div className="mt-6 flex flex-wrap gap-2 lg:hidden">
               {visibleQuickLinks.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-full border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-teal-500/50 hover:text-zinc-100"
-                >
+                <a key={item.href} href={item.href} className="rounded-full border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-teal-500/50 hover:text-zinc-100">
                   {item.label}
                 </a>
               ))}
             </div>
           </section>
 
-          <Section id="overview" eyebrow="Overview" title="What HyperPulse does">
+          <div className="grid gap-3 md:grid-cols-2">
+            {productCards.map((card) => (
+              <Link key={card.href} href={card.href} className="rounded-2xl border border-zinc-800 bg-[#10151b] p-4 transition hover:border-teal-500/40 hover:bg-zinc-900/70">
+                <div className="text-base font-semibold text-zinc-100">{card.title}</div>
+                <p className="mt-2 text-sm leading-6 text-zinc-400">{card.body}</p>
+              </Link>
+            ))}
+          </div>
+
+          <Section id="overview" eyebrow="Overview" title="What HyperPulse is">
             <p>
-              HyperPulse has two jobs. First, it reconstructs a trader&apos;s recent behavior from Hyperliquid wallet
-              activity and turns that into portfolio analytics such as win rate, expectancy, drawdown, asset
-              breakdowns, timing patterns, and funding drag. Second, it evaluates market conditions across listed
-              assets and converts raw funding, open interest, and price action into a cleaner signal layer.
+              HyperPulse turns Hyperliquid market and wallet data into trader-facing context: what moved, what hurt
+              performance, what alerts fired, and whether those alerts later hit target or invalidation first.
             </p>
             <div className="grid gap-3 md:grid-cols-3">
-              {principles.map((principle) => (
-                <div key={principle} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-300">
-                  {principle}
-                </div>
-              ))}
+              <MiniCard title="Read-only by default">Paste a public wallet. HyperPulse never needs seed phrases or private keys for analytics.</MiniCard>
+              <MiniCard title="Evidence-first">Signals include data coverage, timestamps, confidence, and stored outcomes where available.</MiniCard>
+              <MiniCard title="Built for review">The product is designed to improve trading decisions, not to guarantee a forecast.</MiniCard>
             </div>
           </Section>
 
-          <Section id="data-sources" eyebrow="Inputs" title="Data sources and source of truth">
+          <Section id="portfolio" eyebrow="Portfolio" title="How wallet analytics work">
             <p>
-              HyperPulse uses Hyperliquid account state, public fill history, funding history, and market candles as
-              its primary inputs. Hyperliquid remains the source of truth for balances, open positions, fills, and
-              funding payments. HyperPulse layers portfolio reconstruction and market inference on top.
+              Portfolio analytics are reconstructed from public account state, fills, funding, ledger events, and open
+              positions. Completed fills are grouped into round trips so the app can show behavior and risk, not just raw transactions.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Portfolio inputs</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Wallet account state, marked spot balances, open positions, fills, realized fees, and funding cash
-                  flows.
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Market inputs</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Funding history, current funding APR, open interest changes, 24h price change, and recent candle
-                  history for forward-return studies.
-                </div>
-              </div>
+              <Formula label="Realized trading P&L" value="closed P&L + net funding - fees" />
+              <Formula label="Displayed equity" value="perps account value + marked spot wallet; staked HYPE excluded" />
+              <Formula label="Win rate" value="winning closed round trips / all closed round trips" />
+              <Formula label="Expectancy" value="(win rate × avg win) - (loss rate × avg loss)" />
             </div>
+            <p className="text-zinc-400">
+              Deposits and withdrawals are separated from trading profits where ledger data is available. If coverage is
+              incomplete, HyperPulse labels the gap instead of pretending the accounting is perfect.
+            </p>
           </Section>
 
-          <Section id="portfolio" eyebrow="Portfolio" title="How portfolio analytics are calculated">
+          <Section id="markets" eyebrow="Markets" title="How signals and alerts work">
             <p>
-              Portfolio analytics are built from completed round trips. HyperPulse groups fills by asset and direction,
-              derives weighted average entry prices, and closes trades when the tracked position returns to zero.
-              Funding paid or earned during that trade window is merged into the resulting trade record.
+              Market Radar ranks liquid perps by relative momentum, not raw 24h green candles. Telegram alerts are stricter:
+              they require a large enough move, relative strength versus BTC and the liquid basket, participation, and usable TP/SL zones.
             </p>
-            <div className="overflow-hidden rounded-xl border border-zinc-800">
-              <div className="grid grid-cols-1 divide-y divide-zinc-800 bg-zinc-950/60">
-                {portfolioMetrics.map((metric) => (
-                  <div key={metric.name} className="grid gap-3 p-4 md:grid-cols-[180px_minmax(0,180px)_1fr] md:items-start">
-                    <div className="text-sm font-medium text-zinc-100">{metric.name}</div>
-                    <div className="text-xs text-teal-300">{metric.formula}</div>
-                    <div className="text-sm text-zinc-400">{metric.detail}</div>
-                  </div>
-                ))}
-              </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Formula label="Momentum Edge" value="BTC residual + basket residual + raw return + structure + acceleration + participation - funding penalty" />
+              <Formula label="Participation" value="robust-z(log10 24h volume) + robust-z(log10 open interest)" />
             </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
-              <div className="font-medium text-amber-200">Accounting note</div>
-              <div className="mt-1 text-amber-100/80">
-                HyperPulse currently defines displayed trading equity as <span className="font-medium">perps equity + the full marked spot wallet</span>.
-                Staked HYPE is intentionally excluded from this number so the dashboard stays aligned with immediately
-                usable trading capital.
-              </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <MiniCard title="Alerts page">Stores the exact alert price, alert time, current return, delivery state, and TP/SL first-touch outcome.</MiniCard>
+              <MiniCard title="Biweekly brief">Summarizes which assets led, why they likely moved, and which themes carried the Hyperliquid tape.</MiniCard>
             </div>
           </Section>
 
           {vaultsEnabled ? (
-            <Section id="vaults" eyebrow="Vaults" title="How vault analytics are calculated">
+            <Section id="vaults" eyebrow="Vaults" title="How vault screening works">
               <p>
-                Hyperliquid vaults are on-chain trading vaults: any user can deposit USDC, a vault operator
-                trades on their behalf, and returns are pro-rata to depositors. HyperPulse ranks vaults by
-                risk-adjusted performance — not headline APY — so the depositor question &ldquo;can I trust this
-                manager with my capital?&rdquo; gets a real answer.
+                Vaults are screened by TVL, recent P&L, drawdown, age, depositor base, and operator behavior. HyperPulse
+                prefers risk-adjusted consistency over headline APR.
               </p>
-              <div className="overflow-hidden rounded-xl border border-zinc-800">
-                <div className="grid grid-cols-1 divide-y divide-zinc-800 bg-zinc-950/60">
-                  {vaultMetrics.map((metric) => (
-                    <div key={metric.name} className="grid gap-3 p-4 md:grid-cols-[180px_minmax(0,220px)_1fr] md:items-start">
-                      <div className="text-sm font-medium text-zinc-100">{metric.name}</div>
-                      <div className="text-xs text-teal-300">{metric.formula}</div>
-                      <div className="text-sm text-zinc-400">{metric.detail}</div>
-                    </div>
-                  ))}
-                </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Formula label="30d return" value="P&L change / starting equity when vault P&L history is available" />
+                <Formula label="Risk quality" value="drawdown + sample size + flow contamination + operator history" />
               </div>
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
-                <div className="font-medium text-amber-200">Known limitations</div>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-100/80">
-                  {vaultLimitations.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
-              </div>
+              <p className="text-zinc-400">
+                Vault charts can be affected by deposits and withdrawals, so HyperPulse labels flow-sensitive equity curves.
+              </p>
             </Section>
           ) : null}
 
-          <Section id="signals" eyebrow="Signals" title="How funding signals are produced">
+          <Section id="privacy" eyebrow="Privacy" title="Wallet modes and safety">
             <p>
-              HyperPulse does not rely on a raw funding threshold alone. It first measures how extreme the current
-              funding APR is versus roughly 30 days of history, then studies whether historical funding extremes
-              actually correlated with forward price returns over a default 24 hour horizon.
-            </p>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Signal pipeline</div>
-              <div className="mt-3 space-y-2 text-sm text-zinc-300">
-                <div>1. Convert funding history into annualized APR series.</div>
-                <div>2. Rank the current funding APR inside the recent distribution.</div>
-                <div>3. Pair each historical funding point with forward 24h returns from candles.</div>
-                <div>4. Compute funding/forward-return correlation and compare extreme buckets.</div>
-                <div>5. Promote to a stronger label only when the relationship is material enough to matter.</div>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {signalStates.map((state) => (
-                <div key={state.label} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <div className="text-sm font-medium text-zinc-100">{state.label}</div>
-                  <div className="mt-2 text-sm text-zinc-400">{state.detail}</div>
-                </div>
-              ))}
-            </div>
-            <p>
-              Confidence is graded from sample size and absolute correlation strength. Sparse history or weak
-              correlation forces the signal back toward low confidence rather than overstating precision.
-            </p>
-          </Section>
-
-          <Section id="market-radar" eyebrow="Radar" title="How Momentum Edge is calculated">
-            <p>
-              Market Radar is a price-action relative-strength scan, not a raw list of the biggest green candles. It
-              starts with Hyperliquid perp markets, keeps only liquid names, then asks which assets are outperforming
-              after adjusting for BTC, the broader liquid perp basket, Friday structure, and short-term acceleration.
-            </p>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Momentum Edge pipeline</div>
-              <div className="mt-3 space-y-2 text-sm text-zinc-300">
-                <div>1. Filter to active perps with at least $10M open interest and $20M 24h volume.</div>
-                <div>2. Compute 24h log return from mark price versus previous-day price.</div>
-                <div>3. Estimate each asset&apos;s BTC beta from 1h candles when enough history exists; otherwise use a 1.00 fallback.</div>
-                <div>4. Compute BTC-adjusted residual return and liquid-basket residual return.</div>
-                <div>5. Check structure divergence: for example, asset above last Friday&apos;s high while BTC is still below its Friday high.</div>
-                <div>6. Score acceleration from 1h momentum versus 4h pace and 4h momentum versus 24h pace.</div>
-                <div>7. Robust-z-score raw return, BTC residual, basket residual, acceleration, volume, and open interest participation.</div>
-                <div>8. Penalize longs when funding is very expensive and shorts when funding is very negative.</div>
-                <div>9. Show only qualified leaders above the current radar threshold, capped at three strength and three weakness names.</div>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Strength score</div>
-                <div className="mt-2 font-mono text-xs text-teal-300">
-                  30% BTC residual + 20% basket residual + 15% raw return + 20% Friday structure + 10% acceleration + 5% participation - funding penalty
-                </div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  A Momentum Edge must be positive on raw 24h return, positive versus the basket, and positive versus
-                  BTC-adjusted return for non-BTC assets.
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Weakness score</div>
-                <div className="mt-2 font-mono text-xs text-rose-300">
-                  30% negative BTC residual + 20% negative basket residual + 15% negative raw return + 20% Friday structure + 10% acceleration + 5% participation - funding penalty
-                </div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  A Weakness Edge must be negative on raw 24h return, negative versus the basket, and lag BTC after
-                  beta adjustment for non-BTC assets.
-                </div>
-              </div>
-            </div>
-            <p>
-              The radar also shows crowded-long and crowded-short context from funding APR, open interest, 24h volume,
-              and 24h move. Those crowding cards are separate from Momentum Edge and should be read as positioning
-              pressure, not standalone trade calls.
-            </p>
-          </Section>
-
-          <Section id="pressure-levels" eyebrow="Levels" title="How chart pressure levels are produced">
-            <p>
-              Pressure levels live inside the price chart. Support and resistance still come from confirmed candle
-              structure. Liquidation pressure only appears when tracked wallet profiles include real Hyperliquid
-              position data with liquidation prices.
-            </p>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Market context</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Mark price, funding APR, open interest, max leverage, and visible book depth come from Hyperliquid.
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Tracked pockets</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Known-wallet liquidations are bucketed every 0.5% within 25% of price, then scored by notional,
-                  leverage, and distance.
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Market-only mode</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  When no tracked wallet store is configured, the chart shows funding/OI pressure and no liquidation
-                  bands.
-                </div>
-              </div>
-            </div>
-            <p>
-              Public trades are not used to create liquidation lines because Hyperliquid trade prints do not expose
-              leverage or liquidation price. They can only confirm tape pressure near existing levels in later versions.
-            </p>
-          </Section>
-
-          <Section id="sentiment" eyebrow="Sentiment" title="How HyperPulse frames next 24h bias">
-            <p>
-              The HyperPulse sentiment model is a composite regime indicator with a short-horizon directional overlay.
-              The headline score runs from fear to greed. The directional overlay frames next-session tape risk using
-              BTC as the market anchor.
+              Read-only analytics require only a public Hyperliquid address. Connecting a wallet is optional and should
+              only be used for authenticated workflows. HyperPulse does not custody funds.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Headline regime score</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  40% funding regime, 35% market breadth, 25% volatility breadth. Funding regime itself blends median
-                  funding direction, signal bias, and a 24h versus 7d funding moving-average regime check.
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-xs font-medium text-zinc-100">Next 24h bias model</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  BTC 24h momentum, BTC 48h momentum, live BTC open-interest tick, and a contrarian funding term are
-                  blended into a directional score. Current production weights are 40%, 30%, 10%, and 20%.
-                  OI is only a live confirmation input until HyperPulse stores true historical OI windows.
-                </div>
-              </div>
+              <MiniCard title="Public wallet mode">Best for analytics, sharing, and reviewing a wallet without permissions.</MiniCard>
+              <MiniCard title="Connected mode">Used only when the app explicitly needs your active browser wallet context.</MiniCard>
             </div>
-            <p>
-              This model is intentionally short-horizon and descriptive. Funding is a crowding/regime input, not a
-              direct spot-price predictor. CNN Fear &amp; Greed may be linked as macro backdrop, but it is not ingested
-              into the HyperPulse score.
-            </p>
           </Section>
 
-          <Section id="wallets" eyebrow="Access" title="Wallet modes, privacy, and execution">
-            <p>
-              HyperPulse supports read-only analysis and connected trading workflows. Read-only mode is the safest and
-              simplest path for analytics because it only needs a wallet address. No private key is required to view a
-              public account.
-            </p>
+          <Section id="limits" eyebrow="Limits" title="What to be careful with">
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-sm font-medium text-zinc-100">Read-only</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Loads account state and public history for any wallet address. No trading permissions. No private key
-                  requested.
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <div className="text-sm font-medium text-zinc-100">Browser wallet</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Requests a connected wallet, then approves a local Hyperliquid agent key for order execution. Trading
-                  permissions stay scoped to the approved agent.
-                </div>
-              </div>
-            </div>
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-100/90">
-              <div className="font-medium text-amber-200">Honest note on Privy</div>
-              <div className="mt-1 text-amber-100/80">
-                Privy is best treated as an identity and wallet-discovery layer here, not as proof that HyperPulse has
-                found your exact Hyperliquid trading account automatically. If your live trading address differs from
-                the wallet Privy shows first, choose the linked wallet explicitly or paste the exact address you trade
-                on.
-              </div>
-            </div>
-          </Section>
-
-          <Section id="limits" eyebrow="Caveats" title="Known limitations and interpretation rules">
-            <div className="grid gap-3">
-              {limitations.map((item) => (
-                <div key={item} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
-                  {item}
-                </div>
-              ))}
-            </div>
-          </Section>
-
-          <Section id="faq" eyebrow="FAQ" title="Frequently asked questions">
-            <div className="space-y-3">
-              {faqs.map((item) => (
-                <div key={item.q} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <div className="text-sm font-medium text-zinc-100">{item.q}</div>
-                  <div className="mt-2 text-sm text-zinc-400">{item.a}</div>
-                </div>
-              ))}
+              <MiniCard title="Signals are probabilistic">A strong setup can fail. Treat alerts as review prompts, not instructions.</MiniCard>
+              <MiniCard title="Coverage can vary">Some wallets have partial funding, ledger, sizing, or historical fill coverage.</MiniCard>
+              <MiniCard title="Markets move faster than polling">Intraminute values can differ from Hyperliquid during fast tape.</MiniCard>
+              <MiniCard title="Not tax accounting">Displayed equity and P&L are optimized for trading review, not tax reporting.</MiniCard>
             </div>
           </Section>
         </main>

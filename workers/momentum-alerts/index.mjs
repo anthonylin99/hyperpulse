@@ -89,12 +89,12 @@ const LARGE_CAP_VOLUME_USD = envNumber("MOMENTUM_ALERT_LARGE_CAP_VOLUME_USD", 75
 const EXCEPTIONAL_MIN_OI_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_OI_USD", 3_000_000);
 const EXCEPTIONAL_MIN_VOLUME_USD = envNumber("MOMENTUM_ALERT_EXCEPTIONAL_MIN_VOLUME_USD", 8_000_000);
 const PER_ASSET_COOLDOWN_MS = envNumber("MOMENTUM_ALERT_ASSET_COOLDOWN_MS", 12 * 60 * 60 * 1000);
-const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 8), 1, 24);
-const TELEGRAM_HOURLY_CAP = clamp(envNumber("MOMENTUM_ALERT_HOURLY_CAP", 3), 1, 6);
+const TELEGRAM_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_DAILY_CAP", 6), 1, 6);
+const TELEGRAM_HOURLY_CAP = clamp(envNumber("MOMENTUM_ALERT_HOURLY_CAP", 1), 1, 1);
 const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 30), TELEGRAM_DAILY_CAP, 60);
 const MAX_ALERTS_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_CYCLE", 3), 1, 8);
-const MAX_TELEGRAM_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_TELEGRAM_PER_CYCLE", 2), 1, 3);
-const TELEGRAM_QUEUE_MAX_AGE_MS = envNumber("MOMENTUM_ALERT_QUEUE_MAX_AGE_MS", 60 * 60 * 1000);
+const MAX_TELEGRAM_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_TELEGRAM_PER_CYCLE", 1), 1, 1);
+const TELEGRAM_QUEUE_MAX_AGE_MS = envNumber("MOMENTUM_ALERT_QUEUE_MAX_AGE_MS", 12 * 60 * 60 * 1000);
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
@@ -874,6 +874,65 @@ async function countSentSince(cutoffMs) {
   return Number(result.rows[0]?.count ?? 0);
 }
 
+async function loadOutcomeQuality(asset, direction) {
+  try {
+    const result = await pool.query(
+      `select outcome, max_favorable_pct, max_adverse_pct, time_to_hit_ms
+       from alert_outcomes
+       where asset = $1
+         and direction = $2
+         and outcome in ('tp_first', 'sl_first')
+       order by evaluated_at desc
+       limit 20`,
+      [asset, direction],
+    );
+    const rows = result.rows;
+    const resolved = rows.length;
+    const wins = rows.filter((row) => row.outcome === "tp_first").length;
+    const losses = rows.filter((row) => row.outcome === "sl_first").length;
+    const winRatePct = resolved > 0 ? (wins / resolved) * 100 : null;
+    const avgMfe = average(rows.map((row) => Number(row.max_favorable_pct)).filter(Number.isFinite));
+    const avgAbsMae = average(rows.map((row) => Math.abs(Number(row.max_adverse_pct))).filter(Number.isFinite));
+    const medianTimeToHitMs = median(rows.map((row) => Number(row.time_to_hit_ms)).filter(Number.isFinite));
+
+    let passes = true;
+    let reason = "Limited TP/SL sample; high-conviction alerts can still qualify.";
+    if (resolved >= 3) {
+      passes = (winRatePct ?? 0) >= 50 && (avgMfe ?? 0) >= Math.max((avgAbsMae ?? 0) * 0.75, 0.25);
+      reason = passes
+        ? `TP/SL sample passes: ${wins}/${resolved} wins, avg MFE ${formatPct(avgMfe ?? 0)}, avg MAE -${formatPct(avgAbsMae ?? 0).replace("+", "")}.`
+        : `TP/SL sample blocked Telegram: ${wins}/${resolved} wins, avg MFE ${formatPct(avgMfe ?? 0)}, avg MAE -${formatPct(avgAbsMae ?? 0).replace("+", "")}.`;
+    }
+
+    return {
+      status: resolved >= 3 ? "tested" : "thin_sample",
+      passes,
+      resolved,
+      wins,
+      losses,
+      winRatePct,
+      avgMfe,
+      avgAbsMae,
+      medianTimeToHitMs,
+      reason,
+    };
+  } catch (error) {
+    if (DEBUG) console.warn("[momentum-alerts] outcome quality unavailable", error instanceof Error ? error.message : error);
+    return {
+      status: "unavailable",
+      passes: true,
+      resolved: 0,
+      wins: 0,
+      losses: 0,
+      winRatePct: null,
+      avgMfe: null,
+      avgAbsMae: null,
+      medianTimeToHitMs: null,
+      reason: "TP/SL outcome history unavailable; using live signal quality only.",
+    };
+  }
+}
+
 function directionalReturn(direction, value) {
   if (!Number.isFinite(value)) return 0;
   return direction === "short" ? -value : value;
@@ -911,6 +970,7 @@ function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direc
 
 function isStoredTelegramQualityAlert(alert) {
   const direction = alert.payload?.direction === "short" ? "short" : "long";
+  if (alert.payload?.outcomeQuality?.passes === false) return false;
   if (alert.payload?.radarEdge?.telegramEligible === true) return true;
   const d1h = directionalReturn(direction, alert.return1hPct);
   const d4h = directionalReturn(direction, alert.return4hPct);
@@ -991,7 +1051,8 @@ async function buildCandidate(asset, radarContext) {
   const volumeVs = features.volumeVsBaseline ?? 1;
   const oiText = oiChangePct == null ? "OI context limited" : `OI ${formatPct(oiChangePct)}`;
   const bucket = momentumBucket(asset.asset);
-  const telegramEligible = score.telegramEligible;
+  const outcomeQuality = await loadOutcomeQuality(asset.asset, direction);
+  const telegramEligible = score.telegramEligible && outcomeQuality.passes;
   const radarEdge = score.radarEdge ?? null;
   const reason = radarEdge
     ? direction === "short"
@@ -1036,6 +1097,7 @@ async function buildCandidate(asset, radarContext) {
       resistance,
       atr,
       fundingPenaltyApplied: direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65,
+      outcomeQuality,
       radarEdge: radarEdge
         ? {
             direction: radarEdge.direction,
@@ -1105,6 +1167,10 @@ function buildTelegramText(alert) {
       ? "Breakout alert"
       : "Momentum alert";
   const contextLine = volumeContextTag(alert.volumeVsBaseline);
+  const outcomeQuality = alert.payload?.outcomeQuality;
+  const sampleLine = outcomeQuality?.status === "tested" && Number(outcomeQuality.resolved) > 0
+    ? `TP/SL sample: ${Number(outcomeQuality.wins)}/${Number(outcomeQuality.resolved)} wins`
+    : null;
   const actionLine = `${direction === "SHORT" ? "Cover" : "Trim"} ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`;
   const returnLine = `1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`;
   const qualityLine = Number.isFinite(score) ? `${severity} · ${score.toFixed(2)}σ edge` : `${severity} · breakout`;
@@ -1118,6 +1184,7 @@ function buildTelegramText(alert) {
     "",
     actionLine,
     contextLine,
+    sampleLine,
   ].filter((line) => line != null).join("\n");
 }
 
@@ -1316,12 +1383,19 @@ async function flushTelegramQueue() {
   if (hourlySent >= TELEGRAM_HOURLY_CAP) return 0;
 
   const result = await pool.query(
-    `select id, payload, attempts from notification_queue
-     where event_type = 'momentum_alert'
-       and channel = 'telegram'
-       and status = 'queued'
-       and created_at >= $1
-     order by created_at asc
+    `select nq.id, nq.payload, nq.attempts
+     from notification_queue nq
+     join momentum_alert_events mea
+       on mea.id = nq.event_id
+      and nq.event_type = 'momentum_alert'
+     where nq.event_type = 'momentum_alert'
+       and nq.channel = 'telegram'
+       and nq.status = 'queued'
+       and nq.created_at >= $1
+     order by
+       coalesce(nullif(mea.payload #>> '{radarEdge,score}', '')::double precision, mea.score) desc,
+       mea.score desc,
+       nq.created_at asc
      limit 10`,
     [Date.now() - TELEGRAM_QUEUE_MAX_AGE_MS],
   );
@@ -1376,7 +1450,10 @@ async function recoverTelegramNotifications(now) {
      where mea.created_at >= $1
        and (nq.id is null or nq.status = 'disabled')
        and coalesce(mea.payload->>'telegramEligible', 'true') <> 'false'
-     order by mea.created_at desc
+     order by
+       coalesce(nullif(mea.payload #>> '{radarEdge,score}', '')::double precision, mea.score) desc,
+       mea.score desc,
+       mea.created_at desc
      limit $2`,
     [now - TELEGRAM_QUEUE_MAX_AGE_MS, limit],
   );

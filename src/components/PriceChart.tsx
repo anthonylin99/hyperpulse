@@ -568,6 +568,10 @@ export default function PriceChart({
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [hoverCandle, setHoverCandle] = useState<CandleHoverReadout | null>(null);
 
+  useEffect(() => {
+    setInterval(DEFAULT_INTERVAL);
+  }, [coin, marketType]);
+
   const reactionSupported = marketType === "perp";
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
   const levels = useMemo(

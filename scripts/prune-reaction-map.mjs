@@ -42,8 +42,12 @@ if (!DATABASE_URL) {
 
 const apply = process.argv.includes("--apply");
 const vacuumFull = process.argv.includes("--vacuum-full");
-const rawHours = Number(argValue("hours", "6"));
-const hours = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 6;
+const rawHours = Number(argValue("hours", "4.5"));
+const hours = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 4.5;
+const rawEventHours = Number(argValue("event-hours", "24"));
+const eventHours = Number.isFinite(rawEventHours) && rawEventHours > 0 ? rawEventHours : 24;
+const rawStaleZoneHours = Number(argValue("stale-zone-hours", "24"));
+const staleZoneHours = Number.isFinite(rawStaleZoneHours) && rawStaleZoneHours > 0 ? rawStaleZoneHours : 24;
 const cutoff = Date.now() - hours * 60 * 60 * 1000;
 const pool = new Pool({ connectionString: DATABASE_URL, max: 1 });
 
@@ -51,7 +55,7 @@ const retentionTargets = [
   { table: "reaction_orderbook_buckets", column: "bucket_ms" },
   { table: "reaction_trade_buckets", column: "bucket_ms" },
   { table: "reaction_context_snapshots", column: "bucket_ms" },
-  { table: "reaction_exposure_zone_events", column: "event_at", hours: 48 },
+  { table: "reaction_exposure_zone_events", column: "event_at", hours: eventHours },
 ];
 
 async function tableExists(client, table) {
@@ -97,7 +101,7 @@ async function pruneCurrentZones(client) {
   const table = "reaction_exposure_zones_current";
   if (!(await tableExists(client, table))) return null;
   const before = await relationSize(client, table);
-  const staleCutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const staleCutoff = Date.now() - staleZoneHours * 60 * 60 * 1000;
   const countResult = await client.query(
     `select count(*)::int as count from ${table} where status <> 'active' and coalesce(last_seen_at, refreshed_at, generated_at, 0) < $1`,
     [staleCutoff],
@@ -118,7 +122,9 @@ async function pruneCurrentZones(client) {
 async function main() {
   const client = await pool.connect();
   try {
-    console.log(`[reaction-prune] mode=${apply ? "apply" : "dry-run"} retention=${hours}h vacuumFull=${vacuumFull}`);
+    console.log(
+      `[reaction-prune] mode=${apply ? "apply" : "dry-run"} rawRetention=${hours}h eventRetention=${eventHours}h staleZoneRetention=${staleZoneHours}h vacuumFull=${vacuumFull}`,
+    );
     const dbBefore = await client.query("select pg_database_size(current_database()) as bytes");
     const rows = [];
     for (const target of retentionTargets) {

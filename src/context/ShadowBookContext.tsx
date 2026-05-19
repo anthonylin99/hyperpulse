@@ -17,16 +17,33 @@ import {
   calculateShadowTradeStats,
   closeShadowTrade,
   createShadowTrade,
+  loadShadowMomentumStrategy,
   loadShadowTrades,
+  saveShadowMomentumStrategy,
   saveShadowTrades,
   updateObservedPrice,
+  type ShadowMomentumStrategyState,
   type ShadowTrade,
   type ShadowTradeDraft,
   type ShadowTradeSide,
   type ShadowTradeSource,
 } from "@/lib/shadowBook";
+import type { MarketRadarSignal } from "@/types";
 
 type TicketState = ShadowTradeDraft | null;
+
+type RadarResponse = {
+  signals?: MarketRadarSignal[];
+};
+
+function easternDayKey(time: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(time);
+}
 
 type ShadowBookContextValue = {
   trades: ShadowTrade[];
@@ -44,6 +61,7 @@ export function ShadowBookProvider({ children }: { children: ReactNode }) {
   const { assets } = useMarket();
   const [trades, setTrades] = useState<ShadowTrade[]>([]);
   const [ticket, setTicket] = useState<TicketState>(null);
+  const [momentumStrategy, setMomentumStrategy] = useState<ShadowMomentumStrategyState | null>(null);
 
   const markMap = useMemo(() => {
     const next = new Map<string, number>();
@@ -56,6 +74,7 @@ export function ShadowBookProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setTrades(loadShadowTrades());
+    setMomentumStrategy(loadShadowMomentumStrategy());
   }, []);
 
   useEffect(() => {
@@ -79,6 +98,15 @@ export function ShadowBookProvider({ children }: { children: ReactNode }) {
 
   const markForAsset = useCallback((asset: string) => markMap.get(asset.toUpperCase()) ?? null, [markMap]);
 
+  const maxLeverageForAsset = useMemo(() => {
+    const next = new Map<string, number>();
+    for (const asset of assets) {
+      const maxLeverage = Math.max(1, Number(asset.maxLeverage || 1));
+      next.set(asset.coin.toUpperCase(), maxLeverage);
+    }
+    return next;
+  }, [assets]);
+
   const addTrade = useCallback((draft: ShadowTradeDraft) => {
     const trade = createShadowTrade(draft);
     setTrades((prev) => {
@@ -93,6 +121,29 @@ export function ShadowBookProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
+    const strategyParam = url.searchParams.get("paperMomentum");
+    if (strategyParam === "on" || strategyParam === "off") {
+      const nextState: ShadowMomentumStrategyState = {
+        ...(momentumStrategy ?? loadShadowMomentumStrategy()),
+        enabled: strategyParam === "on",
+        dailyCap: Number(url.searchParams.get("dailyCap")) === 1 ? 1 : 2,
+        marginUsd: Math.max(1, Number(url.searchParams.get("margin") ?? momentumStrategy?.marginUsd ?? 100)),
+        lastRunAt: null,
+      };
+      setMomentumStrategy(nextState);
+      saveShadowMomentumStrategy(nextState);
+      toast.success(strategyParam === "on" ? "Momentum paper strategy armed" : "Momentum paper strategy paused");
+
+      const nextParams = url.searchParams;
+      nextParams.delete("paperMomentum");
+      nextParams.delete("dailyCap");
+      nextParams.delete("margin");
+      nextParams.set("section", "shadow");
+      const nextQuery = nextParams.toString();
+      window.location.replace(`${url.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
+      return;
+    }
+
     const paper = url.searchParams.get("paper");
     if (!paper) return;
 
@@ -138,7 +189,91 @@ export function ShadowBookProvider({ children }: { children: ReactNode }) {
     nextParams.set("section", "shadow");
     const nextQuery = nextParams.toString();
     window.location.replace(`${url.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
-  }, [markMap]);
+  }, [markMap, momentumStrategy]);
+
+  useEffect(() => {
+    if (!momentumStrategy?.enabled || assets.length === 0) return;
+    if (momentumStrategy.lastRunAt && Date.now() - momentumStrategy.lastRunAt < 2 * 60 * 1000) return;
+
+    const strategy = momentumStrategy;
+    let cancelled = false;
+    async function runMomentumStrategy() {
+      try {
+        const response = await fetch("/api/market/radar", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as RadarResponse;
+        const signals = Array.isArray(payload.signals) ? payload.signals : [];
+        const candidates = signals
+          .filter((signal) => signal.kind === "strongest_asset" || signal.kind === "weakest_asset")
+          .sort((a, b) => Math.abs(Number(b.scoreDetails?.score ?? 0)) - Math.abs(Number(a.scoreDetails?.score ?? 0)));
+        if (cancelled || candidates.length === 0) return;
+
+        const now = Date.now();
+        const dayKey = easternDayKey(now);
+        let added = 0;
+
+        setTrades((prev) => {
+          const existingToday = prev.filter(
+            (trade) => trade.source === "momentum_strategy" && easternDayKey(trade.createdAt) === dayKey,
+          );
+          const remaining = Math.max(0, strategy.dailyCap - existingToday.length);
+          if (remaining <= 0) return prev;
+
+          const nextTrades = [...prev];
+          const takenIds = new Set(strategy.takenSignalIds);
+          for (const signal of candidates) {
+            if (added >= remaining) break;
+            const asset = signal.asset.toUpperCase();
+            const side: ShadowTradeSide = signal.kind === "weakest_asset" ? "short" : "long";
+            const sourceId = `radar:${signal.id}`;
+            if (takenIds.has(sourceId)) continue;
+            if (nextTrades.some((trade) => trade.sourceId === sourceId)) continue;
+            if (existingToday.some((trade) => trade.asset === asset && trade.side === side)) continue;
+
+            const entryPrice = markMap.get(asset);
+            if (!entryPrice) continue;
+            const leverage = maxLeverageForAsset.get(asset) ?? 3;
+            nextTrades.unshift(createShadowTrade({
+              asset,
+              side,
+              entryPrice,
+              marginUsd: strategy.marginUsd,
+              leverage,
+              source: "momentum_strategy",
+              sourceId,
+            }));
+            takenIds.add(sourceId);
+            added += 1;
+          }
+
+          const clipped = nextTrades.slice(0, 75);
+          saveShadowTrades(clipped);
+          return clipped;
+        });
+
+        const nextState: ShadowMomentumStrategyState = {
+          ...strategy,
+          lastRunAt: now,
+          takenSignalIds: [
+            ...new Set([
+              ...strategy.takenSignalIds,
+              ...candidates.slice(0, strategy.dailyCap).map((signal) => `radar:${signal.id}`),
+            ]),
+          ].slice(-100),
+        };
+        setMomentumStrategy(nextState);
+        saveShadowMomentumStrategy(nextState);
+        if (added > 0) toast.success(`Momentum strategy added ${added} paper trade${added === 1 ? "" : "s"}`);
+      } catch {
+        // Local paper strategy should never interrupt the app.
+      }
+    }
+
+    void runMomentumStrategy();
+    return () => {
+      cancelled = true;
+    };
+  }, [assets.length, markMap, maxLeverageForAsset, momentumStrategy]);
 
   const openTicket = useCallback((draft: ShadowTradeDraft) => {
     setTicket({
@@ -364,6 +499,7 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
 function sourceLabel(source: ShadowTradeSource) {
   if (source === "momentum_alert") return "Alert";
   if (source === "market_setup") return "Setup";
+  if (source === "momentum_strategy") return "Strategy";
   return "Manual";
 }
 

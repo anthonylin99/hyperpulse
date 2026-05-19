@@ -44,6 +44,7 @@ type WorldPulsePayload = {
   market: {
     assetsTracked: number;
     running: MomentumCard[];
+    holdingUp?: MomentumCard[];
     lagging: MomentumCard[];
     gainers: MoverCard[];
     losers: MoverCard[];
@@ -192,7 +193,7 @@ export default function WorldPulsePage() {
     return () => clearInterval(interval);
   }, [load]);
 
-  const heroSignal = payload?.market.running[0] ?? payload?.market.gainers[0] ?? null;
+  const heroSignal = payload?.market.running[0] ?? payload?.market.holdingUp?.[0] ?? payload?.market.gainers[0] ?? null;
   const shareText = useMemo(() => {
     if (!heroSignal) return "HyperPulse World beta: read-only Hyperliquid momentum and vault radar.";
     const asset = "asset" in heroSignal ? heroSignal.asset : "";
@@ -297,6 +298,13 @@ export default function WorldPulsePage() {
                 <div className="mt-3 grid gap-3">
                   {payload.market.running.length > 0 ? (
                     payload.market.running.map((item) => <MomentumTile key={`run-${item.asset}`} item={item} />)
+                  ) : (payload.market.holdingUp?.length ?? 0) > 0 ? (
+                    <>
+                      <div className="rounded-3xl border border-teal-400/20 bg-teal-400/10 p-4 text-xs leading-5 text-teal-100">
+                        No clean long momentum. These names are holding up best in a red tape; watchlist only.
+                      </div>
+                      {payload.market.holdingUp?.map((item) => <MomentumTile key={`hold-${item.asset}`} item={item} />)}
+                    </>
                   ) : (
                     <div className="rounded-3xl border border-zinc-800 bg-zinc-950/50 p-4 text-sm text-zinc-400">No clean long momentum edge right now.</div>
                   )}

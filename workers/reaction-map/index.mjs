@@ -67,32 +67,26 @@ const DEFAULT_ASSETS = [
   "ZEC",
   "TON",
   "SUI",
-  "ONDO",
   "AAVE",
-  "LINK",
-  "BNB",
-  "AVAX",
-  "LTC",
-  "ADA",
-  "TRX",
-  "UNI",
-  "ENA",
-  "WIF",
 ];
 let ASSETS = [];
 const CONFIGURED_ASSETS = parseList(process.env.REACTION_MAP_ASSETS ?? "all", []);
 const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["15m", "1h", "4h", "1d"])
   .map(windowMsFromLabel)
   .filter((value) => value != null);
-const WIDE_BOOK_N_SIG_FIGS = parseList(process.env.REACTION_MAP_WIDE_BOOK_N_SIG_FIGS, ["3", "2"])
+const WIDE_BOOK_N_SIG_FIGS = parseList(process.env.REACTION_MAP_WIDE_BOOK_N_SIG_FIGS, ["3"])
   .map((value) => Number(value))
   .filter((value) => [2, 3, 4, 5].includes(value));
 const BUCKET_MS = envNumber("REACTION_MAP_BUCKET_MS", 60_000, 5_000);
-const FLUSH_MS = envNumber("REACTION_MAP_FLUSH_MS", 120_000, 30_000);
-const PROMOTE_MS = envNumber("REACTION_MAP_PROMOTE_MS", 120_000, 30_000);
+const FLUSH_MS = envNumber("REACTION_MAP_FLUSH_MS", 180_000, 30_000);
+const PROMOTE_MS = envNumber("REACTION_MAP_PROMOTE_MS", 180_000, 30_000);
 const BOOK_FLUSH_BATCH_SIZE = Math.floor(envNumber("REACTION_MAP_BOOK_FLUSH_BATCH_SIZE", 750, 50));
-const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 40, 5);
-const RETENTION_MS = envNumber("REACTION_MAP_RETENTION_MS", 6 * 60 * 60 * 1000, 30 * 60 * 1000);
+const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 20, 5);
+const MAX_ZONE_WINDOW_MS = Math.max(...ZONE_WINDOWS_MS, 4 * 60 * 60 * 1000);
+const RAW_RETENTION_FLOOR_MS = MAX_ZONE_WINDOW_MS + 30 * 60 * 1000;
+const RETENTION_MS = envNumber("REACTION_MAP_RETENTION_MS", RAW_RETENTION_FLOOR_MS, RAW_RETENTION_FLOOR_MS);
+const EVENT_RETENTION_MS = envNumber("REACTION_MAP_EVENT_RETENTION_MS", 24 * 60 * 60 * 1000, 60 * 60 * 1000);
+const STALE_ZONE_RETENTION_MS = envNumber("REACTION_MAP_STALE_ZONE_RETENTION_MS", 24 * 60 * 60 * 1000, 60 * 60 * 1000);
 const RETENTION_SWEEP_MS = envNumber("REACTION_MAP_RETENTION_SWEEP_MS", 10 * 60 * 1000, 60_000);
 const RETENTION_INITIAL_DELAY_MS = Math.min(RETENTION_SWEEP_MS, Math.max(60_000, Math.floor(PROMOTE_MS / 2)));
 const TRADE_DEDUPE_MS = envNumber("REACTION_MAP_TRADE_DEDUPE_MS", 5 * 60 * 1000, 60_000);
@@ -1331,9 +1325,20 @@ async function flushState() {
 
 async function sweepRetention() {
   const cutoff = Date.now() - RETENTION_MS;
+  const eventCutoff = Date.now() - EVENT_RETENTION_MS;
+  const staleZoneCutoff = Date.now() - STALE_ZONE_RETENTION_MS;
   await pool.query("delete from reaction_context_snapshots where bucket_ms < $1", [cutoff]);
   await pool.query("delete from reaction_orderbook_buckets where bucket_ms < $1", [cutoff]);
   await pool.query("delete from reaction_trade_buckets where bucket_ms < $1", [cutoff]);
+  await pool.query("delete from reaction_exposure_zone_events where event_at < $1", [eventCutoff]);
+  await pool.query(
+    `
+    delete from reaction_exposure_zones_current
+    where status <> 'active'
+      and coalesce(last_seen_at, refreshed_at, generated_at, 0) < $1
+    `,
+    [staleZoneCutoff],
+  );
 
   for (const asset of ASSETS) {
     const context = await latestContext(asset, Date.now() - RETENTION_MS);
@@ -1433,7 +1438,7 @@ async function main() {
   setMaxListeners(listenerLimit, transport._hlEvents, transport.socket);
   setMaxListeners(listenerLimit);
   console.log(
-    `[reaction-map] starting network=${NETWORK} assetCount=${ASSETS.length} assets=${ASSETS.slice(0, 24).join(",")}${ASSETS.length > 24 ? ",..." : ""} bucketMs=${BUCKET_MS}`,
+    `[reaction-map] starting network=${NETWORK} assetCount=${ASSETS.length} assets=${ASSETS.slice(0, 24).join(",")}${ASSETS.length > 24 ? ",..." : ""} bucketMs=${BUCKET_MS} flushMs=${FLUSH_MS} promoteMs=${PROMOTE_MS} rawRetentionMs=${RETENTION_MS} eventRetentionMs=${EVENT_RETENTION_MS} bookLevels=${BOOK_LEVEL_LIMIT} wideBooks=${WIDE_BOOK_N_SIG_FIGS.join(",") || "off"}`,
   );
 
   for (const asset of ASSETS) {

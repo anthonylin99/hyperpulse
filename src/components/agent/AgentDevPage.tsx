@@ -9,8 +9,8 @@ import { useShadowBook } from "@/context/ShadowBookContext";
 import { cn, formatChartPrice } from "@/lib/format";
 import { formatEasternDateTime } from "@/lib/time";
 import type {
-  AgentRecommendation,
-  AgentRecommendationsResponse,
+  AgentExecutionIntent,
+  AgentIntentResponse,
 } from "@/types/agent";
 
 function formatPct(value: number) {
@@ -22,31 +22,39 @@ function formatSignedPct(value: number | null) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-function targetMovePct(recommendation: AgentRecommendation) {
-  const { signal } = recommendation;
-  if (signal.targetPrice == null || signal.entryPrice <= 0) return null;
-  const raw = signal.side === "long"
-    ? (signal.targetPrice - signal.entryPrice) / signal.entryPrice
-    : (signal.entryPrice - signal.targetPrice) / signal.entryPrice;
+function targetMovePct(intent: AgentExecutionIntent) {
+  if (intent.targetPrice == null || intent.entryPrice <= 0) return null;
+  const raw = intent.side === "long"
+    ? (intent.targetPrice - intent.entryPrice) / intent.entryPrice
+    : (intent.entryPrice - intent.targetPrice) / intent.entryPrice;
   return raw * 100;
 }
 
-function stopMovePct(recommendation: AgentRecommendation) {
-  const { signal } = recommendation;
-  if (signal.stopPrice == null || signal.entryPrice <= 0) return null;
-  const raw = signal.side === "long"
-    ? (signal.stopPrice - signal.entryPrice) / signal.entryPrice
-    : (signal.entryPrice - signal.stopPrice) / signal.entryPrice;
+function stopMovePct(intent: AgentExecutionIntent) {
+  if (intent.stopPrice == null || intent.entryPrice <= 0) return null;
+  const raw = intent.side === "long"
+    ? (intent.stopPrice - intent.entryPrice) / intent.entryPrice
+    : (intent.entryPrice - intent.stopPrice) / intent.entryPrice;
   return raw * 100;
 }
 
-function blockedReason(recommendation: AgentRecommendation) {
-  return recommendation.checks.find((item) => item.status === "block") ?? null;
+function blockedReason(intent: AgentExecutionIntent) {
+  return intent.checks.find((item) => item.status === "block") ?? null;
+}
+
+function statusLabel(intent: AgentExecutionIntent) {
+  if (intent.status === "paper_open") return "Paper open";
+  if (intent.status === "pending_approval") return "Ready";
+  if (intent.status === "risk_blocked") return "Blocked";
+  if (intent.status === "rejected") return "Rejected";
+  if (intent.status === "paper_closed") return "Closed";
+  return intent.status;
 }
 
 export default function AgentDevPage() {
-  const [data, setData] = useState<AgentRecommendationsResponse | null>(null);
+  const [data, setData] = useState<AgentIntentResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedUniverse, setExpandedUniverse] = useState(false);
 
@@ -58,20 +66,20 @@ export default function AgentDevPage() {
       setError(null);
       const params = new URLSearchParams();
       if (expandedUniverse) params.set("allowAllAssets", "true");
-      const url = `/api/agent/dev/recommendations${params.size ? `?${params}` : ""}`;
+      const url = `/api/agent/intents${params.size ? `?${params}` : ""}`;
       const response = await fetch(url, {
         cache: "no-store",
         signal: controller.signal,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload?.error ?? "Unable to load agent recommendations");
+        throw new Error(payload?.error ?? "Unable to load agent paper intents");
       }
-      setData(payload as AgentRecommendationsResponse);
+      setData(payload as AgentIntentResponse);
     } catch (loadError) {
       setError(loadError instanceof Error && loadError.name === "AbortError"
-        ? "Agent recommendations timed out. Try refresh."
-        : loadError instanceof Error ? loadError.message : "Unable to load agent recommendations");
+        ? "Agent paper intents timed out. Try refresh."
+        : loadError instanceof Error ? loadError.message : "Unable to load agent paper intents");
     } finally {
       window.clearTimeout(timeout);
       setLoading(false);
@@ -84,8 +92,8 @@ export default function AgentDevPage() {
   }, [expandedUniverse]);
 
   const eligibleCount = useMemo(
-    () => data?.recommendations.filter((item) => item.eligible).length ?? 0,
-    [data?.recommendations],
+    () => data?.intents.filter((item) => item.status === "pending_approval").length ?? 0,
+    [data?.intents],
   );
 
   return (
@@ -102,9 +110,9 @@ export default function AgentDevPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex h-8 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70 text-xs">
-              <span className="inline-flex items-center bg-emerald-500/10 px-3 font-medium text-emerald-200">Approve</span>
-              <span title="Auto execution needs the testnet/live execution worker." className="inline-flex items-center border-l border-zinc-800 px-3 text-zinc-500">
-                Auto locked
+              <span className="inline-flex items-center bg-emerald-500/10 px-3 font-medium text-emerald-200">Paper intents</span>
+              <span title="Testnet/live execution still requires the private executor worker." className="inline-flex items-center border-l border-zinc-800 px-3 text-zinc-500">
+                Live locked
               </span>
             </div>
             <label className="inline-flex h-8 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/70 px-2.5 text-xs text-zinc-300">
@@ -128,7 +136,7 @@ export default function AgentDevPage() {
         </div>
 
         <div className="grid gap-px bg-zinc-800 md:grid-cols-4">
-          <PolicyMetric label="Ready" value={`${eligibleCount}/${data?.recommendations.length ?? 0}`} />
+          <PolicyMetric label="Ready" value={`${eligibleCount}/${data?.intents.length ?? 0}`} />
           <PolicyMetric label="Alloc" value={data ? formatPct(data.policy.maxPositionNotionalPctEquity) : "5.00%"} />
           <PolicyMetric label="Max lev" value={`${data?.policy.maxLeverage ?? 3}x`} />
           <PolicyMetric label="Daily stop" value={data ? formatPct(data.policy.dailyLossLimitPctEquity) : "2.00%"} />
@@ -145,7 +153,7 @@ export default function AgentDevPage() {
 
       <section className="overflow-hidden rounded-xl border border-zinc-800 bg-[#0b0f14]">
         <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-3 py-2.5">
-          <div className="text-xs font-medium text-zinc-200">Trade queue</div>
+          <div className="text-xs font-medium text-zinc-200">Paper execution queue</div>
           <div className="text-[11px] text-zinc-500">
             {data?.generatedAt ? formatEasternDateTime(data.generatedAt, true) : "--"}
           </div>
@@ -156,7 +164,7 @@ export default function AgentDevPage() {
             <div className="h-16 rounded-lg skeleton" />
             <div className="h-16 rounded-lg skeleton" />
           </div>
-        ) : data && data.recommendations.length > 0 ? (
+        ) : data && data.intents.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse">
               <thead className="bg-zinc-950">
@@ -168,15 +176,19 @@ export default function AgentDevPage() {
                   <th className="px-2.5 py-1.5 text-right">SL</th>
                   <th className="px-2.5 py-1.5 text-right">Alloc</th>
                   <th className="px-2.5 py-1.5 text-right">Lev</th>
+                  <th className="px-2.5 py-1.5 text-right">Status</th>
                   <th className="px-2.5 py-1.5 text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {data.recommendations.map((recommendation, index) => (
-                  <RecommendationRow
-                    key={recommendation.id}
-                    recommendation={recommendation}
+                {data.intents.map((intent, index) => (
+                  <IntentRow
+                    key={intent.id}
+                    intent={intent}
                     index={index}
+                    busy={actionBusy === intent.id}
+                    onBusy={setActionBusy}
+                    onRefresh={load}
                   />
                 ))}
               </tbody>
@@ -184,7 +196,9 @@ export default function AgentDevPage() {
           </div>
         ) : (
           <div className="px-4 py-10 text-center text-sm text-zinc-500">
-            No alerts ready.
+            {data?.storageConfigured === false
+              ? "Agent storage is not configured, so paper intents cannot be persisted yet."
+              : "No alerts ready."}
           </div>
         )}
       </section>
@@ -205,7 +219,7 @@ function RiskPolicyPanel({
   data,
   expandedUniverse,
 }: {
-  data: AgentRecommendationsResponse;
+  data: AgentIntentResponse;
   expandedUniverse: boolean;
 }) {
   const policy = data.policy;
@@ -221,84 +235,148 @@ function RiskPolicyPanel({
   );
 }
 
-function RecommendationRow({
-  recommendation,
+function IntentRow({
+  intent,
   index,
+  busy,
+  onBusy,
+  onRefresh,
 }: {
-  recommendation: AgentRecommendation;
+  intent: AgentExecutionIntent;
   index: number;
+  busy: boolean;
+  onBusy: (id: string | null) => void;
+  onRefresh: () => Promise<void>;
 }) {
   const { addTrade, trades } = useShadowBook();
-  const order = recommendation.proposedOrder;
-  const signal = recommendation.signal;
   const rowBg = index % 2 === 0 ? "bg-zinc-950" : "bg-zinc-900/50";
-  const blocked = blockedReason(recommendation);
+  const blocked = blockedReason(intent);
   const approved = trades.some(
     (trade) =>
       trade.status === "open" &&
       trade.source === "momentum_alert" &&
-      trade.sourceId === signal.sourceId,
+      trade.sourceId === intent.sourceId,
   );
+  const paperOpen = intent.status === "paper_open" || approved;
   const actionTitle = approved
     ? "Already approved in Shadow Book."
     : blocked?.detail;
-  const canApprove = order != null && recommendation.eligible && !approved;
+  const canApprove =
+    intent.status === "pending_approval" &&
+    intent.marginUsd != null &&
+    intent.leverage != null &&
+    intent.stopPrice != null &&
+    intent.targetPrice != null &&
+    !approved;
+
+  const approve = async () => {
+    if (!canApprove) return;
+    onBusy(intent.id);
+    try {
+      const response = await fetch(`/api/agent/intents/${encodeURIComponent(intent.id)}/approve`, {
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error ?? "Unable to approve paper intent");
+      addTrade({
+        asset: intent.asset,
+        side: intent.side,
+        entryPrice: intent.entryPrice,
+        marginUsd: intent.marginUsd ?? 100,
+        leverage: intent.leverage ?? 3,
+        stopPrice: intent.stopPrice,
+        targetPrice: intent.targetPrice,
+        source: "momentum_alert",
+        sourceId: intent.sourceId,
+      });
+      await onRefresh();
+    } finally {
+      onBusy(null);
+    }
+  };
+
+  const reject = async () => {
+    if (intent.status !== "pending_approval" && intent.status !== "risk_blocked") return;
+    onBusy(intent.id);
+    try {
+      await fetch(`/api/agent/intents/${encodeURIComponent(intent.id)}/reject`, {
+        method: "POST",
+      });
+      await onRefresh();
+    } finally {
+      onBusy(null);
+    }
+  };
 
   return (
     <tr className={cn("h-8 border-b border-zinc-800/50 text-xs font-mono", rowBg)}>
       <td className="whitespace-nowrap px-2.5 py-0.5">
-        <span className="font-medium text-zinc-50">{signal.asset}</span>
+        <span className="font-medium text-zinc-50">{intent.asset}</span>
       </td>
       <td
         className={cn(
           "whitespace-nowrap px-2.5 py-0.5 uppercase",
-          signal.side === "long" ? "text-emerald-400" : "text-rose-400",
+          intent.side === "long" ? "text-emerald-400" : "text-rose-400",
         )}
       >
-        {signal.side}
+        {intent.side}
       </td>
       <td className="whitespace-nowrap px-2.5 py-0.5 text-right text-zinc-200">
-        {formatChartPrice(signal.entryPrice)}
+        {formatChartPrice(intent.entryPrice)}
       </td>
       <td className="whitespace-nowrap px-2.5 py-0.5 text-right text-emerald-400">
-        {formatSignedPct(targetMovePct(recommendation))}
+        {formatSignedPct(targetMovePct(intent))}
       </td>
       <td className="whitespace-nowrap px-2.5 py-0.5 text-right text-rose-400">
-        {formatSignedPct(stopMovePct(recommendation))}
+        {formatSignedPct(stopMovePct(intent))}
       </td>
       <td className="whitespace-nowrap px-2.5 py-0.5 text-right text-zinc-200">
-        {formatPct(recommendation.policySnapshot.maxPositionNotionalPctEquity)}
+        {intent.notionalUsd != null ? `$${intent.notionalUsd.toFixed(0)}` : "-"}
       </td>
       <td className="whitespace-nowrap px-2.5 py-0.5 text-right text-zinc-300">
-        {order ? `${order.leverage}x` : "-"}
+        {intent.leverage ? `${intent.leverage}x` : "-"}
       </td>
       <td className="whitespace-nowrap px-2.5 py-0.5 text-right">
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 font-sans text-[10px]",
+            paperOpen
+              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+              : intent.status === "pending_approval"
+                ? "border-sky-500/25 bg-sky-500/10 text-sky-300"
+                : intent.status === "risk_blocked"
+                  ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-400",
+          )}
+        >
+          {statusLabel(intent)}
+        </span>
+      </td>
+      <td className="whitespace-nowrap px-2.5 py-0.5 text-right">
+        <div className="flex justify-end gap-1">
         <button
           title={actionTitle}
-          onClick={() => {
-            if (!canApprove || !order) return;
-            addTrade({
-              asset: order.asset,
-              side: order.side,
-              entryPrice: order.entryPrice,
-              marginUsd: order.marginUsd,
-              leverage: order.leverage,
-              stopPrice: order.stopPrice,
-              targetPrice: order.targetPrice,
-              source: "momentum_alert",
-              sourceId: signal.sourceId,
-            });
-          }}
-          disabled={!canApprove}
+          onClick={() => void approve()}
+          disabled={!canApprove || busy}
           className={cn(
             "rounded px-2 py-0.5 font-sans text-[10px] font-medium transition",
-            approved
+            paperOpen
               ? "bg-zinc-800 text-zinc-400"
               : "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:bg-zinc-900 disabled:text-zinc-600",
           )}
         >
-          {approved ? "Approved" : recommendation.eligible ? "Approve" : "Blocked"}
+          {paperOpen ? "Approved" : intent.status === "pending_approval" ? "Approve" : "Blocked"}
         </button>
+        {(intent.status === "pending_approval" || intent.status === "risk_blocked") ? (
+          <button
+            onClick={() => void reject()}
+            disabled={busy}
+            className="rounded bg-zinc-900 px-2 py-0.5 font-sans text-[10px] font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-50"
+          >
+            Reject
+          </button>
+        ) : null}
+        </div>
       </td>
     </tr>
   );

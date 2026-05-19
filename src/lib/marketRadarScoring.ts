@@ -328,11 +328,45 @@ export function selectMomentumEdges(args: {
         const beatsBtc = asset.coin === "BTC" ? asset.basketResidualPct > 0 : asset.btcResidualPct > 0;
         return asset.rawReturn24hPct > 0 && asset.basketResidualPct > 0 && beatsBtc && asset.strongScore >= threshold;
       }
-      const lagsBtc = asset.coin === "BTC" ? asset.basketResidualPct < -0.25 : asset.btcResidualPct < -0.25;
+      // BTC is the benchmark for this bucket. It can lag the basket elsewhere, but it
+      // should never appear as "weak vs BTC" because that reads as BTC lagging itself.
+      if (asset.coin === "BTC") return false;
+      const lagsBtc = asset.btcResidualPct < -0.25;
       const lagsBasket = asset.basketResidualPct < -0.25;
       const hasDownsidePressure = asset.rawReturn24hPct < 0 || asset.btcResidualPct < -1 || asset.basketResidualPct < -1;
       return lagsBasket && lagsBtc && hasDownsidePressure && asset.weakScore >= threshold;
     })
     .sort((a, b) => (args.direction === "strong" ? b.strongScore - a.strongScore : b.weakScore - a.weakScore))
+    .slice(0, args.limit);
+}
+
+export function selectHoldingUpEdges(args: {
+  assets: MomentumEdgeAsset[];
+  limit: number;
+  threshold?: number;
+}): MomentumEdgeAsset[] {
+  const threshold = args.threshold ?? 0.25;
+  return [...args.assets]
+    .filter((asset) => {
+      const beatsBtc = asset.coin === "BTC" ? asset.basketResidualPct > 0.5 : asset.btcResidualPct > 0.5;
+      const beatsBasket = asset.basketResidualPct > 0.5;
+      const controlledDrawdown = asset.rawReturn24hPct > -8;
+      const notBreakingDown = !asset.assetBelowFridayLow;
+      const notShortBias = asset.weakScore < 1.4;
+
+      return (
+        beatsBtc &&
+        beatsBasket &&
+        controlledDrawdown &&
+        notBreakingDown &&
+        notShortBias &&
+        asset.strongScore >= threshold
+      );
+    })
+    .sort((a, b) => {
+      const aScore = a.btcResidualZ + a.basketResidualZ + a.participationZ * 0.25 + a.strongScore;
+      const bScore = b.btcResidualZ + b.basketResidualZ + b.participationZ * 0.25 + b.strongScore;
+      return bScore - aScore;
+    })
     .slice(0, args.limit);
 }

@@ -25,6 +25,7 @@ export function getPublicAppRoutes() {
     { path: "/alerts", label: "Alerts" },
     { path: "/portfolio", label: "Portfolio" },
     { path: "/docs", label: "Docs" },
+    { path: "/docs/factors", label: "Factor Report" },
   ];
 
   if (isVaultsEnabled()) {

@@ -17,8 +17,16 @@ The current implementation starts in dev-only recommendation mode.
 - The page can send an eligible recommendation into the local Shadow Book for paper tracking.
 - No key storage, no agent wallet creation, no exchange orders, and no live worker are included in this slice.
 
+## Current Rollout Slice
+
+- `/api/agent/intents` converts stored momentum alerts into durable paper execution intents.
+- `/api/agent/intents/[id]/approve` marks an intent as `paper_open` and never places an exchange order.
+- `/api/agent/intents/[id]/reject` records an operator rejection.
+- `agent_execution_intents` and `agent_audit_log` are the first durable audit trail for future testnet/live execution.
+- `workers/agent-executor` is a locked scaffold. It refuses testnet/live orders until an explicit execution implementation is added.
+
 ## Next Dev Steps
 
-- Persist paper recommendations to Postgres instead of browser-only local storage.
 - Add editable policy controls for allowed assets, max size, leverage, and cooldown.
+- Add mark-price reconciliation for open paper intents so paper P&L is server-side, not only Shadow Book/local browser.
 - Add a testnet-only agent-wallet approval flow after policy and audit logging are stable.

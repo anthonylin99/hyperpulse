@@ -4,7 +4,7 @@ import { MIN_OI_USD } from "@/lib/constants";
 import { getPooledDatabaseUrl } from "@/lib/databaseEnv";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { enforceRateLimit, jsonError, jsonSuccess, logServerError } from "@/lib/security";
-import { computeMomentumEdges, selectMomentumEdges, type MomentumEdgeAsset, type RadarBetaInfo } from "@/lib/marketRadarScoring";
+import { computeMomentumEdges, selectHoldingUpEdges, selectMomentumEdges, type MomentumEdgeAsset, type RadarBetaInfo } from "@/lib/marketRadarScoring";
 import type { MarketRadarSignal, WhaleSeverity } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -334,11 +334,12 @@ function buildCrowdingSignal(kind: MarketRadarSignal["kind"], asset: ParsedAsset
   };
 }
 
-function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: MomentumEdgeAsset, index: number, timestamp: number): MarketRadarSignal {
-  const details = kind === "strongest_asset" ? asset.strongDetails : asset.weakDetails;
-  const score = kind === "strongest_asset" ? asset.strongScore : asset.weakScore;
-  const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : "Relative Weakness";
-  const divergenceEvidence = kind === "strongest_asset"
+function buildMomentumSignal(kind: "strongest_asset" | "holding_up" | "weakest_asset", asset: MomentumEdgeAsset, index: number, timestamp: number): MarketRadarSignal {
+  const isWeak = kind === "weakest_asset";
+  const details = isWeak ? asset.weakDetails : asset.strongDetails;
+  const score = isWeak ? asset.weakScore : asset.strongScore;
+  const edgeLabel = kind === "strongest_asset" ? "Long Momentum" : kind === "holding_up" ? "Holding Up" : "Relative Weakness";
+  const divergenceEvidence = !isWeak
     ? details.assetAboveFridayHigh && !details.btcAboveFridayHigh
       ? "Structure divergence: asset above Friday high while BTC is not"
       : `Structure score ${details.structureDivergenceScore.toFixed(2)}`
@@ -359,6 +360,11 @@ function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: M
           `Lagged BTC by ${Math.abs(details.btcResidualPct).toFixed(2)}%`,
           `Lagged liquid perp basket by ${Math.abs(details.basketResidualPct).toFixed(2)}%`,
         ];
+  const holdingEvidence = [
+    `Holding up versus BTC by ${formatPct(details.btcResidualPct)}`,
+    `Holding up versus liquid perp basket by ${formatPct(details.basketResidualPct)}`,
+    `Raw 24h move ${formatPct(details.rawReturn24hPct)}; not a long entry by itself`,
+  ];
   return {
     id: `${kind}:${asset.coin}:${timestamp}`,
     kind,
@@ -368,7 +374,9 @@ function buildMomentumSignal(kind: "strongest_asset" | "weakest_asset", asset: M
     severity: severityFromRadarScore(score),
     timestamp,
     evidence: [
-      ...(kind === "strongest_asset"
+      ...(kind === "holding_up"
+        ? holdingEvidence
+        : kind === "strongest_asset"
         ? [
             `Outperformed BTC by ${formatPct(details.btcResidualPct)}`,
             `Outperformed liquid perp basket by ${formatPct(details.basketResidualPct)}`,
@@ -420,11 +428,17 @@ export async function GET(req: NextRequest) {
     const betas = await loadBtcBetas(rows.map((asset) => asset.coin));
     const scored = computeMomentumEdges(enrichedRows, betas);
     const strongestAssets = selectMomentumEdges({ assets: scored, direction: "strong", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_SCORE_THRESHOLD });
-    const weakestAssets = selectMomentumEdges({ assets: scored, direction: "weak", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_WEAK_SCORE_THRESHOLD });
+    const holdingUpAssets =
+      strongestAssets.length === 0
+        ? selectHoldingUpEdges({ assets: scored, limit: RADAR_MAX_PER_BUCKET, threshold: 0.25 })
+        : [];
+    const weakestAssets = selectMomentumEdges({ assets: scored, direction: "weak", limit: RADAR_MAX_PER_BUCKET, threshold: RADAR_WEAK_SCORE_THRESHOLD })
+      .filter((asset) => asset.coin !== "BTC");
     const crowdedLong = [...rows].sort((a, b) => b.fundingAPR - a.fundingAPR)[0];
     const crowdedShort = [...rows].sort((a, b) => a.fundingAPR - b.fundingAPR)[0];
 
     strongestAssets.forEach((asset, index) => signals.push(buildMomentumSignal("strongest_asset", asset, index, timestamp)));
+    holdingUpAssets.forEach((asset, index) => signals.push(buildMomentumSignal("holding_up", asset, index, timestamp)));
     weakestAssets.forEach((asset, index) => signals.push(buildMomentumSignal("weakest_asset", asset, index, timestamp)));
     if (crowdedLong) signals.push(buildCrowdingSignal("crowded_long", crowdedLong, "Most expensive long crowd", timestamp));
     if (crowdedShort) signals.push(buildCrowdingSignal("crowded_short", crowdedShort, "Most paid short crowd", timestamp));

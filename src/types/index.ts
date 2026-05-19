@@ -669,6 +669,60 @@ export interface FactorAiBrief {
   generatedAt: string;
 }
 
+export interface MarketBriefPoint {
+  day: string;
+  value: number;
+}
+
+export interface MarketBriefAsset {
+  symbol: string;
+  returnPct: number | null;
+  btcRelativePct: number | null;
+  basketRelativePct: number | null;
+  weekTwoReturnPct: number | null;
+  theme: string;
+  marketHref: string;
+  source?: {
+    title: string;
+    url: string;
+  };
+  catalyst: string;
+  marketInterpretation: string;
+  priceActionRead: string;
+  moveType: "catalyst-led" | "short-covering" | "rotation-led" | "momentum-led" | "mixed";
+  series: MarketBriefPoint[];
+}
+
+export interface MarketBriefTheme {
+  id: string;
+  name: string;
+  averageReturnPct: number | null;
+  leaders: string[];
+  note: string;
+}
+
+export interface FactorReport {
+  id: string;
+  generatedAt: number;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel: string;
+  universe: string;
+  title: string;
+  summary: string[];
+  leaderboard: MarketBriefAsset[];
+  catalystNotes: MarketBriefAsset[];
+  themes: MarketBriefTheme[];
+  riskNote: string;
+  telegramSummary: string[];
+  coverage: {
+    trackedAssets: string[];
+    trackedAssetCount: number;
+    storedDailyCloses: boolean;
+    note: string;
+  };
+}
+
 
 // ─── Whale Intelligence Types ─────────────────────────────────
 
@@ -955,6 +1009,7 @@ export interface TrackedWalletFavorite extends WhaleWatchlistEntry {
 
 export type MarketRadarSignalKind =
   | "strongest_asset"
+  | "holding_up"
   | "weakest_asset"
   | "crowded_long"
   | "crowded_short"
@@ -1035,6 +1090,48 @@ export interface MomentumAlert {
   currentPrice?: number | null;
   returnSinceAlertPct?: number | null;
   deliveryStatus?: NotificationDeliveryStatus | null;
+  outcome?: MomentumAlertOutcome | null;
+}
+
+export type MomentumAlertOutcomeStatus =
+  | "tp_first"
+  | "sl_first"
+  | "ambiguous"
+  | "open"
+  | "invalid_levels"
+  | "no_candles";
+
+export interface MomentumAlertOutcome {
+  alertId: string;
+  asset: string;
+  direction: "long" | "short";
+  outcome: MomentumAlertOutcomeStatus;
+  evaluatedAt: number;
+  horizonMs: number;
+  horizonComplete: boolean;
+  hitTime: number | null;
+  hitPrice: number | null;
+  timeToHitMs: number | null;
+  outcomeReturnPct: number | null;
+  maxFavorablePct: number | null;
+  maxAdversePct: number | null;
+  candlesChecked: number;
+}
+
+export interface MomentumAlertOutcomeSummary {
+  evaluated: number;
+  wins: number;
+  losses: number;
+  ambiguous: number;
+  open: number;
+  invalid: number;
+  noCandles: number;
+  winRatePct: number | null;
+  lossRatePct: number | null;
+  medianTimeToHitMs: number | null;
+  averageMaxFavorablePct: number | null;
+  averageMaxAdversePct: number | null;
+  zoneQuality: string;
 }
 
 export interface CohortsLiteBucket {

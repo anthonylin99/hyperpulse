@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import { listMomentumAlerts, getMomentumAlertDiagnostics } from "@/lib/momentumAlerts";
+import { getMomentumAlertOutcomes } from "@/lib/momentumAlertOutcomes";
 import { enforceRateLimit, jsonError, jsonSuccess, logServerError } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get("limit") ?? 50), 1), 100);
+    const includeOutcomes = req.nextUrl.searchParams.get("includeOutcomes") === "true";
     const alerts = await listMomentumAlerts(limit);
     if (alerts.length === 0) {
       const diagnostics = await getMomentumAlertDiagnostics(0);
@@ -49,12 +51,15 @@ export async function GET(req: NextRequest) {
     }
     const info = getInfoClient(resolveNetworkFromRequest(req.nextUrl));
     const currentPrices = parseCurrentPrices(await info.metaAndAssetCtxs());
+    const outcomes = includeOutcomes ? await getMomentumAlertOutcomes(Math.min(limit, 50)).catch(() => null) : null;
+    const outcomeById = new Map((outcomes?.outcomes ?? []).map((outcome) => [outcome.alertId, outcome]));
     const enriched = alerts.map((alert) => {
       const currentPrice = currentPrices.get(alert.asset.toUpperCase()) ?? null;
       return {
         ...alert,
         currentPrice,
         returnSinceAlertPct: pctChange(currentPrice, alert.alertPrice),
+        outcome: outcomeById.get(alert.id) ?? null,
       };
     });
 

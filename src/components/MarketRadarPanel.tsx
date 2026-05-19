@@ -25,6 +25,7 @@ function sourceLabel(source: string | undefined) {
 
 function signalTone(signal: MarketRadarSignal) {
   if (signal.kind === "strongest_asset") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-300";
+  if (signal.kind === "holding_up") return "border-teal-500/25 bg-teal-500/10 text-teal-300";
   if (signal.kind === "weakest_asset") return "border-rose-500/25 bg-rose-500/10 text-rose-300";
   if (signal.kind === "crowded_long") return "border-orange-500/25 bg-orange-500/10 text-orange-300";
   if (signal.kind === "crowded_short") return "border-sky-500/25 bg-sky-500/10 text-sky-300";
@@ -37,6 +38,8 @@ function kindLabel(kind: MarketRadarSignal["kind"]) {
   switch (kind) {
     case "strongest_asset":
       return "Long bias";
+    case "holding_up":
+      return "Holding up";
     case "weakest_asset":
       return "Short bias";
     case "crowded_long":
@@ -71,6 +74,11 @@ function formatSigned(value: number | null | undefined, digits = 1) {
 }
 
 function scoreLabel(signal: MarketRadarSignal) {
+  if (signal.kind === "holding_up") {
+    const numeric = Number(signal.value.replace(/[^\d.-]/g, ""));
+    if (!Number.isFinite(numeric)) return signal.value;
+    return `${numeric.toFixed(2)}σ hold`;
+  }
   if (signal.kind !== "weakest_asset") return signal.value;
   const numeric = Number(signal.value.replace(/[^\d.-]/g, ""));
   if (!Number.isFinite(numeric)) return signal.value;
@@ -91,6 +99,9 @@ function compactEvidence(signal: MarketRadarSignal) {
   const accel = `accel ${formatSigned(details.accelerationScore, 1)}`;
   if (signal.kind === "weakest_asset") {
     return `lags BTC ${Math.abs(details.btcResidualPct).toFixed(1)}% · ${divergence} · ${accel}`;
+  }
+  if (signal.kind === "holding_up") {
+    return `holding vs BTC ${formatSigned(details.btcResidualPct)}% · raw ${formatSigned(details.rawReturn24hPct)}% · ${accel}`;
   }
   return `vs BTC ${formatSigned(details.btcResidualPct)}% · ${divergence} · ${accel}`;
 }
@@ -120,7 +131,12 @@ function useOpenMarketAsset(signal?: MarketRadarSignal) {
 
 function RadarMiniRow({ signal }: { signal: MarketRadarSignal }) {
   const openAsset = useOpenMarketAsset(signal);
-  const valueColor = signal.kind === "weakest_asset" ? "text-rose-200" : "text-zinc-100";
+  const valueColor =
+    signal.kind === "weakest_asset"
+      ? "text-rose-200"
+      : signal.kind === "holding_up"
+        ? "text-teal-200"
+        : "text-zinc-100";
 
   return (
     <Link
@@ -151,14 +167,16 @@ function RadarTopCard({
 }: {
   signal?: MarketRadarSignal;
   label: string;
-  tone: "long" | "short";
+  tone: "long" | "hold" | "short";
 }) {
   const openAsset = useOpenMarketAsset(signal);
   const toneClasses = tone === "long"
     ? "border-emerald-500/20 bg-emerald-500/10 hover:border-emerald-400/35"
-    : "border-rose-500/20 bg-rose-500/10 hover:border-rose-400/35";
-  const labelClasses = tone === "long" ? "text-emerald-300/80" : "text-rose-300/80";
-  const valueClasses = tone === "long" ? "text-emerald-300" : "text-rose-300";
+    : tone === "hold"
+      ? "border-teal-500/20 bg-teal-500/10 hover:border-teal-400/35"
+      : "border-rose-500/20 bg-rose-500/10 hover:border-rose-400/35";
+  const labelClasses = tone === "long" ? "text-emerald-300/80" : tone === "hold" ? "text-teal-300/80" : "text-rose-300/80";
+  const valueClasses = tone === "long" ? "text-emerald-300" : tone === "hold" ? "text-teal-300" : "text-rose-300";
   const value = signal ? scoreLabel(signal) : "waiting";
 
   return (
@@ -202,13 +220,15 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
   const hero = variant === "hero";
   const allSignals = data?.signals ?? [];
   const longSignals = allSignals.filter((signal) => signal.kind === "strongest_asset").slice(0, 3);
+  const holdingSignals = allSignals.filter((signal) => signal.kind === "holding_up").slice(0, 3);
   const shortSignals = allSignals.filter((signal) => signal.kind === "weakest_asset").slice(0, 3);
-  const contextSignals = allSignals.filter((signal) => signal.kind !== "strongest_asset" && signal.kind !== "weakest_asset").slice(0, hero ? 2 : 1);
-  const signals = [...longSignals, ...shortSignals, ...contextSignals].slice(0, hero ? 8 : 7);
-  const railSignals = [...longSignals, ...shortSignals];
+  const contextSignals = allSignals.filter((signal) => signal.kind !== "strongest_asset" && signal.kind !== "holding_up" && signal.kind !== "weakest_asset").slice(0, hero ? 2 : 1);
+  const signals = [...longSignals, ...holdingSignals, ...shortSignals, ...contextSignals].slice(0, hero ? 8 : 7);
+  const railSignals = [...longSignals, ...holdingSignals, ...shortSignals];
 
   if (variant === "rail") {
-    const topLong = longSignals[0];
+    const hasCleanLongs = longSignals.length > 0;
+    const topLong = longSignals[0] ?? holdingSignals[0];
     const topShort = shortSignals[0];
 
     return (
@@ -247,22 +267,34 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <RadarTopCard signal={topLong} label="Running" tone="long" />
-              <RadarTopCard signal={topShort} label="Weakest vs BTC" tone="short" />
+              <RadarTopCard signal={topLong} label={hasCleanLongs ? "Running" : "Holding up"} tone={hasCleanLongs ? "long" : "hold"} />
+              <RadarTopCard signal={topShort} label="Lagging" tone="short" />
             </div>
 
             <div>
               <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Long momentum</div>
               <div className="space-y-1.5">
                 {longSignals.length > 0 ? longSignals.map((signal) => <RadarMiniRow key={signal.id} signal={signal} />) : (
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-[11px] text-zinc-500">No qualified long edge.</div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-[11px] leading-5 text-zinc-500">
+                    No clean long momentum. Market tape is risk-off; showing relative strength below instead.
+                  </div>
                 )}
               </div>
             </div>
 
+            {holdingSignals.length > 0 ? (
+              <div>
+                <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Holding up</div>
+                <div className="mb-1.5 text-[10px] leading-4 text-zinc-600">Relative strength in a red tape. Watchlist only, not a long entry by itself.</div>
+                <div className="space-y-1.5">
+                  {holdingSignals.map((signal) => <RadarMiniRow key={signal.id} signal={signal} />)}
+                </div>
+              </div>
+            ) : null}
+
             <div>
-              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Weak vs BTC</div>
-              <div className="mb-1.5 text-[10px] leading-4 text-zinc-600">Higher weak-score = falling more vs BTC/basket. Not an entry by itself.</div>
+              <div className="mb-1.5 text-[9px] uppercase tracking-[0.16em] text-zinc-600">Relative weakness</div>
+              <div className="mb-1.5 text-[10px] leading-4 text-zinc-600">Higher weak-score = lagging BTC and the liquid perp basket. Not an entry by itself.</div>
               <div className="space-y-1.5">
                 {shortSignals.length > 0 ? shortSignals.map((signal) => <RadarMiniRow key={signal.id} signal={signal} />) : (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-[11px] text-zinc-500">No qualified short edge.</div>

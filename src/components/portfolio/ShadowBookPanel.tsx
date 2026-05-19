@@ -13,6 +13,7 @@ function formatPct(value: number) {
 function sourceLabel(source: ShadowTrade["source"]) {
   if (source === "momentum_alert") return "Momentum alert";
   if (source === "market_setup") return "Market setup";
+  if (source === "momentum_strategy") return "Momentum strategy";
   return "Manual";
 }
 

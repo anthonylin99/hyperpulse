@@ -24,7 +24,11 @@
     "docker:up": "docker compose up --build",
     "mcp:start": "node workers/mcp-server/index.mjs",
     "telegram:test": "node scripts/send-telegram-test.mjs",
-    "momentum:status": "node scripts/momentum-alert-status.mjs"
+    "momentum:status": "node scripts/momentum-alert-status.mjs",
+    "market:brief:telegram": "node scripts/send-market-brief-telegram.mjs",
+    "reaction:prune:dry-run": "node scripts/prune-reaction-map.mjs",
+    "reaction:prune:apply": "node scripts/prune-reaction-map.mjs --apply",
+    "reaction:prune:vacuum": "node scripts/prune-reaction-map.mjs --apply --vacuum-full"
   },
   "dependencies": {
     "@farcaster/miniapp-sdk": "^0.3.0",

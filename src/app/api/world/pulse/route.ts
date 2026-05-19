@@ -4,6 +4,7 @@ import { isVaultsEnabled } from "@/lib/appConfig";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 import {
   computeMomentumEdges,
+  selectHoldingUpEdges,
   selectMomentumEdges,
   type MomentumEdgeAsset,
 } from "@/lib/marketRadarScoring";
@@ -109,6 +110,10 @@ async function buildMarketPulse(req: NextRequest) {
   const running = selectMomentumEdges({ assets: scored, direction: "strong", limit: 3, threshold: 0.75 }).map((asset) =>
     asMomentumCard(asset, "long"),
   );
+  const holdingUp =
+    running.length === 0
+      ? selectHoldingUpEdges({ assets: scored, limit: 3, threshold: 0.25 }).map((asset) => asMomentumCard(asset, "long"))
+      : [];
   const lagging = selectMomentumEdges({ assets: scored, direction: "weak", limit: 3, threshold: 0.45 }).map((asset) =>
     asMomentumCard(asset, "short"),
   );
@@ -124,6 +129,7 @@ async function buildMarketPulse(req: NextRequest) {
   return {
     assetsTracked: assets.length,
     running,
+    holdingUp,
     lagging,
     gainers,
     losers,

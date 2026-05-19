@@ -1,10 +1,19 @@
 "use client";
 
 export const SHADOW_BOOK_STORAGE_KEY = "hyperpulse.shadowBook.v1";
+export const SHADOW_BOOK_MOMENTUM_STRATEGY_KEY = "hyperpulse.shadowBook.momentumStrategy.v1";
 
 export type ShadowTradeSide = "long" | "short";
-export type ShadowTradeSource = "manual" | "momentum_alert" | "market_setup";
+export type ShadowTradeSource = "manual" | "momentum_alert" | "market_setup" | "momentum_strategy";
 export type ShadowTradeStatus = "open" | "closed";
+
+export interface ShadowMomentumStrategyState {
+  enabled: boolean;
+  dailyCap: 1 | 2;
+  marginUsd: number;
+  lastRunAt: number | null;
+  takenSignalIds: string[];
+}
 
 export interface ShadowTrade {
   id: string;
@@ -77,7 +86,7 @@ function normalizeTrade(raw: Partial<ShadowTrade>): ShadowTrade | null {
     notionalUsd,
     stopPrice: safeOptionalPrice(raw.stopPrice),
     targetPrice: safeOptionalPrice(raw.targetPrice),
-    source: raw.source === "momentum_alert" || raw.source === "market_setup" ? raw.source : "manual",
+    source: raw.source === "momentum_alert" || raw.source === "market_setup" || raw.source === "momentum_strategy" ? raw.source : "manual",
     sourceId: raw.sourceId == null ? null : String(raw.sourceId),
     status,
     observedHighPrice,
@@ -105,6 +114,44 @@ export function loadShadowTrades(): ShadowTrade[] {
 export function saveShadowTrades(trades: ShadowTrade[]): void {
   if (!isBrowser()) return;
   window.localStorage.setItem(SHADOW_BOOK_STORAGE_KEY, JSON.stringify(trades));
+}
+
+export function loadShadowMomentumStrategy(): ShadowMomentumStrategyState {
+  if (!isBrowser()) {
+    return {
+      enabled: false,
+      dailyCap: 2,
+      marginUsd: 100,
+      lastRunAt: null,
+      takenSignalIds: [],
+    };
+  }
+  try {
+    const raw = window.localStorage.getItem(SHADOW_BOOK_MOMENTUM_STRATEGY_KEY);
+    const parsed = raw ? JSON.parse(raw) as Partial<ShadowMomentumStrategyState> : {};
+    const dailyCap = Number(parsed.dailyCap) === 1 ? 1 : 2;
+    const marginUsd = Math.max(1, Number(parsed.marginUsd ?? 100));
+    return {
+      enabled: parsed.enabled === true,
+      dailyCap,
+      marginUsd,
+      lastRunAt: Number.isFinite(Number(parsed.lastRunAt)) ? Number(parsed.lastRunAt) : null,
+      takenSignalIds: Array.isArray(parsed.takenSignalIds) ? parsed.takenSignalIds.map(String).slice(0, 100) : [],
+    };
+  } catch {
+    return {
+      enabled: false,
+      dailyCap: 2,
+      marginUsd: 100,
+      lastRunAt: null,
+      takenSignalIds: [],
+    };
+  }
+}
+
+export function saveShadowMomentumStrategy(state: ShadowMomentumStrategyState): void {
+  if (!isBrowser()) return;
+  window.localStorage.setItem(SHADOW_BOOK_MOMENTUM_STRATEGY_KEY, JSON.stringify(state));
 }
 
 export function newShadowTradeId(): string {
