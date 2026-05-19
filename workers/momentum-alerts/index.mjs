@@ -104,6 +104,14 @@ const RADAR_LONG_STD_ALERT_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_LONG_STD_
 const RADAR_SHORT_STD_ALERT_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_SHORT_STD_THRESHOLD", 2.6);
 const RADAR_LONG_STORE_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_LONG_STORE_THRESHOLD", 1.35);
 const RADAR_SHORT_STORE_THRESHOLD = envNumber("MOMENTUM_ALERT_RADAR_SHORT_STORE_THRESHOLD", 1.9);
+const TELEGRAM_LONG_SOFT_CHASE_PCT = envNumber("MOMENTUM_ALERT_LONG_SOFT_CHASE_PCT", 10);
+const TELEGRAM_LONG_HARD_CHASE_PCT = envNumber("MOMENTUM_ALERT_LONG_HARD_CHASE_PCT", 24);
+const TELEGRAM_SHORT_MIN_DOWN_24H_PCT = envNumber("MOMENTUM_ALERT_SHORT_MIN_DOWN_24H_PCT", 2.5);
+const TELEGRAM_MIN_VOLUME_VS = envNumber("MOMENTUM_ALERT_MIN_VOLUME_VS", 1.2);
+const TELEGRAM_SHORT_MIN_VOLUME_VS = envNumber("MOMENTUM_ALERT_SHORT_MIN_VOLUME_VS", 1.5);
+const TELEGRAM_TP1_MIN_PCT = envNumber("MOMENTUM_ALERT_TP1_MIN_PCT", 1.2);
+const TELEGRAM_TP1_BASE_PCT = envNumber("MOMENTUM_ALERT_TP1_BASE_PCT", 2.0);
+const TELEGRAM_TP1_MAX_PCT = envNumber("MOMENTUM_ALERT_TP1_MAX_PCT", 3.5);
 const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 const TELEGRAM_CHAT_ID = cleanEnv(process.env.TELEGRAM_CHAT_ID);
@@ -114,7 +122,7 @@ const TELEGRAM_ENABLED = TELEGRAM_ENV === "false"
   : TELEGRAM_ENV === "true" || TELEGRAM_CONFIGURED;
 const TELEGRAM_CHARTS_ENV = cleanEnv(process.env.TELEGRAM_CHARTS_ENABLED || process.env.MOMENTUM_ALERT_TELEGRAM_CHARTS).toLowerCase();
 const TELEGRAM_CHARTS_ENABLED = TELEGRAM_CHARTS_ENV === ""
-  ? TELEGRAM_ENABLED
+  ? false
   : TELEGRAM_CHARTS_ENV === "true" || TELEGRAM_CHARTS_ENV === "1" || TELEGRAM_CHARTS_ENV === "yes";
 const DRY_RUN_REQUESTED = envFlag("MOMENTUM_ALERT_DRY_RUN");
 const DRY_RUN =
@@ -938,40 +946,94 @@ function directionalReturn(direction, value) {
   return direction === "short" ? -value : value;
 }
 
-function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direction, volumeVs }) {
+function chaseState(direction, d24h, volumeVs, edgeScore = null) {
+  if (direction !== "long") return "clean";
+  const edge = Number(edgeScore);
+  if (d24h > TELEGRAM_LONG_HARD_CHASE_PCT) return "late_chase";
+  if (d24h > TELEGRAM_LONG_SOFT_CHASE_PCT && !(Number.isFinite(edge) && edge >= RADAR_LONG_STD_ALERT_THRESHOLD && volumeVs >= 1.35)) {
+    return "late_chase";
+  }
+  return "clean";
+}
+
+function telegramQualityDecision({ asset, features, score, direction, volumeVs }) {
   const d1h = directionalReturn(direction, features.return1h);
   const d4h = directionalReturn(direction, features.return4h);
   const d24h = directionalReturn(direction, features.return24h);
   const structureBreak = direction === "short" ? features.breakdown : features.breakout;
   const nearExtreme = direction === "short" ? features.nearLow : features.nearHigh;
-  const volumeConfirmed = volumeVs >= 1.2;
-  const liquidityOk = asset.liquidityQualified || isLargeCapLike(asset);
-  const highQualityScore = score.score >= HIGH_SCORE_THRESHOLD;
   const confirmedMove = structureBreak || nearExtreme;
-  if (score.radarEdge?.telegramEligible && liquidityOk) {
-    return true;
+  const liquidityOk = asset.liquidityQualified || isLargeCapLike(asset);
+  const edgeScore = Number(score.radarEdge?.score);
+  const highQualityScore = score.score >= HIGH_SCORE_THRESHOLD;
+  const radarQualified = score.radarEdge?.telegramEligible === true;
+  const chase = chaseState(direction, d24h, volumeVs, edgeScore);
+
+  if (!liquidityOk) return { eligible: false, reason: "Liquidity below Telegram gate." };
+  if (!confirmedMove && !radarQualified) return { eligible: false, reason: "No breakout, breakdown, or near-extreme confirmation." };
+
+  if (direction === "long") {
+    const volumeOk = volumeVs >= TELEGRAM_MIN_VOLUME_VS || (radarQualified && volumeVs >= 1.05);
+    const radarOk =
+      radarQualified &&
+      Number.isFinite(edgeScore) &&
+      edgeScore >= RADAR_LONG_STD_ALERT_THRESHOLD &&
+      d1h >= -1.25 &&
+      d4h >= -2 &&
+      volumeOk &&
+      chase === "clean";
+    const strictBreakout =
+      d24h >= TELEGRAM_LONG_SOFT_CHASE_PCT &&
+      d24h <= 22 &&
+      d4h >= 4 &&
+      d1h >= 0.8 &&
+      volumeVs >= TELEGRAM_MIN_VOLUME_VS;
+    const fundingPenalty = asset.fundingApr > 65;
+    const fundingOk = !fundingPenalty || score.score >= HIGH_SCORE_THRESHOLD + 8;
+    const eligible = fundingOk && ((radarOk && highQualityScore) || (highQualityScore && strictBreakout));
+    return {
+      eligible,
+      reason: eligible
+        ? radarOk
+          ? "High relative-strength edge with volume confirmation."
+          : "Strict breakout gate passed."
+        : chase !== "clean"
+          ? "Stored only: move is already extended for Telegram."
+          : "Stored only: long momentum did not clear strict Telegram gate.",
+      chase,
+    };
   }
-  const strictLongBreakout =
-    direction === "long" &&
-    d24h >= 10 &&
-    d24h <= 22 &&
-    d4h >= 4 &&
-    d1h >= 0.8;
+
+  const volumeOk = volumeVs >= TELEGRAM_SHORT_MIN_VOLUME_VS;
+  const actualDownside = d24h >= TELEGRAM_SHORT_MIN_DOWN_24H_PCT || d4h >= 2 || d1h >= 0.6 || structureBreak;
   const strictShortBreakdown =
-    direction === "short" &&
     d24h >= 6 &&
     d4h >= 3 &&
-    d1h >= 0.6;
-  const fundingPenalty = direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65;
+    d1h >= 0.6 &&
+    volumeOk;
+  const radarOk =
+    radarQualified &&
+    d24h >= TELEGRAM_SHORT_MIN_DOWN_24H_PCT &&
+    d4h >= 1.5 &&
+    volumeOk;
+  const fundingPenalty = asset.fundingApr < -65;
   const fundingOk = !fundingPenalty || score.score >= HIGH_SCORE_THRESHOLD + 8;
+  const eligible = fundingOk && actualDownside && highQualityScore && (radarOk || strictShortBreakdown);
+  return {
+    eligible,
+    reason: eligible ? "High-confidence relative weakness with actual downside." : "Stored only: short-bias gate requires real downside and stronger volume.",
+    chase: "clean",
+  };
+}
 
-  return liquidityOk && highQualityScore && confirmedMove && volumeConfirmed && fundingOk && (strictLongBreakout || strictShortBreakdown);
+function isTelegramQualityCandidate({ asset, features, oiChangePct, score, direction, volumeVs }) {
+  void oiChangePct;
+  return telegramQualityDecision({ asset, features, score, direction, volumeVs }).eligible;
 }
 
 function isStoredTelegramQualityAlert(alert) {
   const direction = alert.payload?.direction === "short" ? "short" : "long";
   if (alert.payload?.outcomeQuality?.passes === false) return false;
-  if (alert.payload?.radarEdge?.telegramEligible === true) return true;
   const d1h = directionalReturn(direction, alert.return1hPct);
   const d4h = directionalReturn(direction, alert.return4hPct);
   const d24h = directionalReturn(direction, alert.return24hPct);
@@ -979,19 +1041,75 @@ function isStoredTelegramQualityAlert(alert) {
   const structureBreak = direction === "short" ? Boolean(alert.payload?.breakdown) : Boolean(alert.payload?.breakout);
   const nearExtreme = direction === "short" ? Boolean(alert.payload?.nearLow) : Boolean(alert.payload?.nearHigh);
   const confirmedMove = structureBreak || nearExtreme;
-  const strictLongBreakout =
-    direction === "long" &&
-    d24h >= 10 &&
-    d24h <= 22 &&
-    d4h >= 4 &&
-    d1h >= 0.8;
-  const strictShortBreakdown =
-    direction === "short" &&
-    d24h >= 6 &&
-    d4h >= 3 &&
-    d1h >= 0.6;
+  const liquidity = alert.payload?.liquidity ?? {};
+  const liquidityOk = Boolean(liquidity.qualified || liquidity.largeCapLike);
+  const radarEdge = alert.payload?.radarEdge ?? {};
+  const radarQualified = radarEdge.telegramEligible === true;
+  const edgeScore = Number(radarEdge.score);
+  if (!liquidityOk || alert.score < HIGH_SCORE_THRESHOLD || (!confirmedMove && !radarQualified)) return false;
 
-  return alert.score >= HIGH_SCORE_THRESHOLD && confirmedMove && volumeVs >= 1.2 && (strictLongBreakout || strictShortBreakdown);
+  if (direction === "long") {
+    const volumeOk = volumeVs >= TELEGRAM_MIN_VOLUME_VS || (radarQualified && volumeVs >= 1.05);
+    const chase = chaseState(direction, d24h, volumeVs, edgeScore);
+    const radarOk =
+      radarQualified &&
+      Number.isFinite(edgeScore) &&
+      edgeScore >= RADAR_LONG_STD_ALERT_THRESHOLD &&
+      d1h >= -1.25 &&
+      d4h >= -2 &&
+      volumeOk &&
+      chase === "clean";
+    const strictLongBreakout =
+      d24h >= TELEGRAM_LONG_SOFT_CHASE_PCT &&
+      d24h <= 22 &&
+      d4h >= 4 &&
+      d1h >= 0.8 &&
+      volumeVs >= TELEGRAM_MIN_VOLUME_VS;
+    return radarOk || strictLongBreakout;
+  }
+
+  const actualDownside = d24h >= TELEGRAM_SHORT_MIN_DOWN_24H_PCT || d4h >= 2 || d1h >= 0.6 || structureBreak;
+  const radarOk = radarQualified && d24h >= TELEGRAM_SHORT_MIN_DOWN_24H_PCT && d4h >= 1.5 && volumeVs >= TELEGRAM_SHORT_MIN_VOLUME_VS;
+  const strictShortBreakdown = d24h >= 6 && d4h >= 3 && d1h >= 0.6 && volumeVs >= TELEGRAM_SHORT_MIN_VOLUME_VS;
+  return actualDownside && (radarOk || strictShortBreakdown);
+}
+
+function buildTradePlan({ direction, markPrice, invalidationPrice, fullTargetPrice, atr, edgeScore }) {
+  const safeAtr = Number.isFinite(atr) && atr > 0 ? atr : markPrice * 0.015;
+  const edgeBoostPct = Number.isFinite(edgeScore) && edgeScore >= 2.4 ? 0.4 : 0;
+  const tpPct = clampFloat(TELEGRAM_TP1_BASE_PCT + edgeBoostPct, TELEGRAM_TP1_MIN_PCT, TELEGRAM_TP1_MAX_PCT);
+  const minMove = markPrice * (TELEGRAM_TP1_MIN_PCT / 100);
+  const baseMove = Math.max(markPrice * (tpPct / 100), safeAtr * 0.95);
+  const maxMove = markPrice * (TELEGRAM_TP1_MAX_PCT / 100);
+  const plannedMove = clampFloat(baseMove, minMove, maxMove);
+  const directionSign = direction === "short" ? -1 : 1;
+  const minimumTarget = markPrice + directionSign * minMove;
+  const candidateTp1 = markPrice + directionSign * plannedMove;
+  const fullTargetValid = direction === "short" ? fullTargetPrice < markPrice : fullTargetPrice > markPrice;
+  let targetPrice = candidateTp1;
+
+  if (fullTargetValid) {
+    const fullTargetIsCloser = direction === "short" ? fullTargetPrice > candidateTp1 : fullTargetPrice < candidateTp1;
+    targetPrice = fullTargetIsCloser ? fullTargetPrice : candidateTp1;
+    const tooTight = direction === "short" ? targetPrice > minimumTarget : targetPrice < minimumTarget;
+    if (tooTight) targetPrice = minimumTarget;
+  }
+
+  const protectAfterPrice = markPrice + directionSign * Math.max(markPrice * 0.015, safeAtr);
+  const riskPct = Math.abs(((markPrice - invalidationPrice) / markPrice) * 100);
+  const rewardPct = Math.abs(((targetPrice - markPrice) / markPrice) * 100);
+  const finalTargetPct = fullTargetValid ? Math.abs(((fullTargetPrice - markPrice) / markPrice) * 100) : null;
+
+  return {
+    targetPrice,
+    finalTargetPrice: fullTargetValid ? fullTargetPrice : null,
+    protectAfterPrice,
+    tp1ReturnPct: rewardPct,
+    stopDistancePct: riskPct,
+    rewardRisk: riskPct > 0 ? rewardPct / riskPct : null,
+    finalTargetPct,
+    timeStopHours: 8,
+  };
 }
 
 async function buildCandidate(asset, radarContext) {
@@ -1047,13 +1165,28 @@ async function buildCandidate(asset, radarContext) {
   const shortTarget = support?.zoneLow && support.zoneLow < asset.markPx * 0.996
     ? support.zoneLow
     : shortFallbackTarget;
-  const targetPrice = direction === "short" ? shortTarget : longTarget;
+  const fullTargetPrice = direction === "short" ? shortTarget : longTarget;
   const volumeVs = features.volumeVsBaseline ?? 1;
   const oiText = oiChangePct == null ? "OI context limited" : `OI ${formatPct(oiChangePct)}`;
   const bucket = momentumBucket(asset.asset);
   const outcomeQuality = await loadOutcomeQuality(asset.asset, direction);
-  const telegramEligible = score.telegramEligible && outcomeQuality.passes;
   const radarEdge = score.radarEdge ?? null;
+  const tradePlan = buildTradePlan({
+    direction,
+    markPrice: asset.markPx,
+    invalidationPrice,
+    fullTargetPrice,
+    atr,
+    edgeScore: radarEdge?.score,
+  });
+  const telegramDecision = telegramQualityDecision({
+    asset,
+    features,
+    score,
+    direction,
+    volumeVs,
+  });
+  const telegramEligible = score.telegramEligible && telegramDecision.eligible && outcomeQuality.passes;
   const reason = radarEdge
     ? direction === "short"
       ? `${asset.asset} is a ${radarEdge.score.toFixed(2)}σ relative weakness signal: lags BTC by ${Math.abs(radarEdge.btcResidualPct).toFixed(1)}%, lags basket by ${Math.abs(radarEdge.basketResidualPct).toFixed(1)}%, and ${oiText}.`
@@ -1079,7 +1212,7 @@ async function buildCandidate(asset, radarContext) {
     severity: score.severity,
     reason,
     invalidationPrice,
-    targetPrice,
+    targetPrice: tradePlan.targetPrice,
     routeHref: `/markets?asset=${encodeURIComponent(asset.asset)}`,
     payload: {
       direction,
@@ -1096,8 +1229,16 @@ async function buildCandidate(asset, radarContext) {
       support,
       resistance,
       atr,
+      tradePlan,
+      fullTargetPrice: tradePlan.finalTargetPrice,
+      protectAfterPrice: tradePlan.protectAfterPrice,
+      tp1ReturnPct: tradePlan.tp1ReturnPct,
+      stopDistancePct: tradePlan.stopDistancePct,
+      rewardRisk: tradePlan.rewardRisk,
+      timeStopHours: tradePlan.timeStopHours,
       fundingPenaltyApplied: direction === "short" ? asset.fundingApr < -65 : asset.fundingApr > 65,
       outcomeQuality,
+      telegramGate: telegramDecision,
       radarEdge: radarEdge
         ? {
             direction: radarEdge.direction,
@@ -1147,17 +1288,16 @@ function formatMultiple(value, digits = 1) {
 }
 
 function volumeContextTag(value) {
-  if (!Number.isFinite(value)) return "Volume confirmation n/a";
-  if (value >= 3) return `Volume surge: ${formatMultiple(value)} recent avg`;
-  if (value >= 1.5) return `Volume confirming: ${formatMultiple(value)} recent avg`;
-  if (value >= 1) return `Volume active: ${formatMultiple(value)} recent avg`;
-  return `Volume light: ${formatMultiple(value)} recent avg`;
+  if (!Number.isFinite(value)) return "Volume: n/a";
+  if (value >= 3) return `Volume: ${formatMultiple(value)} recent avg (surge)`;
+  if (value >= 1.5) return `Volume: ${formatMultiple(value)} recent avg`;
+  if (value >= 1) return `Volume: ${formatMultiple(value)} recent avg (active)`;
+  return `Volume: ${formatMultiple(value)} recent avg (light)`;
 }
 
 function buildTelegramText(alert) {
   const severity = alert.severity === "high" ? "HIGH" : "MED";
   const direction = alert.payload?.direction === "short" ? "SHORT" : "LONG";
-  const headlineSide = direction === "SHORT" ? "SHORT BIAS" : "LONG";
   const invalidationLabel = direction === "SHORT" ? "Invalid above" : "Invalid below";
   const radarEdge = alert.payload?.radarEdge;
   const score = Number(radarEdge?.score);
@@ -1171,11 +1311,16 @@ function buildTelegramText(alert) {
   const sampleLine = outcomeQuality?.status === "tested" && Number(outcomeQuality.resolved) > 0
     ? `TP/SL sample: ${Number(outcomeQuality.wins)}/${Number(outcomeQuality.resolved)} wins`
     : null;
-  const actionLine = `${direction === "SHORT" ? "Cover" : "Trim"} ${formatPrice(alert.targetPrice)} · ${invalidationLabel} ${formatPrice(alert.invalidationPrice)}`;
+  const tpLabel = direction === "SHORT" ? "TP1 cover" : "TP1 trim";
+  const actionLine = `${tpLabel}: ${formatPrice(alert.targetPrice)} · ${invalidationLabel}: ${formatPrice(alert.invalidationPrice)}`;
+  const protectAfter = Number(alert.payload?.protectAfterPrice);
+  const protectLine = Number.isFinite(protectAfter)
+    ? `Protect after: ${formatPrice(protectAfter)} · Time stop: ${Number(alert.payload?.timeStopHours ?? 8)}h`
+    : null;
   const returnLine = `1h ${formatPct(alert.return1hPct)} · 4h ${formatPct(alert.return4hPct)} · 24h ${formatPct(alert.return24hPct)}`;
   const qualityLine = Number.isFinite(score) ? `${severity} · ${score.toFixed(2)}σ edge` : `${severity} · breakout`;
   return [
-    `${alert.asset} ${headlineSide}`,
+    `${alert.asset} ${direction}`,
     qualityLine,
     "",
     `Price ${formatPrice(alert.alertPrice)}`,
@@ -1183,6 +1328,7 @@ function buildTelegramText(alert) {
     edgeLine,
     "",
     actionLine,
+    protectLine,
     contextLine,
     sampleLine,
   ].filter((line) => line != null).join("\n");

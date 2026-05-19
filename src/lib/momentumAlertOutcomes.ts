@@ -324,6 +324,9 @@ function average(values: Array<number | null>): number | null {
 function buildZoneQuality(summary: Omit<MomentumAlertOutcomeSummary, "zoneQuality">): string {
   if (summary.evaluated === 0) return "No completed TP/SL sample yet.";
   if (summary.wins === 0 && summary.losses === 0) return "Most alerts are still unresolved; wait for more TP/SL touches before adjusting zones.";
+  if ((summary.averageMaxFavorablePct ?? 0) >= 3 && (summary.losses ?? 0) > 0) {
+    return "Many alerts show enough favorable excursion to justify a closer TP1/protect rule; new alerts score first-profit touches before wider final targets.";
+  }
   if ((summary.winRatePct ?? 0) >= 55 && (summary.averageMaxFavorablePct ?? 0) > Math.abs(summary.averageMaxAdversePct ?? 0)) {
     return "Targets are winning more often than stops and MFE is larger than MAE; current zones are directionally useful.";
   }

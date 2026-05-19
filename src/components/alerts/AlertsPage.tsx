@@ -189,7 +189,7 @@ export default function AlertsPage() {
           <StatCard
             label="TP/SL hit rate"
             value={stats.hitRate == null ? "n/a" : `${stats.hitRate.toFixed(0)}%`}
-            helper="TP reached before invalidation"
+            helper="TP1 reached before invalidation"
             tooltip={outcomes?.summary ? <HitRateTooltip summary={outcomes.summary} /> : null}
           />
         </div>
@@ -304,7 +304,7 @@ function ZoneQualityPanel({ summary }: { summary: MomentumAlertOutcomeSummary })
           <SectionEyebrow className="text-teal-300">Zone quality</SectionEyebrow>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-300">{summary.zoneQuality}</p>
           <p className="mt-1 text-xs text-zinc-500">
-            Outcome rule: first TP or invalidation touch within 72h. Same-candle TP/SL collisions are ambiguous and excluded from win rate.
+            Outcome rule: first TP1 or invalidation touch within 72h. Same-candle TP/SL collisions are ambiguous and excluded from win rate.
           </p>
         </div>
         <div className="grid min-w-full grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
@@ -374,7 +374,7 @@ function HitRateTooltip({ summary }: { summary: MomentumAlertOutcomeSummary }) {
       <div>
         <div className="text-[10px] uppercase tracking-[0.18em] text-teal-300">Hit-rate methodology</div>
         <div className="mt-1 font-mono text-sm text-zinc-100">
-          TP first / (TP first + SL first)
+          TP1 first / (TP1 first + SL first)
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2">
@@ -383,8 +383,8 @@ function HitRateTooltip({ summary }: { summary: MomentumAlertOutcomeSummary }) {
         <MiniMethodStat label="Sample" value={resolved.toString()} tone="text-zinc-100" />
       </div>
       <div className="space-y-2 leading-5 text-zinc-400">
-        <div><span className="text-zinc-200">Window:</span> first TP or SL touch within 72h of the stored alert timestamp.</div>
-        <div><span className="text-zinc-200">Data:</span> 1m Hyperliquid candles, exact alert price, exact alert time.</div>
+        <div><span className="text-zinc-200">Window:</span> last 50 alert snapshots, first TP1 or SL touch within 72h of the stored timestamp.</div>
+        <div><span className="text-zinc-200">Data:</span> 1m Hyperliquid candles, exact alert price, exact alert time. New alerts use a closer TP1 to avoid leaving early favorable moves unscored.</div>
         <div><span className="text-zinc-200">Excluded:</span> open alerts, invalid levels, no-candle rows, and same-candle TP/SL collisions.</div>
       </div>
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 font-mono text-[11px] text-zinc-400">
@@ -476,7 +476,7 @@ function MobileAlertCard({ alert }: { alert: MomentumAlert }) {
       <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-xs leading-5 text-zinc-400">
         {alert.reason}
         <div className="mt-1 font-mono text-[11px] text-zinc-600">
-          target {alert.targetPrice == null ? "n/a" : formatChartPrice(alert.targetPrice)}
+          TP1 {alert.targetPrice == null ? "n/a" : formatChartPrice(alert.targetPrice)}
           <span className="mx-1 text-zinc-800">·</span>
           {delivery}
         </div>
@@ -591,7 +591,7 @@ function AlertCard({ alert }: { alert: MomentumAlert }) {
       <div className="min-w-0">
         <div className="truncate text-xs text-zinc-300" title={alert.reason}>{alert.reason}</div>
         <div className="mt-0.5 font-mono text-[10px] text-zinc-600">
-          target {alert.targetPrice == null ? "n/a" : formatChartPrice(alert.targetPrice)}
+          TP1 {alert.targetPrice == null ? "n/a" : formatChartPrice(alert.targetPrice)}
           <span className="mx-1 text-zinc-800">·</span>
           {delivery}
         </div>
