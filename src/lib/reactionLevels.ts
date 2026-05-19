@@ -1586,6 +1586,28 @@ function levelStackSide(level: ReactionLevel, currentPrice: number): "support" |
   return reactionKind(level, currentPrice);
 }
 
+function levelRangeWidthPct(level: ReactionLevel, currentPrice: number): number {
+  const low = level.zoneLow ?? level.price;
+  const high = level.zoneHigh ?? level.price;
+  if (!Number.isFinite(low) || !Number.isFinite(high) || high <= low || currentPrice <= 0) return 0;
+  return ((high - low) / currentPrice) * 100;
+}
+
+function groupRangeWidthPct(group: ReactionLevel[], currentPrice: number): number {
+  const low = Math.min(...group.map((level) => level.zoneLow ?? level.price));
+  const high = Math.max(...group.map((level) => level.zoneHigh ?? level.price));
+  if (!Number.isFinite(low) || !Number.isFinite(high) || high <= low || currentPrice <= 0) return 0;
+  return ((high - low) / currentPrice) * 100;
+}
+
+function stackedLevelThresholdPct(level: ReactionLevel, group: ReactionLevel[], currentPrice: number): number {
+  const rangeAwareThreshold = Math.max(
+    0.18,
+    (levelRangeWidthPct(level, currentPrice) + groupRangeWidthPct(group, currentPrice)) * 0.55,
+  );
+  return Math.min(STACKED_LEVEL_WIDTH_PCT, rangeAwareThreshold);
+}
+
 function combineStackedReactionLevels(levels: ReactionLevel[], currentPrice: number): ReactionLevel[] {
   const sorted = [...levels].sort((a, b) => a.price - b.price);
   const groups: ReactionLevel[][] = [];
@@ -1596,7 +1618,7 @@ function combineStackedReactionLevels(levels: ReactionLevel[], currentPrice: num
       const groupPrice = weightedPrice(candidate);
       const groupSide = levelStackSide(candidate[0], currentPrice);
       const gapPct = Math.abs(((level.price - groupPrice) / currentPrice) * 100);
-      return groupSide === side && gapPct <= STACKED_LEVEL_WIDTH_PCT;
+      return groupSide === side && gapPct <= stackedLevelThresholdPct(level, candidate, currentPrice);
     });
 
     if (group) {
