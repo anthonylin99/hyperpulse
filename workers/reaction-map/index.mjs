@@ -1021,6 +1021,21 @@ function zoneStoragePriority(zone) {
   return zone.score * 2 + flowScore + oiScore + distanceBonus - nearPricePenalty - carriedPenalty;
 }
 
+function uniqueZonesByStoragePriority(zones) {
+  const byId = new Map();
+  for (const zone of zones) {
+    const existing = byId.get(zone.zoneId);
+    if (
+      !existing ||
+      zoneStoragePriority(zone) > zoneStoragePriority(existing) ||
+      (zoneStoragePriority(zone) === zoneStoragePriority(existing) && zone.tradeNotionalUsd > existing.tradeNotionalUsd)
+    ) {
+      byId.set(zone.zoneId, zone);
+    }
+  }
+  return [...byId.values()];
+}
+
 async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWidthPct) {
   const now = Date.now();
   const carryCutoff = now - CARRIED_ZONE_LOOKBACK_MS;
@@ -1039,6 +1054,10 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
 
   await pool.query("begin");
   try {
+    await pool.query("select pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+      "reaction_exposure_zones_current",
+      `${asset}:${windowMs}`,
+    ]);
     await pool.query(
       `
       update reaction_exposure_zones_current
@@ -1064,7 +1083,7 @@ async function upsertExposureZones(asset, windowMs, currentPrice, zones, zoneWid
         .filter((row) => row.side === side && !freshZoneIds.has(String(row.zone_id)))
         .map((row) => carriedZoneFromRow(row, currentPrice, zoneWidthPct))
         .filter((zone) => zone != null);
-      const ranked = [...freshZones, ...carriedZones]
+      const ranked = uniqueZonesByStoragePriority([...freshZones, ...carriedZones])
         .sort((a, b) => zoneStoragePriority(b) - zoneStoragePriority(a) || b.tradeNotionalUsd - a.tradeNotionalUsd)
         .slice(0, MAX_ZONES_STORED_PER_SIDE);
 

@@ -176,6 +176,59 @@ function formatLevelRange(level: SupportResistanceLevel | null | undefined): str
   return formatLevelPrice(level.price);
 }
 
+function recentAverageMove(candles: CandleDatum[], length = 20): number | null {
+  const recent = candles.slice(-length);
+  if (recent.length < 3) return null;
+  const moves = recent
+    .map((candle, index) => {
+      const previousClose = recent[index - 1]?.close ?? candle.open;
+      return Math.max(
+        candle.high - candle.low,
+        Math.abs(candle.high - previousClose),
+        Math.abs(candle.low - previousClose),
+      );
+    })
+    .filter((move) => Number.isFinite(move) && move > 0);
+  if (moves.length === 0) return null;
+  return moves.reduce((sum, move) => sum + move, 0) / moves.length;
+}
+
+function maxConfluenceDistancePct(currentPrice: number | null, averageMove: number | null): number {
+  if (!currentPrice || !Number.isFinite(currentPrice) || currentPrice <= 0 || !averageMove || averageMove <= 0) {
+    return TECHNICAL_CONFLUENCE_WIDTH_PCT;
+  }
+  const averageMovePct = (averageMove / currentPrice) * 100;
+  return Math.min(TECHNICAL_CONFLUENCE_WIDTH_PCT, averageMovePct * AVG_MOVE_CONFLUENCE_MULTIPLIER);
+}
+
+function maxDisplayZoneWidth(price: number, averageMove: number | null): number {
+  const priceFloor = price * 0.0012;
+  if (!averageMove || !Number.isFinite(averageMove) || averageMove <= 0) return priceFloor;
+  return Math.max(priceFloor, averageMove * AVG_MOVE_ZONE_WIDTH_MULTIPLIER);
+}
+
+function capLevelDisplayZone(level: SupportResistanceLevel, averageMove: number | null): SupportResistanceLevel {
+  const zoneLow = level.zoneLow ?? level.price;
+  const zoneHigh = level.zoneHigh ?? level.price;
+  if (!Number.isFinite(zoneLow) || !Number.isFinite(zoneHigh) || zoneHigh <= zoneLow) return level;
+
+  const maxWidth = maxDisplayZoneWidth(level.price, averageMove);
+  if (zoneHigh - zoneLow <= maxWidth) return level;
+
+  const halfWidth = maxWidth / 2;
+  return {
+    ...level,
+    zoneLow: level.price - halfWidth,
+    zoneHigh: level.price + halfWidth,
+    zoneTooltip: {
+      ...level.zoneTooltip,
+      reasonSelected: level.zoneTooltip?.reasonSelected
+        ? `${level.zoneTooltip.reasonSelected}. Display range capped to recent average move.`
+        : "Display range capped to recent average move.",
+    },
+  };
+}
+
 function pricePrecision(value: number | null | undefined): number {
   if (value == null || !Number.isFinite(value)) return 2;
   if (value >= 100) return 0;
@@ -198,11 +251,21 @@ function formatTimeMs(timeMs: number | null | undefined): string {
 }
 
 type LevelRead = {
-  label: "Rejection" | "Break" | "Pivot" | "Long imbalance" | "Short imbalance" | "Stress" | "Stacked";
+  label: "Support" | "Rejection" | "Break" | "Pivot" | "Long imbalance" | "Short imbalance" | "Stress" | "Stacked";
   summary: string;
   reason: string;
   className: string;
 };
+
+const TECHNICAL_CONFLUENCE_WIDTH_PCT = 0.65;
+const MIN_VISIBLE_REACTION_SPACING_PCT = 1.25;
+const AVG_MOVE_LEVEL_SPACING_MULTIPLIER = 1.6;
+const AVG_MOVE_CONFLUENCE_MULTIPLIER = 0.35;
+const AVG_MOVE_ZONE_WIDTH_MULTIPLIER = 0.32;
+const MIN_SOURCE_ONLY_PRIORITY = 78;
+const MAX_PRIORITY_DROP_FROM_LEADER = 30;
+const MIN_BOOK_FALLBACK_NOTIONAL_USD = 20_000_000;
+const MIN_BOOK_FALLBACK_PRIORITY = 24;
 
 function isStressZone(level: SupportResistanceLevel): boolean {
   return level.leverageBucket === "stress";
@@ -231,13 +294,19 @@ function isUpsideReactionLevel(
 function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"): LevelRead {
   const isUpside = side === "upside";
   if (level.leverageBucket === "mixed") {
+    const className =
+      level.exposureSide === "bull" || level.zoneTooltip?.imbalanceType === "long_imbalance"
+        ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
+        : level.exposureSide === "bear" || level.zoneTooltip?.imbalanceType === "short_imbalance"
+          ? "border-red-400/35 bg-red-400/10 text-red-200"
+          : "border-sky-400/35 bg-sky-400/10 text-sky-200";
     return {
-      label: "Stacked",
+      label: isUpside ? "Rejection" : "Support",
       summary: isUpside
-        ? "Positioning and visible asks overlap here. A clean hold above matters more than the raw wall."
-        : "Positioning and visible bids overlap here. A clean hold below matters more than the raw wall.",
-      reason: "Strength blends inferred positioning with visible order book depth. Opposing depth can weaken the read.",
-      className: "border-sky-400/35 bg-sky-400/10 text-sky-200",
+        ? "Stacked reaction area above price. Buyers need clean acceptance through it."
+        : "Stacked reaction area below price. Sellers need clean acceptance below it.",
+      reason: "Strength blends technical context, inferred positioning, and visible order book depth when they overlap.",
+      className,
     };
   }
   if (level.leverageBucket === "positioning") {
@@ -252,10 +321,10 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
     }
     const likelyLong = imbalanceType === "long_imbalance" || level.flowSide === "forced_sell";
     return {
-      label: likelyLong ? "Long imbalance" : "Short imbalance",
+      label: isUpside ? "Rejection" : "Support",
       summary: likelyLong
-        ? "Buyer-initiated OI build. It can defend on retest, but a clean break can turn into sell pressure."
-        : "Seller-initiated OI build. It can reject on retest, but a clean reclaim can turn into buy pressure.",
+        ? "Buyer build near this level. Watch whether buyers defend it or lose it."
+        : "Seller build near this level. Watch rejection versus clean acceptance.",
       reason: "Ranked from public trade concentration, buy/sell imbalance, and positive OI change. This is not exact trader-position data.",
       className: likelyLong
         ? "border-emerald-400/35 bg-emerald-400/10 text-emerald-200"
@@ -270,6 +339,19 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
         : "Likely sell-stress below price from tracked longs or crowding pressure.",
       reason: "This is an inferred stress pocket from public streams and tracked samples, not a complete exchange-wide position map.",
       className: "border-zinc-600 bg-zinc-800/70 text-zinc-300",
+    };
+  }
+
+  if (level.leverageBucket === "book") {
+    return {
+      label: isUpside ? "Rejection" : "Support",
+      summary: isUpside
+        ? "Visible ask shelf. Stronger if technical or positioning confirms it."
+        : "Visible bid shelf. Stronger if technical or positioning confirms it.",
+      reason: "Live order-book shelf. Resting orders can pull, so treat pure book levels as lighter-weight context.",
+      className: isUpside
+        ? "border-red-400/35 bg-red-400/10 text-red-200"
+        : "border-emerald-400/35 bg-emerald-400/10 text-emerald-200",
     };
   }
 
@@ -321,20 +403,6 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
   };
 }
 
-function formatCompactUsd(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value) || value <= 0) return "n/a";
-  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
-}
-
-function formatSignedCompactUsd(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "n/a";
-  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${sign}${formatCompactUsd(Math.abs(value))}`;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -351,6 +419,22 @@ function levelVisualStrength(level: SupportResistanceLevel, index: number): numb
   const sourceTerm = isStressZone(level) ? 0.78 : level.leverageBucket === "book" ? 0.9 : 1;
 
   return clamp(scoreTerm * 0.48 + rankTerm * 0.3 + impactTerm * 0.22, 0.22, 1) * sourceTerm;
+}
+
+function reactionSourceCount(level: SupportResistanceLevel): number {
+  const hasTechnical = level.evidence?.some((item) => item.startsWith("Technical:")) ?? false;
+  const hasBook =
+    level.leverageBucket === "book" ||
+    level.leverageBucket === "mixed" ||
+    (level.depthAdjustedImpact != null && level.depthAdjustedImpact > 0);
+  const hasPositioning =
+    level.leverageBucket === "positioning" ||
+    level.leverageBucket === "mixed" ||
+    (level.inferredOiUsd ?? 0) > 0 ||
+    (level.buyNotionalUsd ?? 0) > 0 ||
+    (level.sellNotionalUsd ?? 0) > 0;
+  const hasStress = level.leverageBucket === "stress" || level.coverage === "wallet_sample";
+  return [hasTechnical, hasBook, hasPositioning, hasStress].filter(Boolean).length;
 }
 
 function levelLineWidth(level: SupportResistanceLevel, index: number): 1 | 2 | 3 | 4 {
@@ -372,43 +456,153 @@ function reactionDisplayPriority(level: SupportResistanceLevel, swingOnly = fals
   const distanceBonus = clamp(distance / (swingOnly ? 8 : 4), 0, 1) * (swingOnly ? 34 : 18);
   const nearPricePenalty = swingOnly && distance < 0.75 ? 42 : 0;
   const notionalBonus = level.notionalUsd == null ? 0 : clamp(Math.log10(level.notionalUsd + 1) - 6, 0, 4) * 4;
+  const sourceCount = reactionSourceCount(level);
+  const confluenceBonus = Math.max(sourceCount - 1, 0) * 28;
+  const sourceOnlyPenalty = sourceCount <= 1 ? 18 : 0;
   const sourceBonus =
     level.leverageBucket === "stress"
       ? 10
       : level.leverageBucket === "mixed"
-        ? 8
+        ? 16
         : level.leverageBucket === "positioning"
-          ? 14
+          ? 8
           : 0;
-  return score + distanceBonus + notionalBonus + sourceBonus - nearPricePenalty;
+  return score + distanceBonus + notionalBonus + confluenceBonus + sourceBonus - nearPricePenalty - sourceOnlyPenalty;
+}
+
+function minimumReactionSpacingPct(currentPrice: number | null, averageMove: number | null): number {
+  if (!currentPrice || !Number.isFinite(currentPrice) || currentPrice <= 0 || !averageMove || averageMove <= 0) {
+    return MIN_VISIBLE_REACTION_SPACING_PCT;
+  }
+  const averageMovePct = (averageMove / currentPrice) * 100;
+  return Math.max(MIN_VISIBLE_REACTION_SPACING_PCT, averageMovePct * AVG_MOVE_LEVEL_SPACING_MULTIPLIER);
+}
+
+function deservesSourceOnlySlot(level: SupportResistanceLevel, leaderPriority: number): boolean {
+  const score = level.lfxScore ?? level.pressureScore ?? level.strength;
+  const priority = reactionDisplayPriority(level);
+  const notional = level.notionalUsd ?? 0;
+  if (level.leverageBucket === "book") {
+    return (
+      notional >= MIN_BOOK_FALLBACK_NOTIONAL_USD ||
+      (priority >= MIN_BOOK_FALLBACK_PRIORITY && (level.confidence === "high" || notional > 0))
+    );
+  }
+  return (
+    priority >= MIN_SOURCE_ONLY_PRIORITY &&
+    priority >= leaderPriority - MAX_PRIORITY_DROP_FROM_LEADER &&
+    (score >= 70 || level.confidence === "high" || level.coverage === "wallet_sample")
+  );
 }
 
 function selectVisibleReactionLevels(
   levels: SupportResistanceLevel[],
   limit = 5,
+  currentPrice: number | null = null,
+  averageMove: number | null = null,
 ): SupportResistanceLevel[] {
-  const ranked = [...levels].sort((a, b) => {
-    const rankA = a.flowRank ?? Number.MAX_SAFE_INTEGER;
-    const rankB = b.flowRank ?? Number.MAX_SAFE_INTEGER;
-    if (rankA !== rankB) return rankA - rankB;
-    return reactionDisplayPriority(b) - reactionDisplayPriority(a);
-  });
-  const bookLevels = ranked.filter((level) => level.leverageBucket === "book");
-  const contextSlots = Math.min(bookLevels.length, 2, Math.max(limit - 1, 0));
+  const ranked = [...levels].sort((a, b) => reactionDisplayPriority(b) - reactionDisplayPriority(a));
+  const confluent = ranked.filter((level) => reactionSourceCount(level) >= 2);
+  const leaderPriority = ranked[0] ? reactionDisplayPriority(ranked[0]) : 0;
+  const fallback = ranked.filter(
+    (level) => reactionSourceCount(level) < 2 && deservesSourceOnlySlot(level, leaderPriority),
+  );
   const selected = new Map<string, SupportResistanceLevel>();
+  const minSpacingPct = minimumReactionSpacingPct(currentPrice, averageMove);
+  const canSelect = (candidate: SupportResistanceLevel) => {
+    const referencePrice =
+      currentPrice && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : candidate.price;
+    return ![...selected.values()].some((level) => {
+      const gapPct = Math.abs(((candidate.price - level.price) / referencePrice) * 100);
+      return gapPct < minSpacingPct;
+    });
+  };
 
-  for (const level of ranked.filter((candidate) => candidate.leverageBucket !== "book").slice(0, limit - contextSlots)) {
-    selected.set(level.id, level);
-  }
-  for (const level of bookLevels.slice(0, contextSlots)) {
-    selected.set(level.id, level);
-  }
-  for (const level of ranked) {
+  for (const level of confluent) {
     if (selected.size >= limit) break;
+    if (!canSelect(level)) continue;
+    selected.set(level.id, level);
+  }
+  for (const level of fallback) {
+    if (selected.size >= limit) break;
+    if (!canSelect(level)) continue;
     selected.set(level.id, level);
   }
 
   return [...selected.values()].sort((a, b) => a.price - b.price);
+}
+
+function levelOverlapsTechnical(
+  level: SupportResistanceLevel,
+  technical: SupportResistanceLevel,
+  currentPrice: number | null,
+  averageMove: number | null = null,
+): boolean {
+  const referencePrice = currentPrice && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : level.price;
+  const levelLow = level.zoneLow ?? level.price;
+  const levelHigh = level.zoneHigh ?? level.price;
+  if (technical.price >= levelLow && technical.price <= levelHigh) return true;
+  const distancePct = Math.abs(((technical.price - level.price) / referencePrice) * 100);
+  return distancePct <= maxConfluenceDistancePct(currentPrice, averageMove);
+}
+
+function levelSitsNearDisplayedReaction(level: SupportResistanceLevel, technical: SupportResistanceLevel, currentPrice: number | null): boolean {
+  const referencePrice = currentPrice && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : level.price;
+  const distancePct = Math.abs(((technical.price - level.price) / referencePrice) * 100);
+  return distancePct < MIN_VISIBLE_REACTION_SPACING_PCT;
+}
+
+function confluenceLabelFor(level: SupportResistanceLevel): string {
+  const hasBook = level.leverageBucket === "book" || level.leverageBucket === "mixed" || level.depthAdjustedImpact != null;
+  const hasPositioning =
+    level.leverageBucket === "positioning" ||
+    level.leverageBucket === "mixed" ||
+    (level.inferredOiUsd ?? 0) > 0 ||
+    (level.buyNotionalUsd ?? 0) > 0 ||
+    (level.sellNotionalUsd ?? 0) > 0;
+  if (hasBook && hasPositioning) return "Technical + Book + Positioning";
+  if (hasBook) return "Technical + Book";
+  if (hasPositioning) return "Technical + Positioning";
+  return "Technical confluence";
+}
+
+function withTechnicalConfluence(
+  levels: SupportResistanceLevel[],
+  technicalLevels: SupportResistanceLevel[],
+  currentPrice: number | null,
+  averageMove: number | null,
+): SupportResistanceLevel[] {
+  if (technicalLevels.length === 0) return levels.map((level) => capLevelDisplayZone(level, averageMove));
+
+  return levels.map((level) => {
+    const technical = technicalLevels.find((candidate) =>
+      levelOverlapsTechnical(level, candidate, currentPrice, averageMove),
+    );
+    if (!technical) return capLevelDisplayZone(level, averageMove);
+
+    const confluenceLabel = confluenceLabelFor(level);
+    const technicalEvidence = `Technical: ${pivotShortLabel(technical)} near ${formatLevelPrice(technical.price)}`;
+    const evidence = [...(level.evidence ?? [])];
+    if (!evidence.some((item) => item.startsWith("Technical:"))) evidence.unshift(technicalEvidence);
+    const boostedScore = Math.min(100, (level.lfxScore ?? level.pressureScore ?? level.strength) + 14);
+
+    return capLevelDisplayZone({
+      ...level,
+      label: confluenceLabel,
+      strength: Math.max(level.strength, boostedScore),
+      pressureScore: Math.max(level.pressureScore ?? 0, boostedScore),
+      lfxScore: Math.max(level.lfxScore ?? 0, boostedScore),
+      confidence: boostedScore >= 70 ? "high" : level.confidence,
+      evidence,
+      reason: evidence.join(" / "),
+      explanation: evidence.join(" / "),
+      zoneTooltip: {
+        ...level.zoneTooltip,
+        roleLabel: confluenceLabel,
+        reasonSelected: `${confluenceLabel}: ${technicalEvidence.replace("Technical: ", "")}`,
+      },
+    }, averageMove);
+  });
 }
 
 type ChartZoneBand = {
@@ -574,9 +768,32 @@ export default function PriceChart({
 
   const reactionSupported = marketType === "perp";
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
+  const averageMove = useMemo(() => recentAverageMove(candles), [candles]);
   const levels = useMemo(
     () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, "confluence") : []),
     [reactionPayload, reactionSupported],
+  );
+  const reactionLevelsWithTechnical = useMemo(
+    () => withTechnicalConfluence(levels, pivotLevels, currentPrice, averageMove),
+    [averageMove, currentPrice, levels, pivotLevels],
+  );
+  const visibleReactionLevels = useMemo(
+    () => selectVisibleReactionLevels(reactionLevelsWithTechnical, 5, currentPrice, averageMove),
+    [averageMove, currentPrice, reactionLevelsWithTechnical],
+  );
+  const visiblePivotLevels = useMemo(
+    () =>
+      reactionSupported
+        ? []
+        : pivotLevels.filter(
+            (pivot) =>
+              !visibleReactionLevels.some(
+                (level) =>
+                  levelOverlapsTechnical(level, pivot, currentPrice, averageMove) ||
+                  levelSitsNearDisplayedReaction(level, pivot, currentPrice),
+              ),
+          ),
+    [averageMove, currentPrice, pivotLevels, reactionSupported, visibleReactionLevels],
   );
   const combinedMapWarming = reactionSupported && reactionPayload != null && levels.length === 0;
   const showReactionProgress = reactionLoading || combinedMapWarming;
@@ -584,20 +801,12 @@ export default function PriceChart({
   const dataThroughTimeMs = lastCandleTimeMs != null ? lastCandleTimeMs + INTERVAL_MS[interval] : null;
   const latestLevelTimeMs = reactionPayload?.updatedAt ?? null;
   const visibleDownsideFlows = useMemo(
-    () =>
-      selectVisibleReactionLevels(
-        levels.filter((level) => isDownsideReactionLevel(level, currentPrice)),
-        5,
-      ),
-    [currentPrice, levels],
+    () => visibleReactionLevels.filter((level) => isDownsideReactionLevel(level, currentPrice)),
+    [currentPrice, visibleReactionLevels],
   );
   const visibleUpsideFlows = useMemo(
-    () =>
-      selectVisibleReactionLevels(
-        levels.filter((level) => isUpsideReactionLevel(level, currentPrice)),
-        5,
-      ),
-    [currentPrice, levels],
+    () => visibleReactionLevels.filter((level) => isUpsideReactionLevel(level, currentPrice)),
+    [currentPrice, visibleReactionLevels],
   );
   const highlightedZoneId = hoveredZoneId ?? selectedZoneId;
   const activeCandleReadout = hoverCandle ?? candleReadoutFromRawCandle(candles.at(-1));
@@ -870,7 +1079,7 @@ export default function PriceChart({
           alpha,
         });
       });
-      pivotLevels.forEach((level) => {
+      visiblePivotLevels.forEach((level) => {
         const y = candleSeries.priceToCoordinate(level.price);
         if (y == null || y < 0 || y > chartHeight) return;
         nextPivotLines.push({
@@ -892,7 +1101,7 @@ export default function PriceChart({
     };
     visibleDownsideFlows.forEach((level, index) => renderLevel(level, index, "downside"));
     visibleUpsideFlows.forEach((level, index) => renderLevel(level, index, "upside"));
-    pivotLevels.forEach(renderPivotLine);
+    visiblePivotLevels.forEach(renderPivotLine);
 
     chart.timeScale().fitContent();
     renderZoneBands();
@@ -949,7 +1158,7 @@ export default function PriceChart({
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, currentPrice, interval, pivotLevels, visibleDownsideFlows, visibleUpsideFlows]);
+  }, [candles, currentPrice, interval, visiblePivotLevels, visibleDownsideFlows, visibleUpsideFlows]);
 
   const levelSourceNote =
     combinedMapWarming
@@ -984,9 +1193,9 @@ export default function PriceChart({
                   {REACTION_WINDOW[interval]} zones
                 </div>
               ) : null}
-              {marketType === "perp" && pivotLevels.length > 0 ? (
+              {marketType === "perp" && visiblePivotLevels.length > 0 ? (
                 <div className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] text-amber-200">
-                  {pivotLevels.length} pivot lines
+                  {visiblePivotLevels.length} pivot lines
                 </div>
               ) : null}
               {currentPrice != null && (
@@ -996,7 +1205,7 @@ export default function PriceChart({
               )}
             </div>
             <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Reaction zones show inferred flow. Pivot lines mark reversal extremes and breakout-close retests.
+              Reaction zones start with book and positioning levels. Technical pivots only strengthen overlap.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -1057,7 +1266,7 @@ export default function PriceChart({
               <FlowZoneOverlay
                 bands={zoneBands}
                 highlightedZoneId={highlightedZoneId}
-                tooltipZoneId={hoveredZoneId}
+                tooltipZoneId={hoveredZoneId ?? selectedZoneId}
                 onHover={setHoveredZoneId}
                 onSelect={setSelectedZoneId}
               />
@@ -1092,6 +1301,22 @@ function zoneRoleLabel(band: ChartZoneBand): string {
 }
 
 function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upside"): string {
+  const hasBook =
+    level.leverageBucket === "book" ||
+    level.leverageBucket === "mixed" ||
+    (level.depthAdjustedImpact != null && level.depthAdjustedImpact > 0);
+  const hasPositioning =
+    level.leverageBucket === "positioning" ||
+    level.leverageBucket === "mixed" ||
+    (level.inferredOiUsd ?? 0) > 0 ||
+    (level.buyNotionalUsd ?? 0) > 0 ||
+    (level.sellNotionalUsd ?? 0) > 0;
+  if (hasBook && hasPositioning) {
+    return side === "downside"
+      ? "Book + positioning overlap here. Watch defense versus a clean break."
+      : "Book + positioning overlap here. Watch rejection versus clean acceptance.";
+  }
+
   const role = level.zoneTooltip?.role;
   if (role === "long_defense") return "Buyer build below price. Watch whether buyers defend or lose the zone.";
   if (role === "trapped_longs") return "Buyer build above price. Bulls need acceptance back through the zone.";
@@ -1254,7 +1479,10 @@ function FlowZoneOverlay({
                 borderBottomColor: active ? `rgba(${color}, 0.62)` : `rgba(${color}, ${idleBorderAlpha})`,
               }}
               aria-label={`${formatLevelRange(band.level)} ${read.label} ${band.level.label}`}
-              onClick={() => onSelect(band.id)}
+              onClick={() => {
+                onHover(band.id);
+                onSelect(band.id);
+              }}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
@@ -1277,31 +1505,31 @@ function FlowZoneOverlay({
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
               onBlur={() => onHover(null)}
-              onClick={() => onSelect(band.id)}
+              onClick={() => {
+                onHover(band.id);
+                onSelect(band.id);
+              }}
             >
               {formatLevelPrice(band.level.price)}
             </button>
           </div>
         );
       })}
-      {tooltipBand ? <ZoneHoverTooltip band={tooltipBand} bands={bands} /> : null}
+      {tooltipBand ? <ZoneHoverTooltip band={tooltipBand} /> : null}
     </div>
   );
 }
 
-function ZoneHoverTooltip({ band, bands }: { band: ChartZoneBand; bands: ChartZoneBand[] }) {
+function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
   const read = levelReadFor(band.level, band.side);
   const tooltip = band.level.zoneTooltip;
   const tone = chartToneForLevel(band.level, band.side);
-  const plan = tradePlanForBand(band, bands);
-  const flowSize = tooltip?.inferredOiUsd ?? tooltip?.totalRecentFlowUsd ?? band.level.notionalUsd;
-  const refreshed = tooltip?.refreshedAtMs ? formatTimeMs(tooltip.refreshedAtMs) : null;
   const sideLabel = tooltip?.roleLabel ?? (tooltip?.side === "bear" ? "Seller-initiated build" : tooltip?.side === "bull" ? "Buyer-initiated build" : zoneRoleLabel(band));
-  const reason = tooltip?.reasonSelected ?? read.reason;
 
   return (
     <div
-      className={`pointer-events-none absolute right-3 z-[90] w-[min(320px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
+      data-zone-tooltip="true"
+      className={`pointer-events-none absolute right-3 z-[90] w-[min(280px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
         tone.borderClass
       }`}
       style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}
@@ -1315,68 +1543,6 @@ function ZoneHoverTooltip({ band, bands }: { band: ChartZoneBand; bands: ChartZo
         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono ${read.className}`}>{read.label}</span>
       </div>
       <p className="mt-2 text-xs leading-5 text-zinc-300">{shortTraderRead(band.level, band.side) || read.summary}</p>
-      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">
-        {tooltip?.rank || band.level.flowRank ? <TooltipMetric label="Rank" value={`#${tooltip?.rank ?? band.level.flowRank}`} /> : null}
-        <TooltipMetric label="Flow / OI" value={formatCompactUsd(flowSize)} />
-        {tooltip?.totalRecentFlowUsd ? <TooltipMetric label="Recent flow" value={formatCompactUsd(tooltip.totalRecentFlowUsd)} /> : null}
-        {tooltip?.imbalanceUsd != null ? <TooltipMetric label="Net" value={formatSignedCompactUsd(tooltip.imbalanceUsd)} /> : null}
-        {tooltip?.leveragePressure != null ? <TooltipMetric label="Leverage proxy" value={`${tooltip.leveragePressure.toFixed(0)}x`} /> : null}
-        {tooltip?.buyNotionalUsd != null && tooltip?.sellNotionalUsd != null ? (
-          <TooltipMetric label="Buy / sell" value={`${formatCompactUsd(tooltip.buyNotionalUsd)} / ${formatCompactUsd(tooltip.sellNotionalUsd)}`} />
-        ) : null}
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-1.5 text-[11px]">
-        <TooltipMetric label={plan.label} value={plan.entry} />
-        <TooltipMetric label="Stop" value={plan.stop} />
-        <TooltipMetric label="Target" value={plan.target} />
-      </div>
-      <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/55 px-2.5 py-2 text-[11px] leading-4 text-zinc-400">
-        {reason}
-      </div>
-      <div className="mt-2 text-[10px] leading-4 text-zinc-500">
-        {refreshed ? `Refreshed ${refreshed}. ` : null}{tooltip?.sourceCaveat ?? "Inferred zone, not exact exchange-wide positions."}
-      </div>
-    </div>
-  );
-}
-
-function tradePlanForBand(band: ChartZoneBand, bands: ChartZoneBand[]): {
-  label: string;
-  entry: string;
-  stop: string;
-  target: string;
-} {
-  const zoneLow = band.level.zoneLow ?? band.level.price;
-  const zoneHigh = band.level.zoneHigh ?? band.level.price;
-  const zoneWidth = Math.max(zoneHigh - zoneLow, band.level.price * 0.0015);
-  const isBounce = band.side === "downside";
-  const entry = isBounce ? zoneHigh : zoneLow;
-  const stop = isBounce ? zoneLow - zoneWidth * 0.35 : zoneHigh + zoneWidth * 0.35;
-  const opposite = bands
-    .filter((candidate) =>
-      isBounce
-        ? candidate.side === "upside" && candidate.level.price > zoneHigh
-        : candidate.side === "downside" && candidate.level.price < zoneLow,
-    )
-    .sort((a, b) =>
-      isBounce ? a.level.price - b.level.price : b.level.price - a.level.price,
-    )[0];
-  const fallbackTarget = isBounce ? entry * 1.025 : entry * 0.975;
-  const target = opposite?.level.price ?? fallbackTarget;
-
-  return {
-    label: isBounce ? "Bounce entry" : "Reject entry",
-    entry: formatLevelPrice(entry),
-    stop: formatLevelPrice(stop),
-    target: formatLevelPrice(target),
-  };
-}
-
-function TooltipMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 py-1.5">
-      <div className="text-[9px] uppercase tracking-[0.14em] text-zinc-600">{label}</div>
-      <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-200">{value}</div>
     </div>
   );
 }
