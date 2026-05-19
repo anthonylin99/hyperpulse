@@ -9,6 +9,10 @@ const STORE_BACKOFF_MS = 5 * 60 * 1000;
 const OUTCOME_HORIZON_MS = 72 * 60 * 60 * 1000;
 const REEVALUATE_OPEN_AFTER_MS = 15 * 60 * 1000;
 const MAX_LIMIT = 50;
+const OUTCOME_METHODOLOGY_VERSION = "tp-sl-v2-first-touch-min-distance";
+const MIN_SCORABLE_TP_DISTANCE_PCT = 0.35;
+const MIN_SCORABLE_SL_DISTANCE_PCT = 0.35;
+const MAX_SCORABLE_SL_DISTANCE_PCT = 25;
 
 let pool: Pool | null = null;
 let disabledUntil = 0;
@@ -68,12 +72,14 @@ async function ensureAlertOutcomeTable(): Promise<void> {
       payload jsonb not null default '{}'::jsonb
     );
   `);
+  await client.query(`alter table alert_outcomes add column if not exists payload jsonb not null default '{}'::jsonb;`);
   await client.query(`create index if not exists alert_outcomes_asset_idx on alert_outcomes (asset, evaluated_at desc);`);
   await client.query(`create index if not exists alert_outcomes_outcome_idx on alert_outcomes (outcome, evaluated_at desc);`);
 }
 
 function normalizeOutcome(row: Record<string, unknown>): MomentumAlertOutcome {
   const outcome = String(row.outcome) as MomentumAlertOutcomeStatus;
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
   return {
     alertId: String(row.alert_id),
     asset: String(row.asset),
@@ -89,6 +95,7 @@ function normalizeOutcome(row: Record<string, unknown>): MomentumAlertOutcome {
     maxFavorablePct: asNumber(row.max_favorable_pct),
     maxAdversePct: asNumber(row.max_adverse_pct),
     candlesChecked: Number(row.candles_checked ?? 0),
+    methodologyVersion: typeof payload.version === "string" ? payload.version : null,
   };
 }
 
@@ -107,13 +114,28 @@ function pctMove(direction: "long" | "short", exit: number | null, entry: number
   return direction === "long" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
 }
 
-function validateLevels(alert: MomentumAlert, direction: "long" | "short"): boolean {
+function levelDistancePct(level: number, entry: number): number {
+  return Math.abs(((level - entry) / entry) * 100);
+}
+
+function validateLevels(alert: MomentumAlert, direction: "long" | "short"): { valid: boolean; reason: string; tpDistancePct: number | null; slDistancePct: number | null } {
   const entry = alert.alertPrice;
   const target = alert.targetPrice;
   const invalidation = alert.invalidationPrice;
-  if (![entry, target, invalidation].every((value) => value != null && Number.isFinite(value) && Number(value) > 0)) return false;
-  if (target == null || invalidation == null) return false;
-  return direction === "long" ? target > entry && invalidation < entry : target < entry && invalidation > entry;
+  if (![entry, target, invalidation].every((value) => value != null && Number.isFinite(value) && Number(value) > 0)) {
+    return { valid: false, reason: "missing_or_non_positive_level", tpDistancePct: null, slDistancePct: null };
+  }
+  if (target == null || invalidation == null) {
+    return { valid: false, reason: "missing_level", tpDistancePct: null, slDistancePct: null };
+  }
+  const directional = direction === "long" ? target > entry && invalidation < entry : target < entry && invalidation > entry;
+  const tpDistancePct = levelDistancePct(target, entry);
+  const slDistancePct = levelDistancePct(invalidation, entry);
+  if (!directional) return { valid: false, reason: "levels_not_directional", tpDistancePct, slDistancePct };
+  if (tpDistancePct < MIN_SCORABLE_TP_DISTANCE_PCT) return { valid: false, reason: "tp_too_close_to_entry", tpDistancePct, slDistancePct };
+  if (slDistancePct < MIN_SCORABLE_SL_DISTANCE_PCT) return { valid: false, reason: "sl_too_close_to_entry", tpDistancePct, slDistancePct };
+  if (slDistancePct > MAX_SCORABLE_SL_DISTANCE_PCT) return { valid: false, reason: "sl_too_far_from_entry", tpDistancePct, slDistancePct };
+  return { valid: true, reason: "valid", tpDistancePct, slDistancePct };
 }
 
 async function fetchCandles(alert: MomentumAlert): Promise<Candle[]> {
@@ -137,7 +159,8 @@ export async function evaluateMomentumAlert(alert: MomentumAlert): Promise<Momen
   const direction = directionOf(alert);
   const now = Date.now();
   const horizonComplete = now >= alert.createdAt + OUTCOME_HORIZON_MS;
-  if (!validateLevels(alert, direction)) {
+  const levelValidation = validateLevels(alert, direction);
+  if (!levelValidation.valid) {
     return {
       alertId: alert.id,
       asset: alert.asset,
@@ -153,6 +176,7 @@ export async function evaluateMomentumAlert(alert: MomentumAlert): Promise<Momen
       maxFavorablePct: null,
       maxAdversePct: null,
       candlesChecked: 0,
+      methodologyVersion: OUTCOME_METHODOLOGY_VERSION,
     };
   }
 
@@ -173,6 +197,7 @@ export async function evaluateMomentumAlert(alert: MomentumAlert): Promise<Momen
       maxFavorablePct: null,
       maxAdversePct: null,
       candlesChecked: 0,
+      methodologyVersion: OUTCOME_METHODOLOGY_VERSION,
     };
   }
 
@@ -227,6 +252,7 @@ export async function evaluateMomentumAlert(alert: MomentumAlert): Promise<Momen
       maxFavorablePct,
       maxAdversePct,
       candlesChecked: candles.length,
+      methodologyVersion: OUTCOME_METHODOLOGY_VERSION,
     };
   }
 
@@ -246,11 +272,13 @@ export async function evaluateMomentumAlert(alert: MomentumAlert): Promise<Momen
     maxFavorablePct,
     maxAdversePct,
     candlesChecked: candles.length,
+    methodologyVersion: OUTCOME_METHODOLOGY_VERSION,
   };
 }
 
 function shouldReevaluate(outcome: MomentumAlertOutcome | undefined): boolean {
   if (!outcome) return true;
+  if (outcome.methodologyVersion !== OUTCOME_METHODOLOGY_VERSION) return true;
   if (outcome.outcome !== "open" && outcome.outcome !== "no_candles") return false;
   if (outcome.horizonComplete) return false;
   return Date.now() - outcome.evaluatedAt > REEVALUATE_OPEN_AFTER_MS;
@@ -303,7 +331,7 @@ async function saveOutcome(outcome: MomentumAlertOutcome): Promise<void> {
       outcome.maxFavorablePct,
       outcome.maxAdversePct,
       outcome.candlesChecked,
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: OUTCOME_METHODOLOGY_VERSION }),
     ],
   );
 }
@@ -345,8 +373,11 @@ export function summarizeMomentumAlertOutcomes(outcomes: MomentumAlertOutcome[])
   const invalid = outcomes.filter((outcome) => outcome.outcome === "invalid_levels").length;
   const noCandles = outcomes.filter((outcome) => outcome.outcome === "no_candles").length;
   const resolved = wins + losses;
+  const excluded = ambiguous + open + invalid + noCandles;
   const base = {
     evaluated: outcomes.length,
+    resolved,
+    excluded,
     wins,
     losses,
     ambiguous,
@@ -358,6 +389,7 @@ export function summarizeMomentumAlertOutcomes(outcomes: MomentumAlertOutcome[])
     medianTimeToHitMs: median(outcomes.map((outcome) => outcome.timeToHitMs).filter((value): value is number => value != null)),
     averageMaxFavorablePct: average(outcomes.map((outcome) => outcome.maxFavorablePct)),
     averageMaxAdversePct: average(outcomes.map((outcome) => outcome.maxAdversePct)),
+    methodology: "TP1-first hit rate = TP1 first / (TP1 first + SL first), evaluated on 1m Hyperliquid candles for 72h; open, ambiguous, invalid, and no-candle rows are excluded.",
   };
   return { ...base, zoneQuality: buildZoneQuality(base) };
 }

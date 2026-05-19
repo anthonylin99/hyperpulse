@@ -88,7 +88,7 @@ function deliveryLabel(alert: MomentumAlert) {
 
 function outcomeLabel(outcome: MomentumAlertOutcome | null | undefined) {
   if (!outcome) return "pending";
-  if (outcome.outcome === "tp_first") return "TP first";
+  if (outcome.outcome === "tp_first") return "TP1 first";
   if (outcome.outcome === "sl_first") return "SL first";
   if (outcome.outcome === "ambiguous") return "ambiguous";
   if (outcome.outcome === "invalid_levels") return "invalid";
@@ -189,7 +189,7 @@ export default function AlertsPage() {
           <StatCard
             label="TP/SL hit rate"
             value={stats.hitRate == null ? "n/a" : `${stats.hitRate.toFixed(0)}%`}
-            helper="TP1 reached before invalidation"
+            helper={outcomes?.summary ? `${outcomes.summary.resolved} resolved · ${outcomes.summary.excluded} excluded` : "TP1 reached before invalidation"}
             tooltip={outcomes?.summary ? <HitRateTooltip summary={outcomes.summary} /> : null}
           />
         </div>
@@ -304,7 +304,7 @@ function ZoneQualityPanel({ summary }: { summary: MomentumAlertOutcomeSummary })
           <SectionEyebrow className="text-teal-300">Zone quality</SectionEyebrow>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-300">{summary.zoneQuality}</p>
           <p className="mt-1 text-xs text-zinc-500">
-            Outcome rule: first TP1 or invalidation touch within 72h. Same-candle TP/SL collisions are ambiguous and excluded from win rate.
+            {summary.methodology}
           </p>
         </div>
         <div className="grid min-w-full grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
@@ -368,7 +368,7 @@ function StatCard({ label, value, helper, tooltip }: { label: string; value: str
 }
 
 function HitRateTooltip({ summary }: { summary: MomentumAlertOutcomeSummary }) {
-  const resolved = summary.wins + summary.losses;
+  const resolved = summary.resolved;
   return (
     <div className="space-y-3">
       <div>
@@ -384,8 +384,8 @@ function HitRateTooltip({ summary }: { summary: MomentumAlertOutcomeSummary }) {
       </div>
       <div className="space-y-2 leading-5 text-zinc-400">
         <div><span className="text-zinc-200">Window:</span> last 50 alert snapshots, first TP1 or SL touch within 72h of the stored timestamp.</div>
-        <div><span className="text-zinc-200">Data:</span> 1m Hyperliquid candles, exact alert price, exact alert time. New alerts use a closer TP1 to avoid leaving early favorable moves unscored.</div>
-        <div><span className="text-zinc-200">Excluded:</span> open alerts, invalid levels, no-candle rows, and same-candle TP/SL collisions.</div>
+        <div><span className="text-zinc-200">Data:</span> 1m Hyperliquid candles, exact alert price, exact alert time.</div>
+        <div><span className="text-zinc-200">Excluded:</span> {summary.excluded} rows: open alerts, invalid levels, no-candle rows, and same-candle TP/SL collisions.</div>
       </div>
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 font-mono text-[11px] text-zinc-400">
         Ambiguous: {summary.ambiguous} · Open: {summary.open} · Median hit: {formatDuration(summary.medianTimeToHitMs)}

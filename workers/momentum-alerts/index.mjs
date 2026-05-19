@@ -112,6 +112,9 @@ const TELEGRAM_SHORT_MIN_VOLUME_VS = envNumber("MOMENTUM_ALERT_SHORT_MIN_VOLUME_
 const TELEGRAM_TP1_MIN_PCT = envNumber("MOMENTUM_ALERT_TP1_MIN_PCT", 1.2);
 const TELEGRAM_TP1_BASE_PCT = envNumber("MOMENTUM_ALERT_TP1_BASE_PCT", 2.0);
 const TELEGRAM_TP1_MAX_PCT = envNumber("MOMENTUM_ALERT_TP1_MAX_PCT", 3.5);
+const TELEGRAM_STOP_MIN_PCT = envNumber("MOMENTUM_ALERT_STOP_MIN_PCT", 0.8);
+const TELEGRAM_STOP_MAX_PCT = envNumber("MOMENTUM_ALERT_STOP_MAX_PCT", 7.5);
+const TELEGRAM_MIN_REWARD_RISK = envNumber("MOMENTUM_ALERT_MIN_REWARD_RISK", 0.35);
 const PROD_LIKE = process.env.NODE_ENV === "production" || Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_NAME);
 const TELEGRAM_BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
 const TELEGRAM_CHAT_ID = cleanEnv(process.env.TELEGRAM_CHAT_ID);
@@ -1076,13 +1079,21 @@ function isStoredTelegramQualityAlert(alert) {
 
 function buildTradePlan({ direction, markPrice, invalidationPrice, fullTargetPrice, atr, edgeScore }) {
   const safeAtr = Number.isFinite(atr) && atr > 0 ? atr : markPrice * 0.015;
+  const directionSign = direction === "short" ? -1 : 1;
+  const stopDirectionSign = direction === "short" ? 1 : -1;
+  const minStopMove = markPrice * (TELEGRAM_STOP_MIN_PCT / 100);
+  const maxStopMove = markPrice * (TELEGRAM_STOP_MAX_PCT / 100);
+  const fallbackStopMove = clampFloat(Math.max(safeAtr * 1.25, minStopMove), minStopMove, maxStopMove);
+  const rawStopValid = direction === "short" ? invalidationPrice > markPrice : invalidationPrice < markPrice;
+  const rawStopMove = rawStopValid ? Math.abs(invalidationPrice - markPrice) : fallbackStopMove;
+  const stopMove = clampFloat(rawStopMove, minStopMove, maxStopMove);
+  const normalizedInvalidationPrice = markPrice + stopDirectionSign * stopMove;
   const edgeBoostPct = Number.isFinite(edgeScore) && edgeScore >= 2.4 ? 0.4 : 0;
   const tpPct = clampFloat(TELEGRAM_TP1_BASE_PCT + edgeBoostPct, TELEGRAM_TP1_MIN_PCT, TELEGRAM_TP1_MAX_PCT);
   const minMove = markPrice * (TELEGRAM_TP1_MIN_PCT / 100);
   const baseMove = Math.max(markPrice * (tpPct / 100), safeAtr * 0.95);
   const maxMove = markPrice * (TELEGRAM_TP1_MAX_PCT / 100);
-  const plannedMove = clampFloat(baseMove, minMove, maxMove);
-  const directionSign = direction === "short" ? -1 : 1;
+  const plannedMove = clampFloat(Math.max(baseMove, stopMove * TELEGRAM_MIN_REWARD_RISK), minMove, maxMove);
   const minimumTarget = markPrice + directionSign * minMove;
   const candidateTp1 = markPrice + directionSign * plannedMove;
   const fullTargetValid = direction === "short" ? fullTargetPrice < markPrice : fullTargetPrice > markPrice;
@@ -1096,18 +1107,30 @@ function buildTradePlan({ direction, markPrice, invalidationPrice, fullTargetPri
   }
 
   const protectAfterPrice = markPrice + directionSign * Math.max(markPrice * 0.015, safeAtr);
-  const riskPct = Math.abs(((markPrice - invalidationPrice) / markPrice) * 100);
+  const riskPct = Math.abs(((markPrice - normalizedInvalidationPrice) / markPrice) * 100);
   const rewardPct = Math.abs(((targetPrice - markPrice) / markPrice) * 100);
   const finalTargetPct = fullTargetValid ? Math.abs(((fullTargetPrice - markPrice) / markPrice) * 100) : null;
+  const rewardRisk = riskPct > 0 ? rewardPct / riskPct : null;
+  const valid =
+    Number.isFinite(targetPrice) &&
+    Number.isFinite(normalizedInvalidationPrice) &&
+    rewardPct >= TELEGRAM_TP1_MIN_PCT * 0.95 &&
+    riskPct >= TELEGRAM_STOP_MIN_PCT * 0.5 &&
+    riskPct <= TELEGRAM_STOP_MAX_PCT * 1.05 &&
+    (direction === "short" ? targetPrice < markPrice && normalizedInvalidationPrice > markPrice : targetPrice > markPrice && normalizedInvalidationPrice < markPrice);
 
   return {
     targetPrice,
+    invalidationPrice: normalizedInvalidationPrice,
     finalTargetPrice: fullTargetValid ? fullTargetPrice : null,
     protectAfterPrice,
     tp1ReturnPct: rewardPct,
     stopDistancePct: riskPct,
-    rewardRisk: riskPct > 0 ? rewardPct / riskPct : null,
+    rewardRisk,
     finalTargetPct,
+    stopWasNormalized: !rawStopValid || Math.abs(stopMove - rawStopMove) > markPrice * 0.00001,
+    valid,
+    methodologyVersion: "tp-sl-v2",
     timeStopHours: 8,
   };
 }
@@ -1186,7 +1209,8 @@ async function buildCandidate(asset, radarContext) {
     direction,
     volumeVs,
   });
-  const telegramEligible = score.telegramEligible && telegramDecision.eligible && outcomeQuality.passes;
+  if (!tradePlan.valid) return null;
+  const telegramEligible = score.telegramEligible && telegramDecision.eligible && outcomeQuality.passes && tradePlan.valid;
   const reason = radarEdge
     ? direction === "short"
       ? `${asset.asset} is a ${radarEdge.score.toFixed(2)}σ relative weakness signal: lags BTC by ${Math.abs(radarEdge.btcResidualPct).toFixed(1)}%, lags basket by ${Math.abs(radarEdge.basketResidualPct).toFixed(1)}%, and ${oiText}.`
@@ -1211,7 +1235,7 @@ async function buildCandidate(asset, radarContext) {
     score: score.score,
     severity: score.severity,
     reason,
-    invalidationPrice,
+    invalidationPrice: tradePlan.invalidationPrice,
     targetPrice: tradePlan.targetPrice,
     routeHref: `/markets?asset=${encodeURIComponent(asset.asset)}`,
     payload: {
@@ -1229,6 +1253,7 @@ async function buildCandidate(asset, radarContext) {
       support,
       resistance,
       atr,
+      rawInvalidationPrice: invalidationPrice,
       tradePlan,
       fullTargetPrice: tradePlan.finalTargetPrice,
       protectAfterPrice: tradePlan.protectAfterPrice,

@@ -1116,10 +1116,13 @@ export interface MomentumAlertOutcome {
   maxFavorablePct: number | null;
   maxAdversePct: number | null;
   candlesChecked: number;
+  methodologyVersion?: string | null;
 }
 
 export interface MomentumAlertOutcomeSummary {
   evaluated: number;
+  resolved: number;
+  excluded: number;
   wins: number;
   losses: number;
   ambiguous: number;
@@ -1131,6 +1134,7 @@ export interface MomentumAlertOutcomeSummary {
   medianTimeToHitMs: number | null;
   averageMaxFavorablePct: number | null;
   averageMaxAdversePct: number | null;
+  methodology: string;
   zoneQuality: string;
 }
 

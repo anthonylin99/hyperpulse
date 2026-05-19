@@ -161,7 +161,7 @@ export default function DocsPage() {
               <Formula label="Participation" value="recent 1h volume ÷ prior hourly baseline; Telegram requires confirmation before sending" />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <MiniCard title="Alerts page">Stores the exact alert price, alert time, current return, delivery state, and TP/SL first-touch outcome.</MiniCard>
+              <MiniCard title="Alerts page">Stores the exact alert price, alert time, current return, delivery state, and TP1/SL first-touch outcome.</MiniCard>
               <MiniCard title="Biweekly brief">Summarizes which assets led, why they likely moved, and which themes carried the Hyperliquid tape.</MiniCard>
             </div>
           </Section>
