@@ -376,6 +376,24 @@ function computeAssetReturn(candles: Candle[], startDay: string, endDay: string)
   return pctChange(end?.close, start?.open);
 }
 
+
+function computePeriodVolumeUsd(candles: Candle[], startDay: string, endDay: string): number | null {
+  const periodCandles = candlesInPeriod(candles, startDay, endDay);
+  if (periodCandles.length === 0) return null;
+  return periodCandles.reduce((sum, candle) => sum + Math.max(candle.volume, 0) * candle.close, 0);
+}
+
+function computeVolumeVsAverage(candles: Candle[], startDay: string, endDay: string): number | null {
+  const periodCandles = candlesInPeriod(candles, startDay, endDay);
+  if (periodCandles.length === 0) return null;
+  const periodDailyVolume = (computePeriodVolumeUsd(candles, startDay, endDay) ?? 0) / periodCandles.length;
+  const priorCandles = candles.filter((candle) => candle.day < startDay).slice(-Math.max(periodCandles.length, 7));
+  if (priorCandles.length === 0) return null;
+  const priorDailyVolume = priorCandles.reduce((sum, candle) => sum + Math.max(candle.volume, 0) * candle.close, 0) / priorCandles.length;
+  if (!Number.isFinite(periodDailyVolume) || !Number.isFinite(priorDailyVolume) || priorDailyVolume <= 0) return null;
+  return periodDailyVolume / priorDailyVolume;
+}
+
 function computeSeries(candles: Candle[], startDay: string, endDay: string) {
   const periodCandles = candlesInPeriod(candles, startDay, endDay);
   const start = candleForDay(candles, startDay) ?? periodCandles[0];
@@ -525,6 +543,8 @@ export async function buildHyperpulseFactorReport(): Promise<FactorReport> {
       const btcRelativePct = btcReturn == null ? null : returnPct - btcReturn;
       const basketRelativePct = returnPct - basketReturnPct;
       const weekTwoReturnPct = computeWeekTwoReturn(candles, startDay, endDay);
+      const periodVolumeUsd = computePeriodVolumeUsd(candles, startDay, endDay);
+      const volumeVsAverage = computeVolumeVsAverage(candles, startDay, endDay);
       const catalyst = getCatalystNote(symbol, returnPct, btcRelativePct);
       return {
         symbol,
@@ -539,6 +559,8 @@ export async function buildHyperpulseFactorReport(): Promise<FactorReport> {
         marketInterpretation: catalyst.marketInterpretation,
         priceActionRead: catalyst.priceActionRead,
         moveType: catalyst.moveType,
+        periodVolumeUsd,
+        volumeVsAverage,
         series: computeSeries(candles, startDay, endDay),
       } satisfies MarketBriefAsset;
     })

@@ -30,7 +30,7 @@ interface PriceChartProps {
 }
 
 type TradingInterval = "5" | "15" | "60" | "240" | "D";
-const DEFAULT_INTERVAL: TradingInterval = "240";
+const DEFAULT_INTERVAL: TradingInterval = "15";
 
 const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> = {
   "5": "5m",

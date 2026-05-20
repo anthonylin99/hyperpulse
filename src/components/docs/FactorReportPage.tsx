@@ -244,9 +244,19 @@ export default function FactorReportPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 pb-24">
-      <Link href="/docs" className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100">
-        <ArrowLeft className="h-4 w-4" /> Back to docs
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link href="/docs" className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100">
+          <ArrowLeft className="h-4 w-4" /> Back to docs
+        </Link>
+        <a
+          href="/docs/factors/report-card"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded-full border border-teal-400/25 bg-teal-400/10 px-3 py-1.5 text-xs font-medium text-teal-100 transition hover:border-teal-300/50 hover:bg-teal-400/15"
+        >
+          Open share card <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      </div>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <main className="min-w-0 space-y-8">

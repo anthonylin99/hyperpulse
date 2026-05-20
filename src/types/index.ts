@@ -690,6 +690,8 @@ export interface MarketBriefAsset {
   marketInterpretation: string;
   priceActionRead: string;
   moveType: "catalyst-led" | "short-covering" | "rotation-led" | "momentum-led" | "mixed";
+  periodVolumeUsd: number | null;
+  volumeVsAverage: number | null;
   series: MarketBriefPoint[];
 }
 
