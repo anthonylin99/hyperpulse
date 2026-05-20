@@ -569,11 +569,13 @@ export default function MarketTable({
                         selectedAsset === asset.coin ? (
                           <tr key={`${asset.coin}-detail`} id={`market-asset-${asset.coin.replace(/[^a-zA-Z0-9_-]/g, "-")}`}>
                             <td colSpan={perpsTotalColumns} className="p-0">
-                              <AssetDetail
-                                asset={asset}
-                                fundingHistory={fundingHistories[asset.coin]}
-                                onClose={() => onSelectAsset(null)}
-                              />
+                              <div className="sticky left-0 w-[min(100%,calc(100vw-2rem))] min-w-0">
+                                <AssetDetail
+                                  asset={asset}
+                                  fundingHistory={fundingHistories[asset.coin]}
+                                  onClose={() => onSelectAsset(null)}
+                                />
+                              </div>
                             </td>
                           </tr>
                         ) : null
