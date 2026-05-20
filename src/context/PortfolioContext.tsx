@@ -430,10 +430,11 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         fetchResearch();
       }, TWELVE_HOURS);
       const sizingCaptureInterval = setInterval(() => {
+        if (document.visibilityState === "hidden") return;
         captureSizingSnapshot()
           .then(() => refreshSizingSnapshots())
           .catch(() => null);
-      }, 5 * 60 * 1000);
+      }, 30 * 60 * 1000);
 
       return () => {
         clearInterval(refreshInterval);

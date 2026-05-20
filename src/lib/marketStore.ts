@@ -20,7 +20,7 @@ function getPool(): Pool | null {
   if (disabledUntil > Date.now()) return null;
   if (!DATABASE_URL) return null;
   if (!pool) {
-    pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
+    pool = new Pool({ connectionString: DATABASE_URL, max: 2 });
   }
   return pool;
 }

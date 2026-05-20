@@ -24,6 +24,8 @@ type RadarHistory = {
   return4hPct: number | null;
   fridayHigh: number | null;
   fridayLow: number | null;
+  volumeVsAvg: number | null;
+  hourlyVolumeVsBaseline: number | null;
 };
 
 type CandleRow = {
@@ -31,6 +33,7 @@ type CandleRow = {
   high: number;
   low: number;
   close: number;
+  volumeUsd: number;
 };
 
 const RADAR_MAX_PER_BUCKET = 3;
@@ -124,6 +127,11 @@ function formatCompactUsd(value: number) {
   return `$${value.toFixed(0)}`;
 }
 
+function formatMultiple(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return `${value.toFixed(value >= 10 ? 0 : 1)}x`;
+}
+
 function pctChange(from: number, to: number): number | null {
   if (!Number.isFinite(from) || !Number.isFinite(to) || from <= 0 || to <= 0) return null;
   return Math.log(to / from);
@@ -134,9 +142,10 @@ function normalizeCandle(candle: Record<string, unknown>): CandleRow | null {
   const high = Number(candle.h ?? candle.high);
   const low = Number(candle.l ?? candle.low);
   const close = Number(candle.c ?? candle.close);
+  const rawVolume = Number(candle.v ?? candle.vlm ?? candle.volume ?? 0);
   if (![time, high, low, close].every(Number.isFinite)) return null;
   if (time <= 0 || high <= 0 || low <= 0 || close <= 0) return null;
-  return { time, high, low, close };
+  return { time, high, low, close, volumeUsd: Number.isFinite(rawVolume) ? Math.max(rawVolume, 0) * close : 0 };
 }
 
 function valueAtLookback(candles: CandleRow[], lookbackMs: number): number | null {
@@ -168,12 +177,24 @@ function computeRadarHistory(candles: CandleRow[], markPx: number): RadarHistory
   const fridayLow = fridayCandles.length > 0 ? Math.min(...fridayCandles.map((candle) => candle.low)) : null;
   const return1h = oneHourClose == null ? null : pctChange(oneHourClose, markPx);
   const return4h = fourHourClose == null ? null : pctChange(fourHourClose, markPx);
+  const now = Date.now();
+  const last24h = sorted.filter((candle) => candle.time >= now - 24 * 60 * 60 * 1000);
+  const priorWindow = sorted.filter((candle) => candle.time < now - 24 * 60 * 60 * 1000);
+  const lastHour = sorted.filter((candle) => candle.time >= now - 60 * 60 * 1000);
+  const last24hVolume = last24h.reduce((sum, candle) => sum + candle.volumeUsd, 0);
+  const priorVolume = priorWindow.reduce((sum, candle) => sum + candle.volumeUsd, 0);
+  const baselineDays = Math.max(priorWindow.length / 24, 0);
+  const baselineDailyVolume = baselineDays > 0 ? priorVolume / baselineDays : null;
+  const baselineHourlyVolume = priorWindow.length > 0 ? priorVolume / priorWindow.length : null;
+  const lastHourVolume = lastHour.reduce((sum, candle) => sum + candle.volumeUsd, 0);
 
   return {
     return1hPct: return1h == null ? null : return1h * 100,
     return4hPct: return4h == null ? null : return4h * 100,
     fridayHigh,
     fridayLow,
+    volumeVsAvg: baselineDailyVolume && baselineDailyVolume > 0 ? last24hVolume / baselineDailyVolume : null,
+    hourlyVolumeVsBaseline: baselineHourlyVolume && baselineHourlyVolume > 0 ? lastHourVolume / baselineHourlyVolume : null,
   };
 }
 
@@ -385,6 +406,7 @@ function buildMomentumSignal(kind: "strongest_asset" | "holding_up" | "weakest_a
       divergenceEvidence,
       accelerationEvidence,
       `Momentum z-score ${details.crossSectionalZ >= 0 ? "+" : ""}${details.crossSectionalZ.toFixed(2)}`,
+      `Volume ${formatMultiple(details.volumeVsAvg)} 7d avg · ${details.volumeLabel}`,
       `Beta to BTC ${details.betaStatus === "ready" ? details.btcBeta.toFixed(2) : "fallback 1.00"}`,
       `${details.volumeConfirmation ? "Volume confirming" : "Volume below universe median"} · ${details.oiConfirmation ? "OI base liquid" : "OI below universe median"}`,
     ],
@@ -417,6 +439,8 @@ export async function GET(req: NextRequest) {
         ...asset,
         return1hPct: item?.return1hPct ?? null,
         return4hPct: item?.return4hPct ?? null,
+        volumeVsAvg: item?.volumeVsAvg ?? null,
+        hourlyVolumeVsBaseline: item?.hourlyVolumeVsBaseline ?? null,
         fridayHigh: item?.fridayHigh ?? null,
         fridayLow: item?.fridayLow ?? null,
         btcFridayHigh: btcHistory?.fridayHigh ?? null,

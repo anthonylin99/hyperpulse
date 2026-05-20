@@ -42,8 +42,10 @@ if (!DATABASE_URL) {
 
 const apply = process.argv.includes("--apply");
 const vacuumFull = process.argv.includes("--vacuum-full");
-const rawHours = Number(argValue("hours", "4.5"));
-const hours = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 4.5;
+const rawHours = Number(argValue("hours", "6"));
+const hours = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 6;
+const rawContextHours = Number(argValue("context-hours", "24.5"));
+const contextHours = Number.isFinite(rawContextHours) && rawContextHours > 0 ? rawContextHours : 24.5;
 const rawEventHours = Number(argValue("event-hours", "24"));
 const eventHours = Number.isFinite(rawEventHours) && rawEventHours > 0 ? rawEventHours : 24;
 const rawStaleZoneHours = Number(argValue("stale-zone-hours", "24"));
@@ -54,7 +56,7 @@ const pool = new Pool({ connectionString: DATABASE_URL, max: 1 });
 const retentionTargets = [
   { table: "reaction_orderbook_buckets", column: "bucket_ms" },
   { table: "reaction_trade_buckets", column: "bucket_ms" },
-  { table: "reaction_context_snapshots", column: "bucket_ms" },
+  { table: "reaction_context_snapshots", column: "bucket_ms", hours: contextHours },
   { table: "reaction_exposure_zone_events", column: "event_at", hours: eventHours },
 ];
 
@@ -123,7 +125,7 @@ async function main() {
   const client = await pool.connect();
   try {
     console.log(
-      `[reaction-prune] mode=${apply ? "apply" : "dry-run"} rawRetention=${hours}h eventRetention=${eventHours}h staleZoneRetention=${staleZoneHours}h vacuumFull=${vacuumFull}`,
+      `[reaction-prune] mode=${apply ? "apply" : "dry-run"} rawRetention=${hours}h contextRetention=${contextHours}h eventRetention=${eventHours}h staleZoneRetention=${staleZoneHours}h vacuumFull=${vacuumFull}`,
     );
     const dbBefore = await client.query("select pg_database_size(current_database()) as bytes");
     const rows = [];

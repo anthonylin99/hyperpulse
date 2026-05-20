@@ -121,7 +121,10 @@ export default function TopMoversPanel() {
     };
     setLoading(true);
     load();
-    const interval = window.setInterval(load, POLL_INTERVAL_MARKET);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      load();
+    }, POLL_INTERVAL_MARKET);
     return () => {
       mounted = false;
       cancelled = true;

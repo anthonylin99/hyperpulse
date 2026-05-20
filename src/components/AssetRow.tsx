@@ -23,6 +23,7 @@ interface AssetRowProps {
   tradingEnabled: boolean;
   fundingHistory?: { time: number; rate: number }[];
   setupSignal?: MarketSetupSignal | null;
+  volumeVsAvg?: number | null;
   detailNode: ReactNode;
 }
 
@@ -35,6 +36,7 @@ export default function AssetRow({
   tradingEnabled,
   fundingHistory,
   setupSignal,
+  volumeVsAvg,
   detailNode,
 }: AssetRowProps) {
   const priceColor =
@@ -95,7 +97,23 @@ export default function AssetRow({
         </td>
 
         <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
-          {formatCompact(asset.dayVolume)}
+          <div>{formatCompact(asset.dayVolume)}</div>
+          {volumeVsAvg != null && Number.isFinite(volumeVsAvg) ? (
+            <div
+              className={`text-[9px] ${
+                volumeVsAvg >= 2
+                  ? "text-amber-300"
+                  : volumeVsAvg >= 1.3
+                    ? "text-emerald-300"
+                    : volumeVsAvg < 0.8
+                      ? "text-zinc-600"
+                      : "text-zinc-500"
+              }`}
+              title="24h volume versus recent 7d average"
+            >
+              {volumeVsAvg.toFixed(volumeVsAvg >= 10 ? 0 : 1)}x avg
+            </div>
+          ) : null}
         </td>
 
         <td className={`px-2.5 py-0.5 text-right whitespace-nowrap ${fundingColor}`}>

@@ -57,20 +57,30 @@ if (!DATABASE_URL) {
 }
 
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
-const DEFAULT_ASSETS = [
+let ASSETS = [];
+const DEFAULT_REACTION_ASSETS = [
   "BTC",
   "ETH",
   "SOL",
   "HYPE",
   "XRP",
   "DOGE",
+  "SUI",
   "ZEC",
   "TON",
-  "SUI",
+  "TAO",
   "AAVE",
+  "LINK",
+  "BNB",
+  "AVAX",
+  "ONDO",
+  "ENA",
+  "NEAR",
+  "WLD",
+  "PUMP",
+  "FARTCOIN",
 ];
-let ASSETS = [];
-const CONFIGURED_ASSETS = parseList(process.env.REACTION_MAP_ASSETS ?? "all", []);
+const CONFIGURED_ASSETS = parseList(process.env.REACTION_MAP_ASSETS ?? DEFAULT_REACTION_ASSETS.join(","), []);
 const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["15m", "1h", "4h", "1d"])
   .map(windowMsFromLabel)
   .filter((value) => value != null);
@@ -81,12 +91,13 @@ const BUCKET_MS = envNumber("REACTION_MAP_BUCKET_MS", 60_000, 5_000);
 const FLUSH_MS = envNumber("REACTION_MAP_FLUSH_MS", 180_000, 30_000);
 const PROMOTE_MS = envNumber("REACTION_MAP_PROMOTE_MS", 180_000, 30_000);
 const BOOK_FLUSH_BATCH_SIZE = Math.floor(envNumber("REACTION_MAP_BOOK_FLUSH_BATCH_SIZE", 750, 50));
-const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 20, 5);
+const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 10, 5);
 const MAX_ZONE_WINDOW_MS = Math.max(...ZONE_WINDOWS_MS, 4 * 60 * 60 * 1000);
 const RAW_RETENTION_FLOOR_MS = MAX_ZONE_WINDOW_MS + 30 * 60 * 1000;
-const RETENTION_MS = envNumber("REACTION_MAP_RETENTION_MS", RAW_RETENTION_FLOOR_MS, RAW_RETENTION_FLOOR_MS);
+const RAW_BUCKET_RETENTION_MS = envNumber("REACTION_MAP_RAW_RETENTION_MS", 6 * 60 * 60 * 1000, 60 * 60 * 1000);
+const CONTEXT_RETENTION_MS = envNumber("REACTION_MAP_CONTEXT_RETENTION_MS", RAW_RETENTION_FLOOR_MS, RAW_RETENTION_FLOOR_MS);
 const EVENT_RETENTION_MS = envNumber("REACTION_MAP_EVENT_RETENTION_MS", 24 * 60 * 60 * 1000, 60 * 60 * 1000);
-const STALE_ZONE_RETENTION_MS = envNumber("REACTION_MAP_STALE_ZONE_RETENTION_MS", 24 * 60 * 60 * 1000, 60 * 60 * 1000);
+const STALE_ZONE_RETENTION_MS = envNumber("REACTION_MAP_STALE_ZONE_RETENTION_MS", 6 * 60 * 60 * 1000, 60 * 60 * 1000);
 const RETENTION_SWEEP_MS = envNumber("REACTION_MAP_RETENTION_SWEEP_MS", 10 * 60 * 1000, 60_000);
 const RETENTION_INITIAL_DELAY_MS = Math.min(RETENTION_SWEEP_MS, Math.max(60_000, Math.floor(PROMOTE_MS / 2)));
 const TRADE_DEDUPE_MS = envNumber("REACTION_MAP_TRADE_DEDUPE_MS", 5 * 60 * 1000, 60_000);
@@ -112,11 +123,11 @@ const MAX_ZONES_STORED_PER_SIDE = Math.max(
 );
 const CARRIED_ZONE_LOOKBACK_MS = envNumber(
   "REACTION_MAP_CARRIED_ZONE_LOOKBACK_MS",
-  Math.max(RETENTION_MS, 24 * 60 * 60 * 1000),
+  Math.max(CONTEXT_RETENTION_MS, 24 * 60 * 60 * 1000),
   60 * 60 * 1000,
 );
 const ALGORITHM_VERSION = "reaction-map-v2.1.0";
-const pool = new Pool({ connectionString: DATABASE_URL, max: 4 });
+const pool = new Pool({ connectionString: DATABASE_URL, max: 2 });
 const httpTransport = new HttpTransport({ isTestnet: NETWORK === "testnet" });
 const infoClient = new InfoClient({ transport: httpTransport });
 const transport = new WebSocketTransport({ isTestnet: NETWORK === "testnet" });
@@ -173,7 +184,7 @@ async function resolveReactionAssets() {
     console.warn("[reaction-map] asset discovery failed; falling back to curated assets", error);
   }
 
-  return uniqueAssets(DEFAULT_ASSETS);
+  return uniqueAssets(DEFAULT_REACTION_ASSETS);
 }
 
 function envNumber(key, fallback, min = 0) {
@@ -1343,12 +1354,13 @@ async function flushState() {
 }
 
 async function sweepRetention() {
-  const cutoff = Date.now() - RETENTION_MS;
+  const rawCutoff = Date.now() - RAW_BUCKET_RETENTION_MS;
+  const contextCutoff = Date.now() - CONTEXT_RETENTION_MS;
   const eventCutoff = Date.now() - EVENT_RETENTION_MS;
   const staleZoneCutoff = Date.now() - STALE_ZONE_RETENTION_MS;
-  await pool.query("delete from reaction_context_snapshots where bucket_ms < $1", [cutoff]);
-  await pool.query("delete from reaction_orderbook_buckets where bucket_ms < $1", [cutoff]);
-  await pool.query("delete from reaction_trade_buckets where bucket_ms < $1", [cutoff]);
+  await pool.query("delete from reaction_context_snapshots where bucket_ms < $1", [contextCutoff]);
+  await pool.query("delete from reaction_orderbook_buckets where bucket_ms < $1", [rawCutoff]);
+  await pool.query("delete from reaction_trade_buckets where bucket_ms < $1", [rawCutoff]);
   await pool.query("delete from reaction_exposure_zone_events where event_at < $1", [eventCutoff]);
   await pool.query(
     `
@@ -1360,11 +1372,11 @@ async function sweepRetention() {
   );
 
   for (const asset of ASSETS) {
-    const context = await latestContext(asset, Date.now() - RETENTION_MS);
+    const context = await latestContext(asset, Date.now() - CONTEXT_RETENTION_MS);
     const currentPrice = parseNumber(context?.mark_px) ?? parseNumber(context?.mid_px) ?? parseNumber(context?.oracle_px);
     if (!currentPrice || currentPrice <= 0) continue;
 
-    const rangePct = await recentMoveStdevPct(asset, Date.now() - RETENTION_MS, currentPrice);
+    const rangePct = await recentMoveStdevPct(asset, Date.now() - CONTEXT_RETENTION_MS, currentPrice);
     const low = currentPrice * (1 - rangePct / 100);
     const high = currentPrice * (1 + rangePct / 100);
 
@@ -1457,7 +1469,7 @@ async function main() {
   setMaxListeners(listenerLimit, transport._hlEvents, transport.socket);
   setMaxListeners(listenerLimit);
   console.log(
-    `[reaction-map] starting network=${NETWORK} assetCount=${ASSETS.length} assets=${ASSETS.slice(0, 24).join(",")}${ASSETS.length > 24 ? ",..." : ""} bucketMs=${BUCKET_MS} flushMs=${FLUSH_MS} promoteMs=${PROMOTE_MS} rawRetentionMs=${RETENTION_MS} eventRetentionMs=${EVENT_RETENTION_MS} bookLevels=${BOOK_LEVEL_LIMIT} wideBooks=${WIDE_BOOK_N_SIG_FIGS.join(",") || "off"}`,
+    `[reaction-map] starting network=${NETWORK} assetCount=${ASSETS.length} assets=${ASSETS.slice(0, 24).join(",")}${ASSETS.length > 24 ? ",..." : ""} bucketMs=${BUCKET_MS} flushMs=${FLUSH_MS} promoteMs=${PROMOTE_MS} rawRetentionMs=${RAW_BUCKET_RETENTION_MS} contextRetentionMs=${CONTEXT_RETENTION_MS} eventRetentionMs=${EVENT_RETENTION_MS} bookLevels=${BOOK_LEVEL_LIMIT} wideBooks=${WIDE_BOOK_N_SIG_FIGS.join(",") || "off"}`,
   );
 
   for (const asset of ASSETS) {

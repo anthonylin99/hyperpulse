@@ -7,6 +7,8 @@ export interface RadarScoringAsset {
   fundingAPR: number;
   openInterestUsd: number;
   dayVolumeUsd: number;
+  volumeVsAvg?: number | null;
+  hourlyVolumeVsBaseline?: number | null;
   return1hPct?: number | null;
   return4hPct?: number | null;
   fridayHigh?: number | null;
@@ -40,6 +42,10 @@ export interface MomentumEdgeScoreDetails {
   btcBelowFridayLow: boolean;
   return1hPct: number | null;
   return4hPct: number | null;
+  volumeVsAvg: number | null;
+  hourlyVolumeVsBaseline: number | null;
+  volumeZScore: number;
+  volumeLabel: "quiet" | "active" | "confirming" | "surge" | "exhaustion";
   volumeConfirmation: boolean;
   oiConfirmation: boolean;
 }
@@ -65,6 +71,10 @@ export interface MomentumEdgeAsset extends RadarScoringAsset {
   btcBelowFridayLow: boolean;
   return1hPct: number | null;
   return4hPct: number | null;
+  volumeVsAvg: number | null;
+  hourlyVolumeVsBaseline: number | null;
+  volumeZScore: number;
+  volumeLabel: "quiet" | "active" | "confirming" | "surge" | "exhaustion";
   volumeConfirmation: boolean;
   oiConfirmation: boolean;
   strongScore: number;
@@ -182,6 +192,15 @@ function accelerationRaw(asset: RadarScoringAsset, rawReturn24hPct: number): num
   return oneHourVsFourHourPace + fourHourVsDailyPace * 0.35;
 }
 
+function volumeLabel(volumeVsAvg: number | null | undefined): MomentumEdgeScoreDetails["volumeLabel"] {
+  if (volumeVsAvg == null || !Number.isFinite(volumeVsAvg)) return "quiet";
+  if (volumeVsAvg >= 4) return "exhaustion";
+  if (volumeVsAvg >= 2) return "surge";
+  if (volumeVsAvg >= 1.3) return "confirming";
+  if (volumeVsAvg >= 0.8) return "active";
+  return "quiet";
+}
+
 function buildDetails(args: {
   score: number;
   asset: MomentumEdgeAsset;
@@ -205,6 +224,10 @@ function buildDetails(args: {
     btcBelowFridayLow: args.asset.btcBelowFridayLow,
     return1hPct: args.asset.return1hPct == null ? null : Number(args.asset.return1hPct.toFixed(2)),
     return4hPct: args.asset.return4hPct == null ? null : Number(args.asset.return4hPct.toFixed(2)),
+    volumeVsAvg: args.asset.volumeVsAvg == null ? null : Number(args.asset.volumeVsAvg.toFixed(2)),
+    hourlyVolumeVsBaseline: args.asset.hourlyVolumeVsBaseline == null ? null : Number(args.asset.hourlyVolumeVsBaseline.toFixed(2)),
+    volumeZScore: Number(args.asset.volumeZScore.toFixed(2)),
+    volumeLabel: args.asset.volumeLabel,
     volumeConfirmation: args.asset.volumeConfirmation,
     oiConfirmation: args.asset.oiConfirmation,
   };
@@ -221,6 +244,7 @@ export function computeMomentumEdges(
   const btcReturn = rawReturns.get("BTC") ?? 0;
   const basketReturn = weightedAverage(liquid.map((asset) => ({ value: rawReturns.get(asset.coin) ?? 0, weight: liquidityWeight(asset) })));
   const volumeStats = robustStats(liquid.map((asset) => Math.log10(Math.max(asset.dayVolumeUsd, 1))));
+  const relativeVolumeStats = robustStats(liquid.map((asset) => Math.log(Math.max(asset.volumeVsAvg ?? 1, 0.1))));
   const oiStats = robustStats(liquid.map((asset) => Math.log10(Math.max(asset.openInterestUsd, 1))));
   const rawStats = robustStats([...rawReturns.values()]);
 
@@ -232,6 +256,7 @@ export function computeMomentumEdges(
     const btcResidualPct = rawReturn24hPct - btcBeta * btcReturn;
     const basketResidualPct = rawReturn24hPct - basketReturn;
     const volumeZ = robustZ(Math.log10(Math.max(asset.dayVolumeUsd, 1)), volumeStats);
+    const relativeVolumeZ = robustZ(Math.log(Math.max(asset.volumeVsAvg ?? 1, 0.1)), relativeVolumeStats);
     const oiZ = robustZ(Math.log10(Math.max(asset.openInterestUsd, 1)), oiStats);
     const strongStructure = structureDivergenceScore(asset, "strong");
     const weakStructure = structureDivergenceScore(asset, "weak");
@@ -253,7 +278,7 @@ export function computeMomentumEdges(
       weakStructureDivergenceScore: weakStructure,
       accelerationRaw: accelerationRaw(asset, rawReturn24hPct),
       accelerationZ: 0,
-      participationZ: clamp((volumeZ + oiZ) / 2, -3, 3),
+      participationZ: clamp(relativeVolumeZ * 0.7 + volumeZ * 0.15 + oiZ * 0.15, -3, 3),
       btcBeta,
       betaStatus,
       assetAboveFridayHigh,
@@ -262,7 +287,11 @@ export function computeMomentumEdges(
       btcBelowFridayLow,
       return1hPct: asset.return1hPct ?? null,
       return4hPct: asset.return4hPct ?? null,
-      volumeConfirmation: volumeZ >= 0,
+      volumeVsAvg: asset.volumeVsAvg ?? null,
+      hourlyVolumeVsBaseline: asset.hourlyVolumeVsBaseline ?? null,
+      volumeZScore: relativeVolumeZ,
+      volumeLabel: volumeLabel(asset.volumeVsAvg),
+      volumeConfirmation: (asset.volumeVsAvg ?? 1) >= 1.2 || relativeVolumeZ >= 0.35 || volumeZ >= 0.75,
       oiConfirmation: oiZ >= 0,
       strongScore: 0,
       weakScore: 0,
@@ -280,20 +309,20 @@ export function computeMomentumEdges(
     const basketResidualZ = robustZ(asset.basketResidualPct, basketResidualStats);
     const accelerationZ = robustZ(asset.accelerationRaw, accelerationStats);
     const strongScore =
-      0.3 * btcResidualZ +
+      0.27 * btcResidualZ +
       0.2 * basketResidualZ +
-      0.15 * asset.rawReturnZ +
-      0.2 * asset.structureDivergenceScore +
-      0.1 * accelerationZ +
-      0.05 * asset.participationZ -
+      0.12 * asset.rawReturnZ +
+      0.16 * asset.structureDivergenceScore +
+      0.09 * accelerationZ +
+      0.16 * asset.participationZ -
       fundingPenalty(asset, "strong");
     const weakScore =
-      0.3 * -btcResidualZ +
+      0.27 * -btcResidualZ +
       0.2 * -basketResidualZ +
-      0.15 * -asset.rawReturnZ +
-      0.2 * asset.weakStructureDivergenceScore +
-      0.1 * -accelerationZ +
-      0.05 * asset.participationZ -
+      0.12 * -asset.rawReturnZ +
+      0.16 * asset.weakStructureDivergenceScore +
+      0.09 * -accelerationZ +
+      0.16 * asset.participationZ -
       fundingPenalty(asset, "weak");
     const next = {
       ...asset,

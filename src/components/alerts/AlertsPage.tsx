@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Bell, BookOpenCheck, ExternalLink, Info, Radio, RefreshCw, Send, type LucideIcon } from "lucide-react";
 import { cn, formatChartPrice } from "@/lib/format";
-import { POLL_INTERVAL_MARKET } from "@/lib/constants";
+import { POLL_INTERVAL_ALERT_OUTCOMES, POLL_INTERVAL_MARKET } from "@/lib/constants";
 import { formatEasternDateTime } from "@/lib/time";
 import { useShadowBook } from "@/context/ShadowBookContext";
 import type { MomentumAlert, MomentumAlertOutcome, MomentumAlertOutcomeSummary } from "@/types";
@@ -120,19 +120,14 @@ export default function AlertsPage() {
 
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
+    const loadAlerts = async () => {
       try {
         setError(null);
-        const [alertsResponse, outcomesResponse] = await Promise.all([
-          fetch("/api/alerts/momentum"),
-          fetch("/api/alerts/outcomes?limit=50"),
-        ]);
+        const alertsResponse = await fetch("/api/alerts/momentum");
         if (!alertsResponse.ok) throw new Error("Unable to load alerts");
         const payload = (await alertsResponse.json()) as AlertsResponse;
-        const outcomePayload = outcomesResponse.ok ? ((await outcomesResponse.json()) as OutcomesResponse) : null;
         if (mounted) {
           setData(payload);
-          if (outcomePayload) setOutcomes(outcomePayload);
         }
       } catch (loadError) {
         if (mounted) setError(loadError instanceof Error ? loadError.message : "Unable to load alerts");
@@ -140,11 +135,31 @@ export default function AlertsPage() {
         if (mounted) setLoading(false);
       }
     };
-    load();
-    const interval = window.setInterval(load, POLL_INTERVAL_MARKET);
+    const loadOutcomes = async () => {
+      try {
+        const outcomesResponse = await fetch("/api/alerts/outcomes?limit=50");
+        if (!outcomesResponse.ok) return;
+        const outcomePayload = (await outcomesResponse.json()) as OutcomesResponse;
+        if (mounted) setOutcomes(outcomePayload);
+      } catch {
+        // Outcome scoring is slower than the event log; keep the last good summary.
+      }
+    };
+
+    loadAlerts();
+    loadOutcomes();
+    const alertsInterval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      loadAlerts();
+    }, POLL_INTERVAL_MARKET);
+    const outcomesInterval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      loadOutcomes();
+    }, POLL_INTERVAL_ALERT_OUTCOMES);
     return () => {
       mounted = false;
-      window.clearInterval(interval);
+      window.clearInterval(alertsInterval);
+      window.clearInterval(outcomesInterval);
     };
   }, []);
 

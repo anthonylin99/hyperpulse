@@ -83,6 +83,7 @@ export function FactorProvider({ children }: { children: ReactNode }) {
     }
     void refresh();
     const interval = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       void refresh();
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);

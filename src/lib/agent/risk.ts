@@ -20,7 +20,7 @@ export const DEFAULT_DEV_AGENT_RISK_POLICY: AgentRiskPolicy = {
   killSwitchEnabled: false,
   humanApprovalRequired: true,
   requireBracketOrders: true,
-  minRewardRisk: 1.5,
+  minRewardRisk: 2,
   minStopDistancePct: 0.2,
   maxTradesPerDay: 3,
 };

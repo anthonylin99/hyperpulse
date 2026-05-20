@@ -7,7 +7,7 @@ import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import AssetRow from "./AssetRow";
 import AssetDetail from "./AssetDetail";
-import type { MarketAsset, SpotAsset, SpotCategory } from "@/types";
+import type { MarketAsset, MarketRadarSignal, MomentumAlert, SpotAsset, SpotCategory } from "@/types";
 import {
   ALL_CATEGORIES,
   getAssetCategory,
@@ -24,7 +24,6 @@ import {
   type ReactionLevelsPayload,
 } from "@/lib/reactionLevels";
 import type { MarketSetupSignal } from "@/lib/tradePlan";
-import type { MomentumAlert } from "@/types";
 
 type Mode = "perps" | "spot";
 
@@ -75,7 +74,6 @@ const RWA_SPOT_CATEGORIES = [
 
 const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
 const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
-const REACTION_BATCH_SIZE = 4;
 const REACTION_SCAN_INTERVAL_MS = POLL_INTERVAL_MARKET;
 const REACTION_DEFAULT_SIGNAL: MarketSetupSignal = {
   type: "none",
@@ -184,6 +182,7 @@ export default function MarketTable({
   const [spotFilter, setSpotFilter] = useState<SpotCategory | "All">("All");
   const [setupSignals, setSetupSignals] = useState<Record<string, MarketSetupSignal>>({});
   const [momentumSignals, setMomentumSignals] = useState<Record<string, MarketSetupSignal>>({});
+  const [radarVolumeByAsset, setRadarVolumeByAsset] = useState<Record<string, number>>({});
   const setupScanRef = useRef({ key: "", timestamp: 0 });
 
   const fetchSpot = useCallback(async () => {
@@ -205,7 +204,10 @@ export default function MarketTable({
   useEffect(() => {
     if (mode !== "spot") return;
     fetchSpot();
-    const interval = setInterval(fetchSpot, POLL_INTERVAL_MARKET);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      fetchSpot();
+    }, POLL_INTERVAL_MARKET);
     return () => clearInterval(interval);
   }, [mode, fetchSpot]);
 
@@ -232,6 +234,35 @@ export default function MarketTable({
       if (document.visibilityState === "hidden") return;
       fetchSavedMomentumFlags().catch((error) => reportClientError("market.momentum-flags", error));
     }, REACTION_SCAN_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "perps") return;
+    let cancelled = false;
+
+    async function fetchRadarVolumeProfiles() {
+      const response = await fetch(withNetworkParam("/api/market/radar"));
+      if (!response.ok) return;
+      const payload = (await response.json()) as { signals?: MarketRadarSignal[] };
+      const next: Record<string, number> = {};
+      for (const signal of payload.signals ?? []) {
+        const volumeVsAvg = signal.scoreDetails?.volumeVsAvg;
+        if (volumeVsAvg == null || !Number.isFinite(volumeVsAvg)) continue;
+        next[signal.asset.toUpperCase()] = volumeVsAvg;
+      }
+      if (!cancelled) setRadarVolumeByAsset(next);
+    }
+
+    fetchRadarVolumeProfiles().catch((error) => reportClientError("market.radar-volume", error));
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      fetchRadarVolumeProfiles().catch((error) => reportClientError("market.radar-volume", error));
+    }, POLL_INTERVAL_MARKET);
 
     return () => {
       cancelled = true;
@@ -303,32 +334,16 @@ export default function MarketTable({
       setupScanRef.current.key = scanKey;
       setupScanRef.current.timestamp = Date.now();
 
-      const batches = Array.from(
-        { length: Math.ceil(coins.length / REACTION_BATCH_SIZE) },
-        (_, index) => coins.slice(index * REACTION_BATCH_SIZE, (index + 1) * REACTION_BATCH_SIZE),
+      const response = await fetch(
+        withNetworkParam(
+          `/api/market/reaction-levels?coins=${encodeURIComponent(coins.join(","))}&window=4h`,
+        ),
       );
-
-      await Promise.all(
-        batches.map(async (batch) => {
-          if (cancelled || batch.length === 0) return;
-          await Promise.all(
-            batch.map(async (coin) => {
-              try {
-                const response = await fetch(
-                  withNetworkParam(
-                    `/api/market/reaction-levels?coin=${encodeURIComponent(coin)}&window=4h`,
-                  ),
-                );
-                if (!response.ok) return;
-                const payload = (await response.json()) as ReactionLevelsPayload;
-                nextSignals[coin] = buildReactionSetupSignal(payload);
-              } catch {
-                // Ignore per-asset scan failures so one transient request does not fail the full table scan.
-              }
-            }),
-          );
-        }),
-      );
+      if (!response.ok) return;
+      const payload = (await response.json()) as { assets?: Record<string, ReactionLevelsPayload> };
+      for (const [coin, reactionPayload] of Object.entries(payload.assets ?? {})) {
+        nextSignals[coin.toUpperCase()] = buildReactionSetupSignal(reactionPayload);
+      }
 
       if (!cancelled) {
         setSetupSignals((prev) => ({ ...prev, ...nextSignals }));
@@ -549,6 +564,7 @@ export default function MarketTable({
                       tradingEnabled={tradingActive}
                       fundingHistory={fundingHistories[asset.coin]}
                       setupSignal={setupSignal}
+                      volumeVsAvg={radarVolumeByAsset[asset.coin]}
                       detailNode={
                         selectedAsset === asset.coin ? (
                           <tr key={`${asset.coin}-detail`} id={`market-asset-${asset.coin.replace(/[^a-zA-Z0-9_-]/g, "-")}`}>

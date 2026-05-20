@@ -123,18 +123,18 @@ export const REACTION_MAP_ASSETS = [
   "DOGE",
   "ZEC",
   "TON",
+  "TAO",
   "SUI",
   "ONDO",
   "AAVE",
   "LINK",
   "BNB",
   "AVAX",
-  "LTC",
-  "ADA",
-  "TRX",
-  "UNI",
   "ENA",
-  "WIF",
+  "NEAR",
+  "WLD",
+  "PUMP",
+  "FARTCOIN",
 ] as const;
 
 const DEFAULT_REACTION_ASSETS = new Set<string>(REACTION_MAP_ASSETS);

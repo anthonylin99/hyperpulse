@@ -27,7 +27,7 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: DATABASE_URL, max: 3 });
+const pool = new Pool({ connectionString: DATABASE_URL, max: 2 });
 
 const tools = [
   {

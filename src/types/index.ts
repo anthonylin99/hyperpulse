@@ -711,6 +711,7 @@ export interface FactorReport {
   title: string;
   summary: string[];
   leaderboard: MarketBriefAsset[];
+  losers: MarketBriefAsset[];
   catalystNotes: MarketBriefAsset[];
   themes: MarketBriefTheme[];
   riskNote: string;
@@ -1035,6 +1036,10 @@ export interface MarketRadarScoreDetails {
   btcBelowFridayLow: boolean;
   return1hPct: number | null;
   return4hPct: number | null;
+  volumeVsAvg: number | null;
+  hourlyVolumeVsBaseline: number | null;
+  volumeZScore: number;
+  volumeLabel: "quiet" | "active" | "confirming" | "surge" | "exhaustion";
   volumeConfirmation: boolean;
   oiConfirmation: boolean;
 }

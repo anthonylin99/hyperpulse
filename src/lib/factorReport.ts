@@ -176,7 +176,7 @@ const CATALYST_NOTES: Record<string, CatalystNote> = {
 function getPool(): Pool | null {
   if (disabledUntil > Date.now()) return null;
   if (!DATABASE_URL) return null;
-  if (!pool) pool = new Pool({ connectionString: DATABASE_URL, max: 3 });
+  if (!pool) pool = new Pool({ connectionString: DATABASE_URL, max: 2 });
   return pool;
 }
 
@@ -409,20 +409,24 @@ function getCatalystNote(symbol: string, returnPct: number | null, btcRelativePc
   };
 }
 
-function buildSummary(leaderboard: MarketBriefAsset[], periodLabel: string, btcReturn: number | null, ethReturn: number | null): string[] {
+function buildSummary(leaderboard: MarketBriefAsset[], losers: MarketBriefAsset[], periodLabel: string, btcReturn: number | null, ethReturn: number | null): string[] {
   const leaders = leaderboard.slice(0, 4);
   const topNames = leaders.map((asset) => `${asset.symbol} ${formatSigned(asset.returnPct)}`).join(", ");
+  const loserNames = losers.slice(0, 3).map((asset) => `${asset.symbol} ${formatSigned(asset.returnPct)}`).join(", ");
   const topThemes = [...new Set(leaders.map((asset) => asset.theme))].slice(0, 3).join(", ");
   const faded = leaderboard
     .filter((asset) => asset.weekTwoReturnPct != null && asset.weekTwoReturnPct < 0 && (asset.returnPct ?? 0) > 15)
     .slice(0, 3)
     .map((asset) => `${asset.symbol} ${formatSigned(asset.weekTwoReturnPct)}`)
     .join(", ");
+  const majors = `BTC ${formatSigned(btcReturn)} / ETH ${formatSigned(ethReturn)}`;
 
   return [
-    `Over ${periodLabel}, the HyperPulse tracked perp tape was led by ${topNames || "n/a"}. This was not a simple majors rally: BTC returned ${formatSigned(btcReturn)} and ETH returned ${formatSigned(ethReturn)}, while leadership came from ${topThemes || "idiosyncratic alt themes"}.`,
-    `The strongest moves clustered around identifiable narratives rather than generic beta: Telegram distribution in TON, AI/app-token demand in VVV, privacy rotation in ZEC, DeFi infrastructure in INJ, and RWA/tokenized-finance demand in ONDO. The cleaner read is that traders paid for specific catalysts and liquid thematic expressions while majors failed to explain the dispersion.`,
-    faded ? `The main risk signal was follow-through quality. Several first-half leaders faded in the back half of the window (${faded}), so the report separates headline return from continuation rather than treating every winner as equally actionable.` : "The main risk signal was follow-through quality: high headline return only mattered when it persisted after the initial catalyst move.",
+    `Leaders — ${topNames || "n/a"}.`,
+    `Losers — ${loserNames || "No tracked liquid perp finished materially negative."}`,
+    `Regime — Alt-led tape, not majors beta. Majors: ${majors}. Themes: ${topThemes || "idiosyncratic alt themes"}.`,
+    `Catalysts — TON distribution, VVV AI/app demand, ZEC privacy rotation, INJ DeFi infrastructure, ONDO RWA/tokenized finance.`,
+    faded ? `Risk — Follow-through was uneven: ${faded} faded in the back half. Continuation mattered more than headline return.` : "Risk — Headline return only counted when the move kept working after the first catalyst.",
   ];
 }
 
@@ -515,7 +519,7 @@ export async function buildHyperpulseFactorReport(): Promise<FactorReport> {
     .filter((row): row is { symbol: string; returnPct: number } => row.returnPct != null && Number.isFinite(row.returnPct));
   const basketReturnPct = assetReturns.reduce((sum, row) => sum + row.returnPct, 0) / Math.max(assetReturns.length, 1);
 
-  const leaderboard: MarketBriefAsset[] = assetReturns
+  const rankedAssets: MarketBriefAsset[] = assetReturns
     .map(({ symbol, returnPct }) => {
       const candles = candlesByAsset.get(symbol) ?? [];
       const btcRelativePct = btcReturn == null ? null : returnPct - btcReturn;
@@ -538,12 +542,16 @@ export async function buildHyperpulseFactorReport(): Promise<FactorReport> {
         series: computeSeries(candles, startDay, endDay),
       } satisfies MarketBriefAsset;
     })
-    .sort((a, b) => (b.returnPct ?? -Infinity) - (a.returnPct ?? -Infinity))
-    .slice(0, 8);
+    .sort((a, b) => (b.returnPct ?? -Infinity) - (a.returnPct ?? -Infinity));
 
+  const leaderboard = rankedAssets.slice(0, 5);
+  const losers = rankedAssets
+    .filter((asset) => (asset.returnPct ?? 0) < 0)
+    .sort((a, b) => (a.returnPct ?? Infinity) - (b.returnPct ?? Infinity))
+    .slice(0, 5);
   const themes = buildThemes(leaderboard);
-  const summary = buildSummary(leaderboard, label, btcReturn, ethReturn);
-  const riskNote = "This is a market-tape review, not a buy list. HyperPulse highlights what led, why it likely led, and whether the move kept working after the initial catalyst; entries still require current structure, liquidity, and invalidation.";
+  const summary = buildSummary(leaderboard, losers, label, btcReturn, ethReturn);
+  const riskNote = "Not a buy list. Entries still need current structure, liquidity, and invalidation.";
 
   const report: FactorReport = {
     id: `hp-market-brief-${endDay}`,
@@ -555,7 +563,8 @@ export async function buildHyperpulseFactorReport(): Promise<FactorReport> {
     title: "HyperPulse Market Brief",
     summary,
     leaderboard,
-    catalystNotes: leaderboard.slice(0, 8),
+    losers,
+    catalystNotes: leaderboard,
     themes,
     riskNote,
     telegramSummary: [],

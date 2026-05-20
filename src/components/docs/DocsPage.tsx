@@ -154,11 +154,11 @@ export default function DocsPage() {
           <Section id="markets" eyebrow="Markets" title="How signals and alerts work">
             <p>
               Market Radar ranks liquid perps by relative momentum, not raw 24h green candles. Telegram alerts are stricter:
-              they require relative strength versus BTC and the liquid basket, volume participation, a clean structure break or hold near highs, and usable TP1/SL zones.
+              they require relative strength versus BTC and the liquid basket, volume above recent average, a clean structure break or hold near highs, and usable TP1/SL zones.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
-              <Formula label="Momentum Edge" value="0.35×BTC residual z + 0.25×basket residual z + 0.15×raw return z + structure + acceleration + participation" />
-              <Formula label="Participation" value="recent 1h volume ÷ prior hourly baseline; Telegram requires confirmation before sending" />
+              <Formula label="Momentum Edge" value="BTC/basket residuals + raw return + structure + acceleration + volume/OI participation" />
+              <Formula label="Volume confirmation" value="24h volume ÷ recent 7d average; strong alerts require volume confirmation before sending" />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <MiniCard title="Alerts page">Stores the exact alert price, alert time, current return, delivery state, and TP1/SL first-touch outcome.</MiniCard>

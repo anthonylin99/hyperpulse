@@ -65,7 +65,8 @@ function formatRadarTime(time: number | undefined): string {
 const radarMethodology = [
   "Liquidity gate: >=$10M OI and >=$20M 24h volume.",
   "Scores BTC/basket-relative strength plus Friday-high/low divergence.",
-  "Adds 1h/4h acceleration, volume/OI participation, and funding crowding penalty.",
+  "Volume is a major contributor: 24h volume vs 7d average carries most of the participation score.",
+  "Adds 1h/4h acceleration, OI participation, and funding crowding penalty.",
 ];
 
 function formatSigned(value: number | null | undefined, digits = 1) {
@@ -85,9 +86,15 @@ function scoreLabel(signal: MarketRadarSignal) {
   return `${numeric.toFixed(2)}σ weak`;
 }
 
+function formatMultiple(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "vol n/a";
+  return `vol ${value.toFixed(value >= 10 ? 0 : 1)}x`;
+}
+
 function compactEvidence(signal: MarketRadarSignal) {
   const details = signal.scoreDetails;
   if (!details) return signal.evidence[0] ?? "";
+  const volume = formatMultiple(details.volumeVsAvg);
   const divergence =
     signal.kind === "weakest_asset"
       ? details.assetBelowFridayLow && !details.btcBelowFridayLow
@@ -98,12 +105,12 @@ function compactEvidence(signal: MarketRadarSignal) {
         : `structure ${formatSigned(details.structureDivergenceScore, 1)}`;
   const accel = `accel ${formatSigned(details.accelerationScore, 1)}`;
   if (signal.kind === "weakest_asset") {
-    return `lags BTC ${Math.abs(details.btcResidualPct).toFixed(1)}% · ${divergence} · ${accel}`;
+    return `lags BTC ${Math.abs(details.btcResidualPct).toFixed(1)}% · ${volume} · ${divergence}`;
   }
   if (signal.kind === "holding_up") {
-    return `holding vs BTC ${formatSigned(details.btcResidualPct)}% · raw ${formatSigned(details.rawReturn24hPct)}% · ${accel}`;
+    return `holding vs BTC ${formatSigned(details.btcResidualPct)}% · ${volume} · raw ${formatSigned(details.rawReturn24hPct)}%`;
   }
-  return `vs BTC ${formatSigned(details.btcResidualPct)}% · ${divergence} · ${accel}`;
+  return `vs BTC ${formatSigned(details.btcResidualPct)}% · ${volume} · ${accel}`;
 }
 
 function marketAssetElementId(asset: string) {
@@ -210,7 +217,10 @@ export default function MarketRadarPanel({ variant = "compact" }: { variant?: "c
       }
     };
     load();
-    const interval = window.setInterval(load, POLL_INTERVAL_MARKET);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      load();
+    }, POLL_INTERVAL_MARKET);
     return () => {
       mounted = false;
       window.clearInterval(interval);

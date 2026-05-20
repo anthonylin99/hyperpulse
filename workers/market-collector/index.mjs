@@ -71,7 +71,7 @@ const WORKER = "market-collector";
 const FEATURE_VERSION = "market_features.v1";
 const LEVEL_VERSION = "level_observation.v1";
 const LABEL_VERSION = "level_label.v1";
-const pool = new Pool({ connectionString: DATABASE_URL, max: 5 });
+const pool = new Pool({ connectionString: DATABASE_URL, max: 2 });
 const info = new InfoClient({ transport: new HttpTransport({ isTestnet: NETWORK === "testnet" }) });
 
 const INTERVAL_MS = {

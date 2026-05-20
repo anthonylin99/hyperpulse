@@ -36,7 +36,34 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const coin = validateCoin(url.searchParams.get("coin"));
+  const coins = (url.searchParams.get("coins") ?? "")
+    .split(",")
+    .map((value) => validateCoin(value))
+    .filter((value): value is string => value != null)
+    .slice(0, 24);
   const windowMs = parseWindowMs(url.searchParams.get("window"));
+
+  if (coins.length > 0) {
+    try {
+      const entries = await Promise.all(
+        coins.map(async (asset) => [asset, await getReactionLevelMap({ coin: asset, windowMs })] as const),
+      );
+      return jsonSuccess(
+        {
+          assets: Object.fromEntries(entries),
+          generatedAt: Date.now(),
+          source: "reaction-levels-batch",
+        },
+        { cache: "public-market" },
+      );
+    } catch (error) {
+      logServerError("api/market/reaction-levels.batch", error);
+      return jsonError("Unable to fetch Reaction Map right now.", {
+        status: 502,
+        cache: "public-market",
+      });
+    }
+  }
 
   if (!coin) {
     return jsonError("A valid coin is required.", {
