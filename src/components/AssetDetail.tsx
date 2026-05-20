@@ -194,7 +194,7 @@ export default function AssetDetail({
         : "text-zinc-400";
 
   return (
-    <div className="bg-zinc-900/80 border-t border-b border-zinc-800 animate-fade-in">
+    <div className="min-w-0 bg-zinc-900/80 border-t border-b border-zinc-800 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
@@ -244,9 +244,9 @@ export default function AssetDetail({
       </div>
 
       {/* Chart area */}
-      <div className="px-4 pb-3">
+      <div className="min-w-0 px-4 pb-3">
         {tab === "price" ? (
-          <div className="min-h-[720px]">
+          <div className="min-h-[720px] min-w-0">
             <PriceChart
               coin={asset.coin}
               compact

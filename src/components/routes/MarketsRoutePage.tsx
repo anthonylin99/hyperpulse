@@ -38,8 +38,8 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           </div>
         )}
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
-          <section className="order-2 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/75 xl:order-1">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
+          <section className="order-2 min-w-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/75 xl:order-1">
             <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
               <div className="flex flex-col gap-1">
                 <div>
@@ -62,7 +62,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             />
           </section>
 
-          <div className="order-1 space-y-4 xl:order-2">
+          <div className="order-1 min-w-0 space-y-4 xl:order-2">
             <MarketRadarPanel variant="rail" />
             <TopMoversPanel />
           </div>

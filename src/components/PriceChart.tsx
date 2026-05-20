@@ -31,8 +31,17 @@ interface PriceChartProps {
 
 type TradingInterval = "5" | "15" | "60" | "240" | "D";
 const DEFAULT_INTERVAL: TradingInterval = "15";
+type ApiInterval = "5m" | "15m" | "1h" | "4h" | "1d";
+type TimeframeRole = "primary" | "context";
+type TimeframeDirection = "lower" | "higher" | "same";
+type ChartLevel = SupportResistanceLevel & {
+  timeframeLabel?: ApiInterval;
+  timeframeRole?: TimeframeRole;
+  timeframeDirection?: TimeframeDirection;
+  timeframeConfluence?: ApiInterval[];
+};
 
-const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> = {
+const API_INTERVAL: Record<TradingInterval, ApiInterval> = {
   "5": "5m",
   "15": "15m",
   "60": "1h",
@@ -40,12 +49,29 @@ const API_INTERVAL: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> =
   D: "1d",
 };
 
-const REACTION_WINDOW: Record<TradingInterval, "5m" | "15m" | "1h" | "4h" | "1d"> = {
+const REACTION_WINDOW: Record<TradingInterval, ApiInterval> = {
   "5": "5m",
   "15": "15m",
   "60": "1h",
   "240": "4h",
   D: "1d",
+};
+const MASTER_REACTION_WINDOW: ApiInterval = "4h";
+
+const INTERVAL_RANK: Record<ApiInterval, number> = {
+  "5m": 0,
+  "15m": 1,
+  "1h": 2,
+  "4h": 3,
+  "1d": 4,
+};
+
+const CONTEXT_REACTION_WINDOWS: Record<TradingInterval, ApiInterval[]> = {
+  "5": ["15m", "1h"],
+  "15": ["5m", "1h"],
+  "60": ["15m", "4h"],
+  "240": ["1h", "1d"],
+  D: ["4h", "1h"],
 };
 
 const INTERVAL_MS: Record<TradingInterval, number> = {
@@ -245,6 +271,32 @@ function chartPriceFormatter(value: number): string {
   return formatLevelPrice(value);
 }
 
+function chartRightScaleWidth(containerWidth: number): number {
+  if (containerWidth < 420) return 54;
+  if (containerWidth < 640) return 60;
+  if (containerWidth < 900) return 68;
+  return 76;
+}
+
+function chartRightOffsetPixels(containerWidth: number): number {
+  if (containerWidth < 420) return 6;
+  if (containerWidth < 640) return 10;
+  if (containerWidth < 900) return 16;
+  return 24;
+}
+
+function responsiveChartChrome(containerWidth: number) {
+  return {
+    rightPriceScale: {
+      entireTextOnly: true,
+      minimumWidth: chartRightScaleWidth(containerWidth),
+    },
+    timeScale: {
+      rightOffsetPixels: chartRightOffsetPixels(containerWidth),
+    },
+  };
+}
+
 function formatTimeMs(timeMs: number | null | undefined): string {
   if (!timeMs || !Number.isFinite(timeMs)) return "n/a";
   return formatEasternDateTime(timeMs);
@@ -266,6 +318,48 @@ const MIN_SOURCE_ONLY_PRIORITY = 78;
 const MAX_PRIORITY_DROP_FROM_LEADER = 30;
 const MIN_BOOK_FALLBACK_NOTIONAL_USD = 20_000_000;
 const MIN_BOOK_FALLBACK_PRIORITY = 24;
+const MAX_PRIMARY_REACTION_LEVELS = 5;
+
+function timeframeLabelFor(level: SupportResistanceLevel): ApiInterval | null {
+  return (level as ChartLevel).timeframeLabel ?? null;
+}
+
+function timeframeRoleFor(level: SupportResistanceLevel): TimeframeRole {
+  return (level as ChartLevel).timeframeRole ?? "primary";
+}
+
+function timeframeDirectionFor(level: SupportResistanceLevel): TimeframeDirection {
+  return (level as ChartLevel).timeframeDirection ?? "same";
+}
+
+function contextWindowsFor(interval: TradingInterval): ApiInterval[] {
+  return [...new Set([REACTION_WINDOW[interval], ...CONTEXT_REACTION_WINDOWS[interval]])].filter(
+    (candidate) => candidate !== MASTER_REACTION_WINDOW,
+  );
+}
+
+function directionForTimeframe(primary: ApiInterval, candidate: ApiInterval): TimeframeDirection {
+  const primaryRank = INTERVAL_RANK[primary];
+  const candidateRank = INTERVAL_RANK[candidate];
+  if (candidateRank < primaryRank) return "lower";
+  if (candidateRank > primaryRank) return "higher";
+  return "same";
+}
+
+function tagLevelsForTimeframe(
+  levels: SupportResistanceLevel[],
+  timeframeLabel: ApiInterval,
+  timeframeRole: TimeframeRole,
+  primaryTimeframe: ApiInterval,
+): ChartLevel[] {
+  return levels.map((level) => ({
+    ...level,
+    id: `${level.id}-${timeframeLabel}-${timeframeRole}`,
+    timeframeLabel,
+    timeframeRole,
+    timeframeDirection: directionForTimeframe(primaryTimeframe, timeframeLabel),
+  }));
+}
 
 function isStressZone(level: SupportResistanceLevel): boolean {
   return level.leverageBucket === "stress";
@@ -417,8 +511,9 @@ function levelVisualStrength(level: SupportResistanceLevel, index: number): numb
   const impactTerm =
     level.depthAdjustedImpact == null ? 0.72 : clamp(Math.log10(level.depthAdjustedImpact + 1) / 1.1, 0.45, 1);
   const sourceTerm = isStressZone(level) ? 0.78 : level.leverageBucket === "book" ? 0.9 : 1;
+  const timeframeTerm = timeframeRoleFor(level) === "context" ? 0.68 : 1;
 
-  return clamp(scoreTerm * 0.48 + rankTerm * 0.3 + impactTerm * 0.22, 0.22, 1) * sourceTerm;
+  return clamp(scoreTerm * 0.48 + rankTerm * 0.3 + impactTerm * 0.22, 0.22, 1) * sourceTerm * timeframeTerm;
 }
 
 function reactionSourceCount(level: SupportResistanceLevel): number {
@@ -439,6 +534,7 @@ function reactionSourceCount(level: SupportResistanceLevel): number {
 
 function levelLineWidth(level: SupportResistanceLevel, index: number): 1 | 2 | 3 | 4 {
   const strength = levelVisualStrength(level, index);
+  if (timeframeRoleFor(level) === "context") return strength >= 0.52 ? 2 : 1;
   if (strength >= 0.82) return 4;
   if (strength >= 0.62) return 3;
   if (strength >= 0.4) return 2;
@@ -495,19 +591,19 @@ function deservesSourceOnlySlot(level: SupportResistanceLevel, leaderPriority: n
   );
 }
 
-function selectVisibleReactionLevels(
-  levels: SupportResistanceLevel[],
+function selectVisibleReactionLevels<T extends SupportResistanceLevel>(
+  levels: T[],
   limit = 5,
   currentPrice: number | null = null,
   averageMove: number | null = null,
-): SupportResistanceLevel[] {
+): T[] {
   const ranked = [...levels].sort((a, b) => reactionDisplayPriority(b) - reactionDisplayPriority(a));
   const confluent = ranked.filter((level) => reactionSourceCount(level) >= 2);
   const leaderPriority = ranked[0] ? reactionDisplayPriority(ranked[0]) : 0;
   const fallback = ranked.filter(
     (level) => reactionSourceCount(level) < 2 && deservesSourceOnlySlot(level, leaderPriority),
   );
-  const selected = new Map<string, SupportResistanceLevel>();
+  const selected = new Map<string, T>();
   const minSpacingPct = minimumReactionSpacingPct(currentPrice, averageMove);
   const canSelect = (candidate: SupportResistanceLevel) => {
     const referencePrice =
@@ -530,6 +626,52 @@ function selectVisibleReactionLevels(
   }
 
   return [...selected.values()].sort((a, b) => a.price - b.price);
+}
+
+function timeframeConfluenceLabel(labels: ApiInterval[]): string {
+  return [...new Set(labels)]
+    .sort((a, b) => INTERVAL_RANK[a] - INTERVAL_RANK[b])
+    .join("+");
+}
+
+function withTimeframeConfluence(
+  primaryLevels: ChartLevel[],
+  contextLevels: ChartLevel[],
+  currentPrice: number | null,
+  averageMove: number | null,
+): ChartLevel[] {
+  if (contextLevels.length === 0) return primaryLevels;
+
+  return primaryLevels.map((level) => {
+    const matchingTimeframes = contextLevels
+      .filter((candidate) => levelOverlapsTechnical(level, candidate, currentPrice, averageMove))
+      .map((candidate) => candidate.timeframeLabel)
+      .filter((label): label is ApiInterval => label != null && label !== level.timeframeLabel);
+    const uniqueTimeframes = [...new Set(matchingTimeframes)];
+    if (uniqueTimeframes.length === 0) return level;
+
+    const boostedScore = Math.min(100, (level.lfxScore ?? level.pressureScore ?? level.strength) + Math.min(18, uniqueTimeframes.length * 9));
+    const evidence = [...(level.evidence ?? [])];
+    const timeframeText = timeframeConfluenceLabel(uniqueTimeframes);
+    const contextEvidence = `${timeframeText} context is nearby`;
+    if (!evidence.includes(contextEvidence)) evidence.unshift(contextEvidence);
+
+    return {
+      ...level,
+      strength: Math.max(level.strength, boostedScore),
+      pressureScore: Math.max(level.pressureScore ?? 0, boostedScore),
+      lfxScore: Math.max(level.lfxScore ?? 0, boostedScore),
+      confidence: boostedScore >= 70 ? "high" : level.confidence,
+      evidence,
+      timeframeConfluence: uniqueTimeframes,
+      zoneTooltip: {
+        ...level.zoneTooltip,
+        reasonSelected: level.zoneTooltip?.reasonSelected
+          ? `${level.zoneTooltip.reasonSelected}. ${contextEvidence}.`
+          : contextEvidence,
+      },
+    };
+  });
 }
 
 function levelOverlapsTechnical(
@@ -566,19 +708,19 @@ function confluenceLabelFor(level: SupportResistanceLevel): string {
   return "Technical confluence";
 }
 
-function withTechnicalConfluence(
-  levels: SupportResistanceLevel[],
+function withTechnicalConfluence<T extends SupportResistanceLevel>(
+  levels: T[],
   technicalLevels: SupportResistanceLevel[],
   currentPrice: number | null,
   averageMove: number | null,
-): SupportResistanceLevel[] {
-  if (technicalLevels.length === 0) return levels.map((level) => capLevelDisplayZone(level, averageMove));
+): T[] {
+  if (technicalLevels.length === 0) return levels.map((level) => capLevelDisplayZone(level, averageMove) as T);
 
   return levels.map((level) => {
     const technical = technicalLevels.find((candidate) =>
       levelOverlapsTechnical(level, candidate, currentPrice, averageMove),
     );
-    if (!technical) return capLevelDisplayZone(level, averageMove);
+    if (!technical) return capLevelDisplayZone(level, averageMove) as T;
 
     const confluenceLabel = confluenceLabelFor(level);
     const technicalEvidence = `Technical: ${pivotShortLabel(technical)} near ${formatLevelPrice(technical.price)}`;
@@ -601,7 +743,7 @@ function withTechnicalConfluence(
         roleLabel: confluenceLabel,
         reasonSelected: `${confluenceLabel}: ${technicalEvidence.replace("Technical: ", "")}`,
       },
-    }, averageMove);
+    }, averageMove) as T;
   });
 }
 
@@ -750,6 +892,7 @@ export default function PriceChart({
   const [error, setError] = useState<string | null>(null);
   const [candles, setCandles] = useState<CandleDatum[]>([]);
   const [reactionPayload, setReactionPayload] = useState<ReactionLevelsPayload | null>(null);
+  const [contextReactionPayloads, setContextReactionPayloads] = useState<Partial<Record<ApiInterval, ReactionLevelsPayload>>>({});
   const [pivotLevels, setPivotLevels] = useState<SupportResistanceLevel[]>([]);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionUnavailable, setReactionUnavailable] = useState(false);
@@ -767,20 +910,52 @@ export default function PriceChart({
   }, [coin, marketType]);
 
   const reactionSupported = marketType === "perp";
+  const primaryReactionWindow = MASTER_REACTION_WINDOW;
+  const selectedCandleWindow = API_INTERVAL[interval];
+  const contextReactionWindows = useMemo(() => contextWindowsFor(interval), [interval]);
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
   const averageMove = useMemo(() => recentAverageMove(candles), [candles]);
   const levels = useMemo(
-    () => (reactionSupported && reactionPayload ? reactionLevelsToSupportResistanceLevels(reactionPayload, "confluence") : []),
-    [reactionPayload, reactionSupported],
+    () =>
+      reactionSupported && reactionPayload
+        ? tagLevelsForTimeframe(
+            reactionLevelsToSupportResistanceLevels(reactionPayload, "confluence"),
+            primaryReactionWindow,
+            "primary",
+            primaryReactionWindow,
+          )
+        : [],
+    [primaryReactionWindow, reactionPayload, reactionSupported],
+  );
+  const contextReactionLevels = useMemo(
+    () =>
+      contextReactionWindows.flatMap((windowLabel) => {
+        const payload = contextReactionPayloads[windowLabel];
+        if (!payload) return [];
+        return tagLevelsForTimeframe(
+          reactionLevelsToSupportResistanceLevels(payload, "confluence"),
+          windowLabel,
+          "context",
+          primaryReactionWindow,
+        );
+      }),
+    [contextReactionPayloads, contextReactionWindows, primaryReactionWindow],
+  );
+  const baseReactionLevels = useMemo(
+    () => selectVisibleReactionLevels(levels, MAX_PRIMARY_REACTION_LEVELS, currentPrice, null),
+    [currentPrice, levels],
   );
   const reactionLevelsWithTechnical = useMemo(
-    () => withTechnicalConfluence(levels, pivotLevels, currentPrice, averageMove),
-    [averageMove, currentPrice, levels, pivotLevels],
+    () => withTechnicalConfluence(baseReactionLevels, pivotLevels, currentPrice, averageMove),
+    [averageMove, baseReactionLevels, currentPrice, pivotLevels],
   );
   const visibleReactionLevels = useMemo(
-    () => selectVisibleReactionLevels(reactionLevelsWithTechnical, 5, currentPrice, averageMove),
-    [averageMove, currentPrice, reactionLevelsWithTechnical],
+    () => withTimeframeConfluence(reactionLevelsWithTechnical, contextReactionLevels, currentPrice, averageMove),
+    [averageMove, contextReactionLevels, currentPrice, reactionLevelsWithTechnical],
   );
+  const timeframeConfluenceCount = visibleReactionLevels.filter(
+    (level) => ((level as ChartLevel).timeframeConfluence ?? []).length > 0,
+  ).length;
   const visiblePivotLevels = useMemo(
     () =>
       reactionSupported
@@ -905,7 +1080,7 @@ export default function PriceChart({
       try {
         const params = new URLSearchParams({
           coin,
-          window: REACTION_WINDOW[interval],
+          window: primaryReactionWindow,
         });
         const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`));
         if (!response.ok) throw new Error("Unable to fetch Reaction Map.");
@@ -928,13 +1103,50 @@ export default function PriceChart({
     return () => {
       cancelled = true;
     };
-  }, [coin, interval, reactionSupported]);
+  }, [coin, primaryReactionWindow, reactionSupported]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchContextReactionLevels() {
+      setContextReactionPayloads({});
+      if (!reactionSupported || contextReactionWindows.length === 0) return;
+
+      const entries = await Promise.all(
+        contextReactionWindows.map(async (windowLabel) => {
+          try {
+            const params = new URLSearchParams({
+              coin,
+              window: windowLabel,
+            });
+            const response = await fetch(withNetworkParam(`/api/market/reaction-levels?${params.toString()}`));
+            if (!response.ok) return null;
+            const payload = (await response.json()) as ReactionLevelsPayload;
+            return [windowLabel, payload] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+      setContextReactionPayloads(
+        Object.fromEntries(entries.filter((entry): entry is NonNullable<typeof entry> => entry != null)),
+      );
+    }
+
+    fetchContextReactionLevels();
+    return () => {
+      cancelled = true;
+    };
+  }, [coin, contextReactionWindows, reactionSupported]);
 
   useEffect(() => {
     const container = chartContainerRef.current;
     const data = toCandlestickData(candles);
     if (!container || data.length === 0) return;
     const precision = pricePrecision(candles.at(-1)?.close);
+    const chartChrome = responsiveChartChrome(container.clientWidth);
 
     const chart = createChart(container, {
       autoSize: true,
@@ -960,6 +1172,7 @@ export default function PriceChart({
       rightPriceScale: {
         borderColor: "#27272a",
         textColor: "#d4d4d8",
+        ...chartChrome.rightPriceScale,
         scaleMargins: { top: 0.08, bottom: 0.12 },
       },
       timeScale: {
@@ -967,6 +1180,7 @@ export default function PriceChart({
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 8,
+        ...chartChrome.timeScale,
         tickMarkFormatter: (time: unknown) =>
           formatEasternChartTick(time, interval === "D" ? "date" : "time"),
       },
@@ -1108,9 +1322,12 @@ export default function PriceChart({
     chartRef.current = chart;
 
     const resizeObserver = new ResizeObserver(() => {
+      const nextChartChrome = responsiveChartChrome(container.clientWidth);
       chart.applyOptions({
         width: container.clientWidth,
         height: container.clientHeight,
+        rightPriceScale: nextChartChrome.rightPriceScale,
+        timeScale: nextChartChrome.timeScale,
       });
       scheduleZoneBandRender();
     });
@@ -1178,7 +1395,7 @@ export default function PriceChart({
     : levelSourceNote;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d1016]">
       <div className="shrink-0 border-b border-zinc-800 px-3 py-2">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -1190,7 +1407,17 @@ export default function PriceChart({
               </div>
               {marketType === "perp" ? (
                 <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
-                  {REACTION_WINDOW[interval]} zones
+                  {primaryReactionWindow} map
+                </div>
+              ) : null}
+              {marketType === "perp" && selectedCandleWindow !== primaryReactionWindow ? (
+                <div className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 font-mono text-[11px] text-sky-200">
+                  {selectedCandleWindow} reaction
+                </div>
+              ) : null}
+              {marketType === "perp" && timeframeConfluenceCount > 0 ? (
+                <div className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 font-mono text-[11px] text-sky-200">
+                  {timeframeConfluenceCount} MTF overlap
                 </div>
               ) : null}
               {marketType === "perp" && visiblePivotLevels.length > 0 ? (
@@ -1205,7 +1432,7 @@ export default function PriceChart({
               )}
             </div>
             <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Reaction zones start with book and positioning levels. Technical pivots only strengthen overlap.
+              Levels stay anchored to the swing map while the selected candle window shows how price is reacting.
             </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
@@ -1237,7 +1464,7 @@ export default function PriceChart({
       <div className="p-3">
         <div
           ref={chartFrameRef}
-          className="relative isolate h-[360px] overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
+          className="relative isolate h-[360px] min-w-0 overflow-hidden overscroll-contain rounded-[18px] border border-zinc-800 bg-zinc-950 md:h-[430px] xl:h-[460px]"
         >
           {loading ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 overflow-hidden rounded-[18px] px-6 text-center text-sm text-zinc-500">
@@ -1259,7 +1486,7 @@ export default function PriceChart({
             </div>
           ) : (
             <>
-              <div className="absolute inset-0 z-0 overflow-hidden rounded-[18px]">
+              <div className="absolute inset-0 z-0 min-w-0 overflow-hidden rounded-[18px]">
                 <div ref={chartContainerRef} className="absolute inset-0" />
               </div>
               {activeCandleReadout ? <CandleHoverLegend coin={coin} readout={activeCandleReadout} /> : null}
@@ -1300,7 +1527,35 @@ function zoneRoleLabel(band: ChartZoneBand): string {
   return "Upside reaction";
 }
 
+function timeframeChipText(level: SupportResistanceLevel): string | null {
+  const label = timeframeLabelFor(level);
+  if (!label) return null;
+  const confluence = (level as ChartLevel).timeframeConfluence ?? [];
+  if (timeframeRoleFor(level) === "primary" && confluence.length > 0) {
+    return `${label}+`;
+  }
+  return label;
+}
+
+function timeframeTooltipLabel(level: SupportResistanceLevel): string | null {
+  const label = timeframeLabelFor(level);
+  if (!label) return null;
+  if (timeframeRoleFor(level) === "context") {
+    return timeframeDirectionFor(level) === "lower" ? `${label} early context` : `${label} major context`;
+  }
+  const confluence = (level as ChartLevel).timeframeConfluence ?? [];
+  if (confluence.length > 0) return `${label} plus ${timeframeConfluenceLabel(confluence)} context`;
+  return `${label} primary`;
+}
+
 function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upside"): string {
+  const timeframeLabel = timeframeLabelFor(level);
+  if (timeframeRoleFor(level) === "context" && timeframeLabel) {
+    return timeframeDirectionFor(level) === "lower"
+      ? `${timeframeLabel} context can mark the first reaction before the larger setup confirms. Treat it as an early trigger area, not the whole trade.`
+      : `${timeframeLabel} context is the larger map. It matters most if price accepts or rejects there cleanly.`;
+  }
+
   const hasBook =
     level.leverageBucket === "book" ||
     level.leverageBucket === "mixed" ||
@@ -1458,6 +1713,7 @@ function FlowZoneOverlay({
         const read = levelReadFor(band.level, band.side);
         const tone = chartToneForLevel(band.level, band.side);
         const color = tone.rgb;
+        const timeframeChip = timeframeChipText(band.level);
         const idleBandAlpha = band.alpha * 0.045;
         const idleBorderAlpha = band.alpha * 0.24;
         const active = highlightedZoneId === band.id;
@@ -1466,7 +1722,7 @@ function FlowZoneOverlay({
             <button
               type="button"
               data-zone-trigger="true"
-              className={`pointer-events-auto absolute left-0 right-[58px] cursor-crosshair border-y border-transparent bg-transparent transition focus:outline-none focus:ring-1 focus:ring-white/40 ${
+              className={`pointer-events-auto absolute left-0 right-[64px] cursor-crosshair border-y border-transparent bg-transparent transition focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-[76px] ${
                 active ? "shadow-[0_0_22px_rgba(255,255,255,0.10)]" : ""
               }`}
               style={{
@@ -1492,7 +1748,7 @@ function FlowZoneOverlay({
             <button
               type="button"
               data-zone-trigger="true"
-              className={`pointer-events-auto absolute right-2 max-w-[calc(100%_-_1rem)] cursor-crosshair truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-16 sm:max-w-[112px] ${tone.borderClass} ${tone.textClass}`}
+              className={`pointer-events-auto absolute right-16 flex max-w-[calc(100%_-_5rem)] cursor-crosshair items-center gap-1 truncate rounded-full border bg-zinc-950/80 px-2 py-0.5 text-[10px] leading-4 backdrop-blur-md focus:outline-none focus:ring-1 focus:ring-white/40 sm:right-20 sm:max-w-[132px] ${tone.borderClass} ${tone.textClass}`}
               style={{
                 top: band.labelY,
                 backgroundColor: `rgba(9, 9, 11, ${Math.max(0.74, 0.94 - band.alpha * 0.14)})`,
@@ -1510,7 +1766,8 @@ function FlowZoneOverlay({
                 onSelect(band.id);
               }}
             >
-              {formatLevelPrice(band.level.price)}
+              {timeframeChip ? <span className="shrink-0 text-zinc-500">{timeframeChip}</span> : null}
+              <span className="truncate">{formatLevelPrice(band.level.price)}</span>
             </button>
           </div>
         );
@@ -1525,11 +1782,12 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
   const tooltip = band.level.zoneTooltip;
   const tone = chartToneForLevel(band.level, band.side);
   const sideLabel = tooltip?.roleLabel ?? (tooltip?.side === "bear" ? "Seller-initiated build" : tooltip?.side === "bull" ? "Buyer-initiated build" : zoneRoleLabel(band));
+  const timeframeLabel = timeframeTooltipLabel(band.level);
 
   return (
     <div
       data-zone-tooltip="true"
-      className={`pointer-events-none absolute right-3 z-[90] w-[min(280px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-16 ${
+      className={`pointer-events-none absolute right-3 z-[90] w-[min(280px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-20 ${
         tone.borderClass
       }`}
       style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}
@@ -1537,7 +1795,14 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{sideLabel}</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {timeframeLabel ? (
+              <span className="rounded-full border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-normal text-zinc-400">
+                {timeframeLabel}
+              </span>
+            ) : null}
+            <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{sideLabel}</span>
+          </div>
           <div className="mt-1 font-mono text-sm font-semibold text-zinc-100">{formatLevelRange(band.level)}</div>
         </div>
         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono ${read.className}`}>{read.label}</span>
