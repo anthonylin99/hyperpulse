@@ -34,11 +34,13 @@ const DEFAULT_INTERVAL: TradingInterval = "15";
 type ApiInterval = "5m" | "15m" | "1h" | "4h" | "1d";
 type TimeframeRole = "primary" | "context";
 type TimeframeDirection = "lower" | "higher" | "same";
+type LevelStrengthGrade = "light" | "medium" | "strong";
 type ChartLevel = SupportResistanceLevel & {
   timeframeLabel?: ApiInterval;
   timeframeRole?: TimeframeRole;
   timeframeDirection?: TimeframeDirection;
   timeframeConfluence?: ApiInterval[];
+  strengthGrade?: LevelStrengthGrade;
 };
 
 const API_INTERVAL: Record<TradingInterval, ApiInterval> = {
@@ -319,6 +321,7 @@ const MAX_PRIORITY_DROP_FROM_LEADER = 30;
 const MIN_BOOK_FALLBACK_NOTIONAL_USD = 20_000_000;
 const MIN_BOOK_FALLBACK_PRIORITY = 24;
 const MAX_PRIMARY_REACTION_LEVELS = 5;
+const MIN_LEVELS_PER_SIDE = 1;
 
 function timeframeLabelFor(level: SupportResistanceLevel): ApiInterval | null {
   return (level as ChartLevel).timeframeLabel ?? null;
@@ -359,6 +362,76 @@ function tagLevelsForTimeframe(
     timeframeRole,
     timeframeDirection: directionForTimeframe(primaryTimeframe, timeframeLabel),
   }));
+}
+
+function orderBookShelvesToLevels(
+  payload: ReactionLevelsPayload | null,
+  timeframeLabel: ApiInterval,
+  primaryTimeframe: ApiInterval,
+): ChartLevel[] {
+  const currentPrice = payload?.currentPrice;
+  if (!payload || currentPrice == null || !Number.isFinite(currentPrice) || currentPrice <= 0) return [];
+
+  const shelfGroups = [
+    ...(payload.orderBook?.bidShelves ?? []).map((shelf) => ({ shelf, kind: "support" as const })),
+    ...(payload.orderBook?.askShelves ?? []).map((shelf) => ({ shelf, kind: "resistance" as const })),
+  ];
+
+  return shelfGroups
+    .filter(({ shelf, kind }) => {
+      if (!Number.isFinite(shelf.price) || shelf.price <= 0) return false;
+      if (kind === "support") return shelf.price < currentPrice;
+      return shelf.price > currentPrice;
+    })
+    .map(({ shelf, kind }) => {
+      const notionalTerm = clamp(Math.log10(Math.max(shelf.notionalUsd, 1)) - 5, 0, 5);
+      const sampleTerm = clamp(Math.log10(Math.max(shelf.sampleCount, 1) + 1), 0, 2);
+      const strength = Math.round(clamp(18 + notionalTerm * 5 + sampleTerm * 3, 18, 48));
+      const sideLabel = kind === "support" ? "Bid shelf" : "Ask shelf";
+
+      return {
+        id: `live-book-${payload.coin}-${shelf.id}-${timeframeLabel}`,
+        label: sideLabel,
+        kind,
+        source: "reaction_map",
+        price: shelf.price,
+        zoneLow: shelf.zoneLow,
+        zoneHigh: shelf.zoneHigh,
+        strength,
+        distancePct: shelf.distancePct,
+        updatedAtMs: payload.updatedAt,
+        confidence: "low",
+        status: "active",
+        reason: `${sideLabel}: visible resting liquidity. It can move before price trades there.`,
+        explanation: `${sideLabel}: visible resting liquidity. It can move before price trades there.`,
+        evidence: [sideLabel, "Live order book", "Can pull"],
+        notionalUsd: shelf.notionalUsd,
+        pressureScore: strength,
+        lfxScore: strength,
+        depthAdjustedImpact: 0.35,
+        volatilityReach: Number(clamp(1 / (1 + Math.abs(shelf.distancePct) / 5), 0.12, 1).toFixed(4)),
+        distanceDecay: Number(clamp(Math.exp(-Math.abs(shelf.distancePct) / 7), 0.12, 1).toFixed(4)),
+        zoneType: kind === "support" ? "absorption_support" : "absorption_resistance",
+        coverage: "market_only",
+        flowRank: undefined,
+        flowRelative: 1,
+        leverageBucket: "book",
+        pressureSide: kind === "support" ? "long_liq" : "short_liq",
+        pressureSource: "market_inferred",
+        zoneTooltip: {
+          roleLabel: sideLabel,
+          sourceCaveat: "Live resting liquidity can move before price trades there.",
+          refreshedAtMs: payload.updatedAt,
+          ageMs: shelf.ageMs,
+          windowMs: shelf.windowMs,
+          reasonSelected: `${sideLabel} from visible order book liquidity.`,
+        },
+        timeframeLabel,
+        timeframeRole: "primary",
+        timeframeDirection: directionForTimeframe(primaryTimeframe, timeframeLabel),
+        strengthGrade: "light",
+      } satisfies ChartLevel;
+    });
 }
 
 function isStressZone(level: SupportResistanceLevel): boolean {
@@ -516,34 +589,70 @@ function levelVisualStrength(level: SupportResistanceLevel, index: number): numb
   return clamp(scoreTerm * 0.48 + rankTerm * 0.3 + impactTerm * 0.22, 0.22, 1) * sourceTerm * timeframeTerm;
 }
 
-function reactionSourceCount(level: SupportResistanceLevel): number {
-  const hasTechnical = level.evidence?.some((item) => item.startsWith("Technical:")) ?? false;
-  const hasBook =
+function hasTechnicalConfluence(level: SupportResistanceLevel): boolean {
+  return level.evidence?.some((item) => item.startsWith("Technical:")) ?? false;
+}
+
+function hasBookSource(level: SupportResistanceLevel): boolean {
+  return (
     level.leverageBucket === "book" ||
     level.leverageBucket === "mixed" ||
-    (level.depthAdjustedImpact != null && level.depthAdjustedImpact > 0);
-  const hasPositioning =
+    (level.depthAdjustedImpact != null && level.depthAdjustedImpact > 0)
+  );
+}
+
+function hasPositioningSource(level: SupportResistanceLevel): boolean {
+  return (
     level.leverageBucket === "positioning" ||
     level.leverageBucket === "mixed" ||
     (level.inferredOiUsd ?? 0) > 0 ||
     (level.buyNotionalUsd ?? 0) > 0 ||
-    (level.sellNotionalUsd ?? 0) > 0;
+    (level.sellNotionalUsd ?? 0) > 0
+  );
+}
+
+function reactionSourceCount(level: SupportResistanceLevel): number {
+  const hasTechnical = hasTechnicalConfluence(level);
+  const hasBook = hasBookSource(level);
+  const hasPositioning = hasPositioningSource(level);
   const hasStress = level.leverageBucket === "stress" || level.coverage === "wallet_sample";
   return [hasTechnical, hasBook, hasPositioning, hasStress].filter(Boolean).length;
 }
 
+function levelStrengthGrade(level: SupportResistanceLevel, index: number): LevelStrengthGrade {
+  const score = level.lfxScore ?? level.pressureScore ?? level.strength;
+  const sourceCount = reactionSourceCount(level);
+  const hasTimeframeConfluence = ((level as ChartLevel).timeframeConfluence ?? []).length > 0;
+  const explicit = (level as ChartLevel).strengthGrade;
+
+  if (explicit && sourceCount <= 1 && !hasTimeframeConfluence) return explicit;
+
+  if (level.leverageBucket === "book" && sourceCount <= 1) return "light";
+  if ((score >= 70 && sourceCount >= 2) || (sourceCount >= 3 && hasTimeframeConfluence)) return "strong";
+  if (score >= 42 || sourceCount >= 2 || hasPositioningSource(level)) return "medium";
+  return levelVisualStrength(level, index) >= 0.62 ? "medium" : "light";
+}
+
+function levelStrengthLabel(level: SupportResistanceLevel, index: number): "Light" | "Medium" | "Strong" {
+  const grade = levelStrengthGrade(level, index);
+  if (grade === "strong") return "Strong";
+  if (grade === "medium") return "Medium";
+  return "Light";
+}
+
 function levelLineWidth(level: SupportResistanceLevel, index: number): 1 | 2 | 3 | 4 {
-  const strength = levelVisualStrength(level, index);
-  if (timeframeRoleFor(level) === "context") return strength >= 0.52 ? 2 : 1;
-  if (strength >= 0.82) return 4;
-  if (strength >= 0.62) return 3;
-  if (strength >= 0.4) return 2;
+  const grade = levelStrengthGrade(level, index);
+  if (timeframeRoleFor(level) === "context") return grade === "light" ? 1 : 2;
+  if (grade === "strong") return 4;
+  if (grade === "medium") return 3;
   return 1;
 }
 
 function levelAlpha(level: SupportResistanceLevel, index: number): number {
+  const grade = levelStrengthGrade(level, index);
+  const base = grade === "strong" ? 0.9 : grade === "medium" ? 0.68 : 0.42;
   const strength = levelVisualStrength(level, index);
-  return Number(clamp(0.2 + strength * 0.72, 0.28, 0.96).toFixed(3));
+  return Number(clamp(base + strength * 0.12, 0.34, 0.96).toFixed(3));
 }
 
 function reactionDisplayPriority(level: SupportResistanceLevel, swingOnly = false): number {
@@ -605,24 +714,51 @@ function selectVisibleReactionLevels<T extends SupportResistanceLevel>(
   );
   const selected = new Map<string, T>();
   const minSpacingPct = minimumReactionSpacingPct(currentPrice, averageMove);
-  const canSelect = (candidate: SupportResistanceLevel) => {
+  const sideFor = (level: T): "downside" | "upside" =>
+    isDownsideReactionLevel(level, currentPrice) ? "downside" : "upside";
+  const canSelect = (candidate: T) => {
     const referencePrice =
       currentPrice && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : candidate.price;
     return ![...selected.values()].some((level) => {
+      if (sideFor(level) !== sideFor(candidate)) return false;
       const gapPct = Math.abs(((candidate.price - level.price) / referencePrice) * 100);
       return gapPct < minSpacingPct;
     });
   };
+  const addCandidate = (candidate: T, force = false) => {
+    if (selected.has(candidate.id)) return;
+    if (!force && !canSelect(candidate)) return;
+    if (selected.size >= limit) return;
+    selected.set(candidate.id, candidate);
+  };
 
   for (const level of confluent) {
     if (selected.size >= limit) break;
-    if (!canSelect(level)) continue;
-    selected.set(level.id, level);
+    addCandidate(level);
   }
   for (const level of fallback) {
     if (selected.size >= limit) break;
-    if (!canSelect(level)) continue;
-    selected.set(level.id, level);
+    addCandidate(level);
+  }
+
+  const ensureSide = (side: "downside" | "upside") => {
+    if ([...selected.values()].some((level) => sideFor(level) === side)) return;
+    const candidate = ranked.find((level) => sideFor(level) === side);
+    if (!candidate) return;
+
+    if (selected.size >= limit) {
+      const removable = [...selected.values()]
+        .filter((level) => sideFor(level) !== side)
+        .sort((a, b) => reactionDisplayPriority(a) - reactionDisplayPriority(b))[0];
+      if (removable) selected.delete(removable.id);
+    }
+
+    addCandidate(candidate, true);
+  };
+
+  for (let index = 0; index < MIN_LEVELS_PER_SIDE; index += 1) {
+    ensureSide("downside");
+    ensureSide("upside");
   }
 
   return [...selected.values()].sort((a, b) => a.price - b.price);
@@ -742,6 +878,9 @@ function withTechnicalConfluence<T extends SupportResistanceLevel>(
         ...level.zoneTooltip,
         roleLabel: confluenceLabel,
         reasonSelected: `${confluenceLabel}: ${technicalEvidence.replace("Technical: ", "")}`,
+        technicalConfirmedAtMs: technical.discoveredTimeMs ?? technical.updatedAtMs ?? technical.pivotTimeMs,
+        technicalPrice: technical.price,
+        technicalLabel: pivotShortLabel(technical),
       },
     }, averageMove) as T;
   });
@@ -751,6 +890,8 @@ type ChartZoneBand = {
   id: string;
   level: SupportResistanceLevel;
   side: "downside" | "upside";
+  strengthGrade: LevelStrengthGrade;
+  strengthLabel: "Light" | "Medium" | "Strong";
   top: number;
   height: number;
   centerY: number;
@@ -916,15 +1057,23 @@ export default function PriceChart({
   const currentPrice = reactionPayload?.currentPrice ?? candles.at(-1)?.close ?? null;
   const averageMove = useMemo(() => recentAverageMove(candles), [candles]);
   const levels = useMemo(
-    () =>
-      reactionSupported && reactionPayload
-        ? tagLevelsForTimeframe(
-            reactionLevelsToSupportResistanceLevels(reactionPayload, "confluence"),
-            primaryReactionWindow,
-            "primary",
-            primaryReactionWindow,
-          )
-        : [],
+    () => {
+      if (!reactionSupported || !reactionPayload) return [];
+
+      const reactionLevels = tagLevelsForTimeframe(
+        reactionLevelsToSupportResistanceLevels(reactionPayload, "confluence"),
+        primaryReactionWindow,
+        "primary",
+        primaryReactionWindow,
+      );
+      const liveBookLevels = orderBookShelvesToLevels(
+        reactionPayload,
+        primaryReactionWindow,
+        primaryReactionWindow,
+      );
+
+      return [...reactionLevels, ...liveBookLevels];
+    },
     [primaryReactionWindow, reactionPayload, reactionSupported],
   );
   const contextReactionLevels = useMemo(
@@ -941,17 +1090,17 @@ export default function PriceChart({
       }),
     [contextReactionPayloads, contextReactionWindows, primaryReactionWindow],
   );
-  const baseReactionLevels = useMemo(
-    () => selectVisibleReactionLevels(levels, MAX_PRIMARY_REACTION_LEVELS, currentPrice, null),
-    [currentPrice, levels],
+  const levelsWithTechnical = useMemo(
+    () => withTechnicalConfluence(levels, pivotLevels, currentPrice, averageMove),
+    [averageMove, currentPrice, levels, pivotLevels],
   );
-  const reactionLevelsWithTechnical = useMemo(
-    () => withTechnicalConfluence(baseReactionLevels, pivotLevels, currentPrice, averageMove),
-    [averageMove, baseReactionLevels, currentPrice, pivotLevels],
+  const baseReactionLevels = useMemo(
+    () => selectVisibleReactionLevels(levelsWithTechnical, MAX_PRIMARY_REACTION_LEVELS, currentPrice, averageMove),
+    [averageMove, currentPrice, levelsWithTechnical],
   );
   const visibleReactionLevels = useMemo(
-    () => withTimeframeConfluence(reactionLevelsWithTechnical, contextReactionLevels, currentPrice, averageMove),
-    [averageMove, contextReactionLevels, currentPrice, reactionLevelsWithTechnical],
+    () => withTimeframeConfluence(baseReactionLevels, contextReactionLevels, currentPrice, averageMove),
+    [averageMove, baseReactionLevels, contextReactionLevels, currentPrice],
   );
   const timeframeConfluenceCount = visibleReactionLevels.filter(
     (level) => ((level as ChartLevel).timeframeConfluence ?? []).length > 0,
@@ -1286,6 +1435,8 @@ export default function PriceChart({
           id: level.id,
           level,
           side,
+          strengthGrade: levelStrengthGrade(level, index),
+          strengthLabel: levelStrengthLabel(level, index),
           top,
           height,
           centerY: yCenter,
@@ -1431,9 +1582,6 @@ export default function PriceChart({
                 </div>
               )}
             </div>
-            <div className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-500">
-              Levels stay anchored to the swing map while the selected candle window shows how price is reacting.
-            </div>
           </div>
           <div className="flex flex-wrap justify-start gap-1.5 text-[10px] font-mono uppercase tracking-[0.16em] text-zinc-500 lg:justify-end">
             {marketType === "perp" ? (
@@ -1548,45 +1696,86 @@ function timeframeTooltipLabel(level: SupportResistanceLevel): string | null {
   return `${label} primary`;
 }
 
-function shortTraderRead(level: SupportResistanceLevel, side: "downside" | "upside"): string {
-  const timeframeLabel = timeframeLabelFor(level);
-  if (timeframeRoleFor(level) === "context" && timeframeLabel) {
-    return timeframeDirectionFor(level) === "lower"
-      ? `${timeframeLabel} context can mark the first reaction before the larger setup confirms. Treat it as an early trigger area, not the whole trade.`
-      : `${timeframeLabel} context is the larger map. It matters most if price accepts or rejects there cleanly.`;
-  }
+function levelSourceLabel(level: SupportResistanceLevel): string {
+  const hasBook = hasBookSource(level);
+  const hasPositioning = hasPositioningSource(level);
+  const hasTechnical = hasTechnicalConfluence(level);
+  const hasTimeframe = ((level as ChartLevel).timeframeConfluence ?? []).length > 0;
 
-  const hasBook =
-    level.leverageBucket === "book" ||
-    level.leverageBucket === "mixed" ||
-    (level.depthAdjustedImpact != null && level.depthAdjustedImpact > 0);
-  const hasPositioning =
-    level.leverageBucket === "positioning" ||
-    level.leverageBucket === "mixed" ||
-    (level.inferredOiUsd ?? 0) > 0 ||
-    (level.buyNotionalUsd ?? 0) > 0 ||
-    (level.sellNotionalUsd ?? 0) > 0;
-  if (hasBook && hasPositioning) {
-    return side === "downside"
-      ? "Book + positioning overlap here. Watch defense versus a clean break."
-      : "Book + positioning overlap here. Watch rejection versus clean acceptance.";
-  }
+  if (hasBook && hasPositioning && hasTechnical) return "Book + positioning + technical";
+  if (hasBook && hasPositioning) return "Book + positioning";
+  if (hasPositioning && hasTechnical) return "Positioning + technical";
+  if (hasBook && hasTechnical) return "Book + technical";
+  if (hasTimeframe && hasPositioning) return "Positioning + timeframe";
+  if (hasPositioning) return "Positioning";
+  if (hasBook) return "Book shelf";
+  if (hasTechnical) return "Technical overlap";
+  return "Reaction zone";
+}
 
-  const role = level.zoneTooltip?.role;
-  if (role === "long_defense") return "Buyer build below price. Watch whether buyers defend or lose the zone.";
-  if (role === "trapped_longs") return "Buyer build above price. Bulls need acceptance back through the zone.";
-  if (role === "short_defense") return "Seller build above price. Watch rejection versus clean acceptance above.";
-  if (role === "trapped_shorts") return "Seller build below price. Reclaim can turn it into squeeze fuel.";
-  if (role === "pivot_zone") return "Net buy/sell is within the pivot threshold. Let acceptance or rejection decide the read.";
-  if (role === "active_test") return "Price is inside the inferred positioning zone. Watch acceptance, rejection, or a fast reclaim.";
-  if (level.leverageBucket === "book") {
-    return side === "downside"
-      ? "Real bid liquidity. Useful only if it stays/refills when tested."
-      : "Real ask liquidity. Useful only if it stays/refills when tested.";
+function strengthReadLabel(band: ChartZoneBand): string {
+  const side = band.side === "upside" ? "resistance" : "support";
+  return `${band.strengthLabel} ${side}`;
+}
+
+function strengthDecisionText(band: ChartZoneBand): string {
+  if (band.strengthGrade === "strong") {
+    return band.side === "upside"
+      ? "Stacked level. Buyers need a clean hold through it."
+      : "Stacked level. Sellers need a clean hold through it.";
   }
-  return side === "downside"
-    ? "Downside reaction area; wait for acceptance or rejection."
-    : "Upside reaction area; wait for acceptance or rejection.";
+  if (band.strengthGrade === "medium") {
+    return band.side === "upside"
+      ? "Worth watching. Look for rejection or clean acceptance."
+      : "Worth watching. Look for defense or clean acceptance below.";
+  }
+  if (band.level.leverageBucket === "book") {
+    return "Visible shelf. Respect it only if it stays when tested.";
+  }
+  return "Light read. Use it as context, not a standalone signal.";
+}
+
+function levelCaveatText(level: SupportResistanceLevel): string | null {
+  const hasBook = hasBookSource(level);
+  const hasPositioning = hasPositioningSource(level);
+  if (hasBook && hasPositioning) return "Orders can pull; positioning is inferred.";
+  if (hasBook) return "Visible orders can pull.";
+  if (hasPositioning) return "Positioning is inferred.";
+  return null;
+}
+
+function isTechnicalConfirmationDelayed(level: SupportResistanceLevel): boolean {
+  const firstSeenAtMs = level.zoneTooltip?.firstSeenAtMs;
+  const technicalConfirmedAtMs = level.zoneTooltip?.technicalConfirmedAtMs;
+  if (!firstSeenAtMs || !technicalConfirmedAtMs) return false;
+  return technicalConfirmedAtMs > firstSeenAtMs + 60_000;
+}
+
+function levelOriginRead(level: SupportResistanceLevel): string | null {
+  if (isTechnicalConfirmationDelayed(level)) return "Positioning was already there; technical confirmation came later.";
+  if (level.zoneTooltip?.carriedForward) return "Carried forward from earlier positioning evidence.";
+  if (level.zoneTooltip?.firstSeenAtMs) return "Fresh positioning evidence.";
+  if (level.leverageBucket === "book") return "Live book shelf.";
+  return null;
+}
+
+function levelTimingRows(level: SupportResistanceLevel): Array<{ label: string; value: string }> {
+  const tooltip = level.zoneTooltip;
+  if (!tooltip) return [];
+
+  const rows: Array<{ label: string; value: string }> = [];
+  if (tooltip.firstSeenAtMs) rows.push({ label: "First seen", value: formatTimeMs(tooltip.firstSeenAtMs) });
+  if (tooltip.lastEvidenceAtMs) rows.push({ label: "Last evidence", value: formatTimeMs(tooltip.lastEvidenceAtMs) });
+  if (tooltip.technicalConfirmedAtMs) {
+    const technicalPrice = tooltip.technicalPrice ? ` near ${formatLevelPrice(tooltip.technicalPrice)}` : "";
+    rows.push({
+      label: "Tech confirm",
+      value: `${formatTimeMs(tooltip.technicalConfirmedAtMs)}${technicalPrice}`,
+    });
+  }
+  if (tooltip.carriedForward) rows.push({ label: "State", value: "Carried forward" });
+
+  return rows;
 }
 
 function CandleHoverLegend({ coin, readout }: { coin: string; readout: CandleHoverReadout }) {
@@ -1710,12 +1899,12 @@ function FlowZoneOverlay({
   return (
     <div className="pointer-events-none absolute inset-0 z-[60]">
       {bands.map((band) => {
-        const read = levelReadFor(band.level, band.side);
         const tone = chartToneForLevel(band.level, band.side);
         const color = tone.rgb;
         const timeframeChip = timeframeChipText(band.level);
-        const idleBandAlpha = band.alpha * 0.045;
-        const idleBorderAlpha = band.alpha * 0.24;
+        const gradeBandBoost = band.strengthGrade === "strong" ? 0.022 : band.strengthGrade === "medium" ? 0.012 : 0;
+        const idleBandAlpha = band.alpha * 0.045 + gradeBandBoost;
+        const idleBorderAlpha = band.alpha * (band.strengthGrade === "strong" ? 0.34 : band.strengthGrade === "medium" ? 0.28 : 0.18);
         const active = highlightedZoneId === band.id;
         return (
           <div key={band.id}>
@@ -1734,7 +1923,7 @@ function FlowZoneOverlay({
                 borderTopColor: active ? `rgba(${color}, 0.62)` : `rgba(${color}, ${idleBorderAlpha})`,
                 borderBottomColor: active ? `rgba(${color}, 0.62)` : `rgba(${color}, ${idleBorderAlpha})`,
               }}
-              aria-label={`${formatLevelRange(band.level)} ${read.label} ${band.level.label}`}
+              aria-label={`${formatLevelRange(band.level)} ${strengthReadLabel(band)} ${levelSourceLabel(band.level)}`}
               onClick={() => {
                 onHover(band.id);
                 onSelect(band.id);
@@ -1756,7 +1945,7 @@ function FlowZoneOverlay({
                 boxShadow: active ? `0 0 ${Math.round(10 + band.alpha * 14)}px rgba(${color}, ${band.alpha * 0.14})` : "none",
                 opacity: active ? 1 : Math.max(0.5, band.alpha * 0.86),
               }}
-              aria-label={`${formatLevelRange(band.level)} ${read.label} details`}
+              aria-label={`${formatLevelRange(band.level)} ${strengthReadLabel(band)} details`}
               onMouseEnter={() => onHover(band.id)}
               onMouseLeave={() => onHover(null)}
               onFocus={() => onHover(band.id)}
@@ -1766,7 +1955,8 @@ function FlowZoneOverlay({
                 onSelect(band.id);
               }}
             >
-              {timeframeChip ? <span className="shrink-0 text-zinc-500">{timeframeChip}</span> : null}
+              <span className="shrink-0 text-zinc-500">{band.strengthLabel}</span>
+              {timeframeChip ? <span className="shrink-0 text-zinc-600">{timeframeChip}</span> : null}
               <span className="truncate">{formatLevelPrice(band.level.price)}</span>
             </button>
           </div>
@@ -1783,14 +1973,18 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
   const tone = chartToneForLevel(band.level, band.side);
   const sideLabel = tooltip?.roleLabel ?? (tooltip?.side === "bear" ? "Seller-initiated build" : tooltip?.side === "bull" ? "Buyer-initiated build" : zoneRoleLabel(band));
   const timeframeLabel = timeframeTooltipLabel(band.level);
+  const sourceLabel = levelSourceLabel(band.level);
+  const caveat = levelCaveatText(band.level);
+  const originRead = levelOriginRead(band.level);
+  const timingRows = levelTimingRows(band.level);
 
   return (
     <div
       data-zone-tooltip="true"
-      className={`pointer-events-none absolute right-3 z-[90] w-[min(280px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-20 ${
+      className={`pointer-events-none absolute right-3 z-[90] w-[min(340px,calc(100%-1.5rem))] -translate-y-1/2 rounded-xl border bg-zinc-950/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-md sm:right-20 ${
         tone.borderClass
       }`}
-      style={{ top: `min(max(${Math.round(band.centerY)}px, 102px), calc(100% - 102px))` }}
+      style={{ top: `min(max(${Math.round(band.centerY)}px, 118px), calc(100% - 156px))` }}
       role="tooltip"
     >
       <div className="flex items-start justify-between gap-3">
@@ -1801,13 +1995,29 @@ function ZoneHoverTooltip({ band }: { band: ChartZoneBand }) {
                 {timeframeLabel}
               </span>
             ) : null}
-            <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{sideLabel}</span>
+            <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{sourceLabel}</span>
           </div>
           <div className="mt-1 font-mono text-sm font-semibold text-zinc-100">{formatLevelRange(band.level)}</div>
+          <div className="mt-1 text-[11px] text-zinc-500">{sideLabel}</div>
         </div>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono ${read.className}`}>{read.label}</span>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-mono ${read.className}`}>{strengthReadLabel(band)}</span>
+          <span className="font-mono text-[10px] text-zinc-500">{read.label}</span>
+        </div>
       </div>
-      <p className="mt-2 text-xs leading-5 text-zinc-300">{shortTraderRead(band.level, band.side) || read.summary}</p>
+      <p className="mt-2 text-xs leading-5 text-zinc-300">{strengthDecisionText(band)}</p>
+      {originRead ? <p className="mt-1 text-[11px] leading-4 text-amber-200/90">{originRead}</p> : null}
+      {timingRows.length > 0 ? (
+        <div className="mt-2 grid gap-1 rounded-lg border border-zinc-800/80 bg-zinc-900/45 p-2 text-[10px] leading-4">
+          {timingRows.map((row) => (
+            <div key={`${row.label}-${row.value}`} className="grid grid-cols-[82px_minmax(0,1fr)] gap-2">
+              <span className="text-zinc-500">{row.label}</span>
+              <span className="truncate font-mono text-zinc-300">{row.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {caveat ? <p className="mt-1 text-[11px] leading-4 text-zinc-500">{caveat}</p> : null}
     </div>
   );
 }

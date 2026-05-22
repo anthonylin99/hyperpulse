@@ -128,7 +128,7 @@ async function attachLiveOrderBookShelves(args: {
         notionalUsd,
         peakNotionalUsd: notionalUsd,
         sampleCount: Math.max(Number(level.n) || 1, 1),
-        confidence: "high",
+        confidence: "low",
         ageMs: Math.max(0, Date.now() - bookTime),
         windowMs: args.windowMs,
         sourceCaveat: {

@@ -201,6 +201,7 @@ export interface ReactionLevel {
     leveragePressure?: number;
     pivotThresholdUsd?: number;
     reasonSelected?: string;
+    firstSeenAtMs?: number;
     refreshedAtMs?: number;
     lastEvidenceAtMs?: number;
     carriedForward?: boolean;

@@ -404,9 +404,13 @@ export interface SupportResistanceLevel {
     roleLabel?: string;
     confidenceReason?: string;
     sourceCaveat?: string;
+    firstSeenAtMs?: number;
     ageMs?: number | null;
     windowMs?: number;
     hiddenReason?: string;
+    technicalConfirmedAtMs?: number;
+    technicalPrice?: number;
+    technicalLabel?: string;
   };
 }
 

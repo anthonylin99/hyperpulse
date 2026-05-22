@@ -381,6 +381,7 @@ async function readCurrentExposureZones(client: Pool, asset: string, windowMs: n
           pivotThresholdUsd:
             asNumber(tooltip.pivotThresholdUsd) ?? asNumber(payload.pivotThresholdUsd) ?? POSITIONING_PIVOT_NET_USD,
           reasonSelected,
+          firstSeenAtMs: asNumber(row.first_seen_at) ?? undefined,
           refreshedAtMs: asNumber(row.refreshed_at) ?? updatedAt,
           lastEvidenceAtMs: rowEvidenceAt(row),
           carriedForward,
