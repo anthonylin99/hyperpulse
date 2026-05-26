@@ -95,6 +95,9 @@ const STORE_DAILY_CAP = clamp(envNumber("MOMENTUM_ALERT_STORE_DAILY_CAP", 30), T
 const MAX_ALERTS_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_CYCLE", 3), 1, 8);
 const MAX_TELEGRAM_PER_CYCLE = clamp(envNumber("MOMENTUM_ALERT_MAX_TELEGRAM_PER_CYCLE", 1), 1, 1);
 const TELEGRAM_QUEUE_MAX_AGE_MS = envNumber("MOMENTUM_ALERT_QUEUE_MAX_AGE_MS", 12 * 60 * 60 * 1000);
+const TELEGRAM_TIME_ZONE = cleanEnv(process.env.MOMENTUM_ALERT_TELEGRAM_TIME_ZONE) || "America/New_York";
+const TELEGRAM_ACTIVE_START_HOUR = clamp(envNumber("MOMENTUM_ALERT_TELEGRAM_START_HOUR", 8), 0, 23);
+const TELEGRAM_ACTIVE_END_HOUR = clamp(envNumber("MOMENTUM_ALERT_TELEGRAM_END_HOUR", 23), 1, 24);
 const MAX_PER_SIGNAL_BUCKET = clamp(envNumber("MOMENTUM_ALERT_MAX_PER_SIGNAL_BUCKET", 2), 1, 5);
 const CANDLE_INTERVAL = cleanEnv(process.env.MOMENTUM_ALERT_CANDLE_INTERVAL) || "5m";
 const LOOKBACK_MS = envNumber("MOMENTUM_ALERT_LOOKBACK_MS", 30 * 60 * 60 * 1000);
@@ -315,6 +318,28 @@ function easternDateKey(time = Date.now()) {
   }).formatToParts(new Date(time));
   const get = (type) => parts.find((part) => part.type === type)?.value ?? "00";
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function hourInTimeZone(time = Date.now(), timeZone = TELEGRAM_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(time));
+  return Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+}
+
+function isTelegramActiveWindow(time = Date.now()) {
+  const hour = hourInTimeZone(time);
+  if (TELEGRAM_ACTIVE_START_HOUR === TELEGRAM_ACTIVE_END_HOUR) return true;
+  if (TELEGRAM_ACTIVE_START_HOUR < TELEGRAM_ACTIVE_END_HOUR) {
+    return hour >= TELEGRAM_ACTIVE_START_HOUR && hour < TELEGRAM_ACTIVE_END_HOUR;
+  }
+  return hour >= TELEGRAM_ACTIVE_START_HOUR || hour < TELEGRAM_ACTIVE_END_HOUR;
+}
+
+function telegramQuietHoursReason() {
+  return `Telegram quiet hours: sends only ${TELEGRAM_ACTIVE_START_HOUR}:00-${TELEGRAM_ACTIVE_END_HOUR}:00 ${TELEGRAM_TIME_ZONE}.`;
 }
 
 function candleToRow(candle) {
@@ -1459,9 +1484,11 @@ async function persistAlert(candidate, now, options = {}) {
   const telegramHourCount = await countQueuedOrSentSince(now - 60 * 60 * 1000);
   const telegramQualityEligible = alert.payload?.telegramEligible !== false;
   const telegramCycleAllowed = options.allowTelegram !== false;
+  const telegramActiveWindow = isTelegramActiveWindow(now);
   const canSendTelegram =
     telegramCycleAllowed &&
     telegramQualityEligible &&
+    telegramActiveWindow &&
     TELEGRAM_ENABLED &&
     TELEGRAM_BOT_TOKEN &&
     TELEGRAM_CHAT_ID &&
@@ -1475,6 +1502,8 @@ async function persistAlert(candidate, now, options = {}) {
       ? "Stored only: Telegram per-cycle pacing."
       : !telegramQualityEligible
       ? "Stored only: below Telegram quality gate."
+      : !telegramActiveWindow
+      ? telegramQuietHoursReason()
       : TELEGRAM_ENABLED && telegramHourCount >= TELEGRAM_HOURLY_CAP
       ? "Telegram hourly cap reached."
       : TELEGRAM_ENABLED && telegramCount >= TELEGRAM_DAILY_CAP
@@ -1496,7 +1525,13 @@ async function persistAlert(candidate, now, options = {}) {
       now,
       createHash("sha256").update(message).digest("hex"),
       lastError,
-      JSON.stringify({ text: message, routeHref: alert.routeHref, asset: alert.asset, alert }),
+      JSON.stringify({
+        text: message,
+        routeHref: alert.routeHref,
+        asset: alert.asset,
+        alert,
+        telegramQuietHoursBlocked: !telegramActiveWindow,
+      }),
     ],
   );
   return { alert, inserted: true, queued: canSendTelegram };
@@ -1557,6 +1592,9 @@ function telegramReceipt(payload, method) {
 }
 
 async function sendTelegramNotification(payload) {
+  if (!isTelegramActiveWindow()) {
+    throw new Error(telegramQuietHoursReason());
+  }
   const text = payload?.text;
   if (!text) throw new Error("Notification payload missing text.");
   if (TELEGRAM_CHARTS_ENABLED && payload?.alert) {
@@ -1571,6 +1609,7 @@ async function sendTelegramNotification(payload) {
 
 async function flushTelegramQueue() {
   if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || DRY_RUN) return 0;
+  if (!isTelegramActiveWindow()) return 0;
   let hourlySent = await countSentSince(Date.now() - 60 * 60 * 1000);
   if (hourlySent >= TELEGRAM_HOURLY_CAP) return 0;
 
@@ -1626,6 +1665,7 @@ async function flushTelegramQueue() {
 
 async function recoverTelegramNotifications(now) {
   if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || DRY_RUN) return 0;
+  if (!isTelegramActiveWindow(now)) return 0;
 
   const dailyRemaining = Math.max(TELEGRAM_DAILY_CAP - await countQueuedOrSentToday(easternDateKey(now)), 0);
   const hourlyRemaining = Math.max(TELEGRAM_HOURLY_CAP - await countQueuedOrSentSince(now - 60 * 60 * 1000), 0);
@@ -1642,6 +1682,7 @@ async function recoverTelegramNotifications(now) {
      where mea.created_at >= $1
        and (nq.id is null or nq.status = 'disabled')
        and coalesce(mea.payload->>'telegramEligible', 'true') <> 'false'
+       and coalesce(nq.payload->>'telegramQuietHoursBlocked', 'false') <> 'true'
      order by
        coalesce(nullif(mea.payload #>> '{radarEdge,score}', '')::double precision, mea.score) desc,
        mea.score desc,
@@ -1697,6 +1738,8 @@ async function runCycle() {
     storeDailyCap: STORE_DAILY_CAP,
     telegramDailyCap: TELEGRAM_DAILY_CAP,
     telegramHourlyCap: TELEGRAM_HOURLY_CAP,
+    telegramActiveWindow: isTelegramActiveWindow(),
+    telegramActiveHours: `${TELEGRAM_ACTIVE_START_HOUR}:00-${TELEGRAM_ACTIVE_END_HOUR}:00 ${TELEGRAM_TIME_ZONE}`,
     maxTelegramPerCycle: MAX_TELEGRAM_PER_CYCLE,
     radarLongStdAlertThreshold: RADAR_LONG_STD_ALERT_THRESHOLD,
     radarShortStdAlertThreshold: RADAR_SHORT_STD_ALERT_THRESHOLD,
