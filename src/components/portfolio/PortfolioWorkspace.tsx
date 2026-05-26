@@ -117,7 +117,7 @@ function DetailSection({
 }
 
 export default function PortfolioWorkspace() {
-  const { trades, loading, error } = usePortfolio();
+  const { trades, loading, error, capitalSummary } = usePortfolio();
   const { accountState } = useWallet();
   const { trades: shadowTrades } = useShadowBook();
   const [subtab, setSubtab] = useState<PortfolioSubtab>("overview");
@@ -131,6 +131,8 @@ export default function PortfolioWorkspace() {
   const hasShadowTrades = shadowTrades.length > 0;
   const hasContent = hasTrades || hasPositions || hasShadowTrades;
   const accountValue = accountState?.accountValue ?? 0;
+  const equityExDeposits =
+    capitalSummary ? accountValue - capitalSummary.netExternalCapitalUsd : accountValue;
 
   useEffect(() => {
     if (typeof window !== "undefined" && new URL(window.location.href).searchParams.get("section") === "shadow") {
@@ -159,8 +161,8 @@ export default function PortfolioWorkspace() {
                   <span className="font-medium text-zinc-100">{totalHoldings}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-3">
-                  <span className="text-zinc-500">Account equity</span>
-                  <span className="font-medium text-zinc-100">{formatUSD(accountValue)}</span>
+                  <span className="text-zinc-500">Equity ex-deposits</span>
+                  <span className="font-medium text-zinc-100">{formatUSD(equityExDeposits)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-zinc-500">Focus</span>
@@ -184,7 +186,7 @@ export default function PortfolioWorkspace() {
         {hasPositions ? <CorrelationMap /> : null}
       </>
     ),
-    [accountValue, hasPositions, hasTrades, totalHoldings],
+    [equityExDeposits, hasPositions, hasTrades, totalHoldings],
   );
 
   return (

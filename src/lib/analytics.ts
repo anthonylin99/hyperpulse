@@ -10,9 +10,8 @@ import type {
 } from "@/types";
 
 // ─── Round-Trip Trade Grouping ──────────────────────────────────
-// Groups raw fills into round-trip trades (open → close).
-// HL fills include a `dir` field: "Open Long", "Close Long", "Open Short", "Close Short"
-// We accumulate fills per coin until the position flips or closes.
+// Groups raw fills into realized trade lots. Adds are kept inside the same
+// position and each close is matched FIFO so partial exits do not drop later legs.
 
 export function isPerpFill(fill: { dir?: unknown }): boolean {
   const dir = String(fill.dir ?? "");
@@ -29,13 +28,21 @@ export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
   const sorted = [...fills].filter(isPerpFill).sort((a, b) => a.time - b.time);
   const trades: RoundTripTrade[] = [];
 
-  // Track open positions per coin
+  type OpenLot = {
+    fill: Fill;
+    remainingSize: number;
+    remainingFee: number;
+  };
+
+  // Track open lots per coin. Hyperliquid gives explicit open/close dirs, so
+  // matching closes to prior opens gives more accurate P&L for adds/reduces.
   const openPositions = new Map<
     string,
-    { direction: "long" | "short"; fills: Fill[]; size: number }
+    { direction: "long" | "short"; lots: OpenLot[] }
   >();
 
-  for (const fill of sorted) {
+  for (let index = 0; index < sorted.length; index += 1) {
+    const fill = sorted[index];
     const normalized = (() => {
       if (fill.dir === "Open Long" || fill.dir === "Close Long") {
         return { isOpen: fill.dir === "Open Long", direction: "long" as const };
@@ -56,73 +63,78 @@ export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
     if (isOpen) {
       // Opening a new position or adding to existing
       if (pos && pos.direction === direction) {
-        pos.fills.push(fill);
-        pos.size += fill.sz;
+        pos.lots.push({
+          fill,
+          remainingSize: fill.sz,
+          remainingFee: fill.fee,
+        });
       } else {
         // New position (or flipped direction)
         openPositions.set(fill.coin, {
           direction,
-          fills: [fill],
-          size: fill.sz,
+          lots: [{
+            fill,
+            remainingSize: fill.sz,
+            remainingFee: fill.fee,
+          }],
         });
       }
-    } else if (pos) {
-      // Closing fill
-      pos.fills.push(fill);
-      pos.size -= fill.sz;
+    } else if (pos && pos.direction === direction) {
+      let sizeToClose = fill.sz;
+      const matchedOpenFills: Fill[] = [];
+      let matchedSize = 0;
+      let matchedEntryNotional = 0;
+      let matchedOpenFees = 0;
+      let entryTime: number | null = null;
 
-      // Position fully closed (or close enough due to rounding)
-      if (pos.size <= 0.000001) {
-        const entryFills = pos.fills.filter(
-          (f) => f.dir.startsWith("Open"),
-        );
-        const exitFills = pos.fills.filter(
-          (f) => f.dir.startsWith("Close"),
-        );
+      while (sizeToClose > 0.000001 && pos.lots.length > 0) {
+        const lot = pos.lots[0];
+        const take = Math.min(sizeToClose, lot.remainingSize);
+        const lotShare = lot.remainingSize > 0 ? take / lot.remainingSize : 0;
 
-        if (entryFills.length > 0 && exitFills.length > 0) {
-          const totalEntryNotional = entryFills.reduce(
-            (s, f) => s + f.px * f.sz,
-            0,
-          );
-          const totalEntrySz = entryFills.reduce((s, f) => s + f.sz, 0);
-          const avgEntry = totalEntryNotional / totalEntrySz;
+        matchedOpenFills.push(lot.fill);
+        matchedSize += take;
+        matchedEntryNotional += lot.fill.px * take;
+        matchedOpenFees += lot.remainingFee * lotShare;
+        entryTime = entryTime == null ? lot.fill.time : Math.min(entryTime, lot.fill.time);
 
-          const totalExitNotional = exitFills.reduce(
-            (s, f) => s + f.px * f.sz,
-            0,
-          );
-          const totalExitSz = exitFills.reduce((s, f) => s + f.sz, 0);
-          const avgExit = totalExitNotional / totalExitSz;
+        lot.remainingSize -= take;
+        lot.remainingFee -= lot.remainingFee * lotShare;
+        sizeToClose -= take;
 
-          const totalFees = pos.fills.reduce((s, f) => s + f.fee, 0);
-          const closedPnl = pos.fills.reduce(
-            (s, f) => s + f.closedPnl,
-            0,
-          );
-
-          const notional = avgEntry * totalEntrySz;
-          const pnlPct = notional > 0 ? (closedPnl / notional) * 100 : 0;
-
-          trades.push({
-            id: `${fill.coin}-${entryFills[0].time}-${fill.time}`,
-            coin: fill.coin,
-            direction: pos.direction,
-            entryPx: avgEntry,
-            exitPx: avgExit,
-            size: totalEntrySz,
-            notional,
-            entryTime: entryFills[0].time,
-            exitTime: fill.time,
-            duration: fill.time - entryFills[0].time,
-            pnl: closedPnl,
-            pnlPct,
-            fees: totalFees,
-            fundingPaid: 0, // merged later
-            fills: [...pos.fills],
-          });
+        if (lot.remainingSize <= 0.000001) {
+          pos.lots.shift();
         }
+      }
 
+      if (matchedSize > 0 && entryTime != null) {
+        const closeShare = fill.sz > 0 ? matchedSize / fill.sz : 0;
+        const closedPnl = fill.closedPnl * closeShare;
+        const closeFee = fill.fee * closeShare;
+        const entryPx = matchedEntryNotional / matchedSize;
+        const notional = entryPx * matchedSize;
+        const pnlPct = notional > 0 ? (closedPnl / notional) * 100 : 0;
+
+        trades.push({
+          id: `${fill.coin}-${entryTime}-${fill.time}-${fill.oid ?? index}`,
+          coin: fill.coin,
+          direction: pos.direction,
+          entryPx,
+          exitPx: fill.px,
+          size: matchedSize,
+          notional,
+          entryTime,
+          exitTime: fill.time,
+          duration: fill.time - entryTime,
+          pnl: closedPnl,
+          pnlPct,
+          fees: matchedOpenFees + closeFee,
+          fundingPaid: 0, // merged later
+          fills: Array.from(new Set([...matchedOpenFills, fill])),
+        });
+      }
+
+      if (pos.lots.length === 0) {
         openPositions.delete(fill.coin);
       }
     }

@@ -44,7 +44,7 @@ function EquityTooltip({
       <div className="mt-1.5 text-lg font-semibold text-zinc-50">{formatUSD(value)}</div>
       <div className="mt-1 inline-flex items-center gap-2 text-xs text-emerald-300/90">
         <span className="h-2 w-2 rounded-full bg-emerald-400" />
-        Account equity
+        Net trading P&L
       </div>
     </div>
   );
@@ -137,7 +137,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="label text-emerald-400/75">
-              Equity curve
+              Trading P&L curve
             </div>
             <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
               <div className="text-4xl font-semibold tracking-tight text-zinc-50">
@@ -156,7 +156,7 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
               <span className="inline-flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                Equity curve
+                Closed P&L + funding - fees
               </span>
               {startingPoint ? (
                 <span>

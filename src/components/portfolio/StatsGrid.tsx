@@ -50,13 +50,23 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
     const transferNet = capitalSummary
       ? (capitalSummary.externalTransferInUsd ?? 0) - (capitalSummary.externalTransferOutUsd ?? 0)
       : 0;
+    const equityExDeposits = capitalSummary
+      ? accountValue - netExternalFlows
+      : accountValue;
 
     return [
       {
-        label: "Equity",
-        value: formatUSD(accountValue),
-        subValue: `Perps ${formatUSD(perpsValue)} · Spot ${formatUSD(spotWalletValue)}`,
-        tone: "neutral",
+        label: "Equity ex-deposits",
+        value: capitalSummary ? formatUSD(equityExDeposits) : formatUSD(accountValue),
+        subValue: capitalSummary
+          ? `Raw ${formatUSD(accountValue)} · external ${formatUSD(netExternalFlows)}`
+          : `Perps ${formatUSD(perpsValue)} · Spot ${formatUSD(spotWalletValue)}`,
+        tone:
+          capitalSummary && equityExDeposits > 0
+            ? "positive"
+            : capitalSummary && equityExDeposits < 0
+              ? "negative"
+              : "neutral",
       },
       {
         label: "External flows",
@@ -139,7 +149,7 @@ export default function StatsGrid({ density = "compact" }: { density?: "compact"
         ))}
       </div>
       <div className="border-t border-zinc-800 bg-emerald-500/[0.04] px-4 py-2 text-[11px] text-zinc-500">
-        External flows exclude internal spot/perp moves. Equity = perps + full spot wallet. Staked HYPE not included.
+        External flows exclude internal spot/perp moves. Equity ex-deposits subtracts net outside capital from current account value.
       </div>
     </section>
   );

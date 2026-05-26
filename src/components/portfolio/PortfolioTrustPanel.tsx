@@ -81,6 +81,7 @@ export default function PortfolioTrustPanel() {
   const realizedAfterCosts = closedPnl + fundingNet - feesPaid;
   const externalCapital = capitalSummary?.netExternalCapitalUsd ?? 0;
   const currentEquity = accountState?.accountValue ?? 0;
+  const equityExDeposits = currentEquity - externalCapital;
   const unrealized = accountState?.unrealizedPnl ?? 0;
 
   const coverageNotes =
@@ -132,11 +133,11 @@ export default function PortfolioTrustPanel() {
           helper="Closed P&L + funding - fees."
         />
         <ReconcileCell
-          label="Current equity"
-          value={accountState ? currentEquity : "--"}
+          label="Equity ex-deposits"
+          value={accountState && capitalSummary ? equityExDeposits : "--"}
           helper={
-            accountState
-              ? `Includes mark-to-market perp P&L ${formatUSD(unrealized)}.`
+            accountState && capitalSummary
+              ? `Raw ${formatUSD(currentEquity)} less external capital; includes unrealized ${formatUSD(unrealized)}.`
               : "Waiting for account state."
           }
         />

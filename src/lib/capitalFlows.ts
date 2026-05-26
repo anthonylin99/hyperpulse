@@ -235,12 +235,22 @@ export function computeCapitalAdjustedEquityCurve(
 ): EquityPoint[] {
   const tradeEvents = trades.map((trade) => ({
     time: trade.exitTime,
-    amount: trade.pnl,
+    amount: trade.pnl + trade.fundingPaid - trade.fees,
   }));
-  const cashEvents = capitalSummary.events
-    .filter((event) => event.type === "external_deposit" || event.type === "external_withdrawal" || event.type === "reward")
-    .map((event) => ({ time: event.time, amount: event.amountUsd }));
-  const events = [...cashEvents, ...tradeEvents]
+  const firstTradeEntry = trades.reduce<number | null>(
+    (earliest, trade) =>
+      earliest == null || trade.entryTime < earliest ? trade.entryTime : earliest,
+    null,
+  );
+  const firstCapitalEvent = capitalSummary.events.reduce<number | null>(
+    (earliest, event) =>
+      earliest == null || event.time < earliest ? event.time : earliest,
+    null,
+  );
+  const baselineTime = [firstTradeEntry, firstCapitalEvent]
+    .filter((time): time is number => typeof time === "number" && Number.isFinite(time) && time > 0)
+    .sort((a, b) => a - b)[0];
+  const events = tradeEvents
     .filter((event) => Number.isFinite(event.time) && event.time > 0)
     .sort((a, b) => a.time - b.time);
 
@@ -248,10 +258,16 @@ export function computeCapitalAdjustedEquityCurve(
 
   let equity = 0;
   let peak = 0;
-  return events.map((event) => {
+  const points: EquityPoint[] = baselineTime
+    ? [{ time: baselineTime, equity: 0, drawdown: 0 }]
+    : [];
+
+  for (const event of events) {
     equity += event.amount;
     peak = Math.max(peak, equity);
     const drawdown = peak > 0 ? (equity - peak) / peak : 0;
-    return { time: event.time, equity, drawdown };
-  });
+    points.push({ time: event.time, equity, drawdown });
+  }
+
+  return points;
 }
