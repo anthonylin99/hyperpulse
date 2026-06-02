@@ -3,6 +3,11 @@ export const DATABASE_ENV_NAMES =
 
 const PG_SSL_MODES_TO_PIN = new Set(["prefer", "require", "verify-ca"]);
 
+export function isDatabaseEnabled(): boolean {
+  const explicit = String(process.env.HYPERPULSE_DB_ENABLED ?? "").trim().toLowerCase();
+  return explicit === "true" || explicit === "1" || explicit === "yes";
+}
+
 export function normalizeDatabaseUrl(value: string | undefined): string {
   const cleaned = String(value ?? "").trim().replace(/^["']|["']$/g, "");
   if (!cleaned) return "";
@@ -24,6 +29,7 @@ export function normalizeDatabaseUrl(value: string | undefined): string {
 }
 
 export function getPooledDatabaseUrl(): string {
+  if (!isDatabaseEnabled()) return "";
   return normalizeDatabaseUrl(
     process.env.NEON_DATABASE_URL_POOLING ??
     process.env.NEON_DATABASE_URL ??
@@ -34,6 +40,7 @@ export function getPooledDatabaseUrl(): string {
 }
 
 export function getDirectDatabaseUrl(): string {
+  if (!isDatabaseEnabled()) return "";
   return normalizeDatabaseUrl(
     process.env.NEON_DATABASE_URL ??
     process.env.DATABASE_URL ??

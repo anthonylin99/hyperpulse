@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { Pool } from "pg";
+import { getPooledDatabaseUrl } from "./database-url.mjs";
 
 function loadLocalEnv() {
   for (const file of [".env.local", ".env"]) {
@@ -28,12 +29,7 @@ function formatMb(bytes) {
   return `${(Number(bytes || 0) / 1024 / 1024).toFixed(2)} MB`;
 }
 
-const DATABASE_URL =
-  process.env.NEON_DATABASE_URL_POOLING ??
-  process.env.NEON_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  process.env.POSTGRES_URL ??
-  "";
+const DATABASE_URL = getPooledDatabaseUrl();
 
 if (!DATABASE_URL) {
   console.error("[reaction-prune] DATABASE_URL/NEON_DATABASE_URL is required.");

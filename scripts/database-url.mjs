@@ -7,6 +7,11 @@ export function cleanEnv(value) {
   return String(value ?? "").trim().replace(/^["']|["']$/g, "");
 }
 
+export function isDatabaseEnabled() {
+  const explicit = cleanEnv(process.env.HYPERPULSE_DB_ENABLED).toLowerCase();
+  return explicit === "true" || explicit === "1" || explicit === "yes";
+}
+
 export function normalizeDatabaseUrl(value) {
   const cleaned = cleanEnv(value);
   if (!cleaned) return "";
@@ -28,6 +33,7 @@ export function normalizeDatabaseUrl(value) {
 }
 
 export function getPooledDatabaseUrl() {
+  if (!isDatabaseEnabled()) return "";
   return normalizeDatabaseUrl(
     process.env.NEON_DATABASE_URL_POOLING ??
       process.env.NEON_DATABASE_URL ??
@@ -38,6 +44,7 @@ export function getPooledDatabaseUrl() {
 }
 
 export function getDirectDatabaseUrl() {
+  if (!isDatabaseEnabled()) return "";
   return normalizeDatabaseUrl(
     process.env.NEON_DATABASE_URL ??
       process.env.DATABASE_URL ??

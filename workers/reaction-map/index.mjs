@@ -44,6 +44,21 @@ function normalizeDatabaseUrl(value) {
   return cleaned;
 }
 
+function cleanEnv(value) {
+  return String(value ?? "").trim().replace(/^["']|["']$/g, "");
+}
+
+function envFlag(name, fallback = false) {
+  const value = cleanEnv(process.env[name]).toLowerCase();
+  if (!value) return fallback;
+  return value === "true" || value === "1" || value === "yes";
+}
+
+if (!envFlag("HYPERPULSE_DB_ENABLED")) {
+  console.log("[reaction-map] database frozen; set HYPERPULSE_DB_ENABLED=true to resume Neon/Postgres writes.");
+  process.exit(0);
+}
+
 const DATABASE_URL = normalizeDatabaseUrl(
   process.env.NEON_DATABASE_URL_POOLING ??
     process.env.NEON_DATABASE_URL ??

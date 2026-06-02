@@ -13,6 +13,12 @@ const MODE = process.env.AGENT_EXECUTION_MODE || "paper";
 const ENABLED = process.env.AGENT_EXECUTION_ENABLED === "true";
 const LOOP_MS = Math.max(Number(process.env.AGENT_EXECUTOR_INTERVAL_MS || 30_000), 10_000);
 
+function envFlag(name, fallback = false) {
+  const value = String(process.env[name] || "").trim().replace(/^["']|["']$/g, "").toLowerCase();
+  if (!value) return fallback;
+  return value === "true" || value === "1" || value === "yes";
+}
+
 function normalizeDatabaseUrl(value) {
   const cleaned = String(value || "").trim().replace(/^["']|["']$/g, "");
   if (!cleaned) return "";
@@ -28,7 +34,9 @@ function normalizeDatabaseUrl(value) {
   }
 }
 
-const pool = DATABASE_URL ? new Pool({ connectionString: normalizeDatabaseUrl(DATABASE_URL), max: 2 }) : null;
+const pool = envFlag("HYPERPULSE_DB_ENABLED") && DATABASE_URL
+  ? new Pool({ connectionString: normalizeDatabaseUrl(DATABASE_URL), max: 2 })
+  : null;
 
 async function runOnce() {
   if (!pool) {

@@ -53,6 +53,11 @@ function envFlag(name, fallback = false) {
   return value === "true" || value === "1" || value === "yes";
 }
 
+if (!envFlag("HYPERPULSE_DB_ENABLED")) {
+  console.log("[momentum-alerts] database frozen; set HYPERPULSE_DB_ENABLED=true to resume Neon/Postgres-backed alerts.");
+  process.exit(0);
+}
+
 const DATABASE_URL = normalizeDatabaseUrl(
   process.env.NEON_DATABASE_URL_POOLING ??
     process.env.NEON_DATABASE_URL ??

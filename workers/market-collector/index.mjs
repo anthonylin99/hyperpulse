@@ -42,6 +42,22 @@ function normalizeDatabaseUrl(value) {
   return cleaned;
 }
 
+function envFlag(name, fallback = false) {
+  const value = String(process.env[name] ?? "").trim().replace(/^["']|["']$/g, "").toLowerCase();
+  if (!value) return fallback;
+  return value === "true" || value === "1" || value === "yes";
+}
+
+if (!envFlag("HYPERPULSE_DB_ENABLED")) {
+  console.log("[market-collector] database frozen; set HYPERPULSE_DB_ENABLED=true to resume Neon/Postgres writes.");
+  process.exit(0);
+}
+
+if (process.env.ENABLE_MARKET_COLLECTOR !== "true") {
+  console.log("[market-collector] disabled; set ENABLE_MARKET_COLLECTOR=true to write warehouse tables.");
+  process.exit(0);
+}
+
 const DATABASE_URL = normalizeDatabaseUrl(
   process.env.NEON_DATABASE_URL_POOLING ??
     process.env.NEON_DATABASE_URL ??
@@ -52,11 +68,6 @@ const DATABASE_URL = normalizeDatabaseUrl(
 if (!DATABASE_URL) {
   console.error("[market-collector] NEON_DATABASE_URL_POOLING, NEON_DATABASE_URL, DATABASE_URL, or POSTGRES_URL is required.");
   process.exit(1);
-}
-
-if (process.env.ENABLE_MARKET_COLLECTOR !== "true") {
-  console.log("[market-collector] disabled; set ENABLE_MARKET_COLLECTOR=true to write warehouse tables.");
-  process.exit(0);
 }
 
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
