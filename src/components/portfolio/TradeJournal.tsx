@@ -493,10 +493,14 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               const hasNote = !!notes[trade.id];
               const isExpanded = expandedNote === trade.id;
               const marginReturnPct = tradeReturnOnCapitalPct(trade);
+              const wasLiquidated = trade.fills.some((fill) => fill.liquidation);
               return (
                 <Fragment key={trade.id}>
                   <tr
-                    className="border-b border-zinc-800/50 hover:bg-zinc-800/30"
+                    className={cn(
+                      "border-b border-zinc-800/50 hover:bg-zinc-800/30",
+                      wasLiquidated && "bg-red-950/10 hover:bg-red-950/20",
+                    )}
                   >
                     <td className="px-4 py-2 text-zinc-400 whitespace-nowrap">
                       {formatEasternDateTime(trade.exitTime)}
@@ -512,16 +516,26 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                       </button>
                     </td>
                     <td className="px-2 py-2">
-                      <span
-                        className={cn(
-                          "px-1.5 py-0.5 rounded text-[10px] font-medium",
-                          trade.direction === "long"
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : "bg-red-500/10 text-red-400",
-                        )}
-                      >
-                        {trade.direction.toUpperCase()}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span
+                          className={cn(
+                            "px-1.5 py-0.5 rounded text-[10px] font-medium",
+                            trade.direction === "long"
+                              ? "bg-emerald-500/10 text-emerald-400"
+                              : "bg-red-500/10 text-red-400",
+                          )}
+                        >
+                          {trade.direction.toUpperCase()}
+                        </span>
+                        {wasLiquidated ? (
+                          <span
+                            className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-red-300"
+                            title="Hyperliquid marked the closing fill as a liquidation."
+                          >
+                            LIQ
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-2 py-2 text-center text-zinc-300 font-mono">
                       {trade.entryPx < 1
