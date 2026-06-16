@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MousePointerClick } from "lucide-react";
+import DailySetupPanel from "@/components/DailySetupPanel";
 import MarketRadarPanel from "@/components/MarketRadarPanel";
 import MarketTable from "@/components/MarketTable";
 import TopMoversPanel from "@/components/markets/TopMoversPanel";
@@ -63,6 +64,7 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           </section>
 
           <div className="order-1 min-w-0 space-y-4 xl:order-2">
+            <DailySetupPanel />
             <MarketRadarPanel variant="rail" />
             <TopMoversPanel />
           </div>

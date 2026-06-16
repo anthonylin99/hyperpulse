@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BarChart3, BookOpenCheck, FolderKanban, Rows3, SlidersHorizontal } from "lucide-react";
+import DailySetupPanel from "@/components/DailySetupPanel";
 import DashboardHeader from "@/components/portfolio/DashboardHeader";
 import EquityCurve from "@/components/portfolio/EquityCurve";
 import StatsGrid from "@/components/portfolio/StatsGrid";
@@ -198,6 +199,7 @@ export default function PortfolioWorkspace() {
       )}
 
       <DashboardHeader />
+      <DailySetupPanel compact />
 
       {!loading && !hasContent ? (
         <PortfolioEmptyState accountValue={accountValue} />

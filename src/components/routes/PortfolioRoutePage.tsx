@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import DailySetupPanel from "@/components/DailySetupPanel";
 import ConnectPrompt from "@/components/portfolio/ConnectPrompt";
 import PortfolioWorkspace from "@/components/portfolio/PortfolioWorkspace";
 import { useWallet } from "@/context/WalletContext";
@@ -33,7 +34,14 @@ function PortfolioRouteContent() {
     );
   }
 
-  return isConnected ? <PortfolioWorkspace /> : <ConnectPrompt />;
+  return isConnected ? (
+    <PortfolioWorkspace />
+  ) : (
+    <div className="space-y-5">
+      <DailySetupPanel compact />
+      <ConnectPrompt />
+    </div>
+  );
 }
 
 export default function PortfolioRoutePage() {
