@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { usePortfolio } from "@/context/PortfolioContext";
+import { useWallet } from "@/context/WalletContext";
 import { cn, formatUSD } from "@/lib/format";
 import { formatEasternDate } from "@/lib/time";
 
@@ -44,7 +45,7 @@ function EquityTooltip({
       <div className="mt-1.5 text-lg font-semibold text-zinc-50">{formatUSD(value)}</div>
       <div className="mt-1 inline-flex items-center gap-2 text-xs text-emerald-300/90">
         <span className="h-2 w-2 rounded-full bg-emerald-400" />
-        Net trading P&L
+        Realized trading result
       </div>
     </div>
   );
@@ -52,6 +53,7 @@ function EquityTooltip({
 
 export default function EquityCurve({ density = "compact" }: { density?: "compact" | "roomy" }) {
   const { equityCurve, loading } = usePortfolio();
+  const { accountState } = useWallet();
   const [range, setRange] = useState<TimeRange>("30d");
 
   const chartData = useMemo(() => {
@@ -100,6 +102,9 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
   const latestPoint = chartData[chartData.length - 1] ?? null;
   const startingPoint = chartData[0] ?? null;
   const changeInView = latestPoint?.changeInView ?? 0;
+  const walletValue = accountState?.accountValue ?? null;
+  const perpsValue = accountState?.isolatedAccountValue ?? null;
+  const spotValue = accountState?.spotTotalValue ?? null;
   const rangeHigh = useMemo(
     () => (chartData.length ? Math.max(...chartData.map((point) => point.accountEquity)) : null),
     [chartData],
@@ -137,15 +142,33 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="label text-emerald-400/75">
-              Trading P&L curve
+              Realized trading P&L
             </div>
-            <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
-              <div className="text-4xl font-semibold tracking-tight text-zinc-50">
-                {latestPoint ? formatUSD(latestPoint.accountEquity) : "--"}
+            <div className="mt-2 flex flex-wrap items-start gap-x-6 gap-y-3">
+              <div>
+                <div className="text-4xl font-semibold tracking-tight text-zinc-50">
+                  {latestPoint ? formatUSD(latestPoint.accountEquity) : "--"}
+                </div>
+                <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-600">
+                  Not wallet balance
+                </div>
               </div>
+              {walletValue != null ? (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                    Current wallet value
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-zinc-100">
+                    {formatUSD(walletValue)}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    Perps {formatUSD(perpsValue ?? 0)} · Spot {formatUSD(spotValue ?? 0)}
+                  </div>
+                </div>
+              ) : null}
               <div
                 className={cn(
-                  "pb-1 text-sm font-medium",
+                  "pt-2 text-sm font-medium",
                   changeInView >= 0 ? "text-emerald-400" : "text-red-400",
                 )}
               >
@@ -156,11 +179,14 @@ export default function EquityCurve({ density = "compact" }: { density?: "compac
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
               <span className="inline-flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                Closed P&L + funding - fees
+                Closed perps P&L + funding - fees
+              </span>
+              <span>
+                Spot, staked assets, and deposits are separate from this curve.
               </span>
               {startingPoint ? (
                 <span>
-                  Started at {formatUSD(startingPoint.accountEquity)}
+                  View opened at {formatUSD(startingPoint.accountEquity)}
                 </span>
               ) : null}
               {rangeLow != null && rangeHigh != null ? (
