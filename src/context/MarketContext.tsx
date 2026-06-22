@@ -18,6 +18,7 @@ import {
 import { fundingToSignal, computeFundingSignal } from "@/lib/signals";
 import { reportClientError } from "@/lib/clientErrorReporter";
 import {
+  HIP3_DEXS,
   MARKET_ENRICHMENT_INTERVAL_MS,
   POLL_INTERVAL_MARKET,
 } from "@/lib/constants";
@@ -341,34 +342,53 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     if (wsInitRef.current) return;
     wsInitRef.current = true;
 
-    let allMidsSub: { unsubscribe: () => Promise<void> } | null = null;
-    const initWs = async () => {
-      try {
-        const sub = getSubscriptionClient(getStoredNetwork());
+    const subs: Array<{ unsubscribe: () => Promise<void> }> = [];
 
-        allMidsSub = await sub.allMids((event) => {
-          const mids = event.mids;
-          setAssets((prev) =>
-            prev.map((asset) => {
-              const newMid = mids[asset.coin];
-              if (newMid) {
-                const newMidPx = parseFloat(newMid);
-                return { ...asset, midPx: newMidPx };
-              }
-              return asset;
-            }),
-          );
-          setLastUpdated(new Date());
-        });
+    // Each allMids stream keys mids by coin; the main dex uses plain symbols
+    // ("BTC") and HIP-3 builder dexes use the prefixed form ("xyz:BRENTOIL"),
+    // both of which match asset.coin — so one handler covers every stream.
+    const applyMids = (mids: Record<string, string>) => {
+      setAssets((prev) =>
+        prev.map((asset) => {
+          const newMid = mids[asset.coin];
+          if (newMid) {
+            return { ...asset, midPx: parseFloat(newMid) };
+          }
+          return asset;
+        }),
+      );
+      setLastUpdated(new Date());
+    };
+
+    const initWs = async () => {
+      const sub = getSubscriptionClient(getStoredNetwork());
+
+      // Main perp dex (crypto).
+      try {
+        subs.push(await sub.allMids((event) => applyMids(event.mids)));
       } catch (err) {
-        console.warn("WebSocket init failed, relying on REST polling:", err);
+        console.warn("WebSocket allMids (main) failed, relying on REST polling:", err);
+      }
+
+      // HIP-3 builder dexes (oil, metals, equities, …) — one stream per dex.
+      for (const dex of HIP3_DEXS) {
+        try {
+          subs.push(await sub.allMids({ dex }, (event) => applyMids(event.mids)));
+        } catch (err) {
+          console.warn(
+            `WebSocket allMids (${dex}) failed, relying on REST polling:`,
+            err,
+          );
+        }
       }
     };
 
     initWs();
 
     return () => {
-      allMidsSub?.unsubscribe().catch(console.warn);
+      for (const s of subs) {
+        s.unsubscribe().catch(console.warn);
+      }
     };
   }, []);
 
