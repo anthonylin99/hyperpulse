@@ -300,7 +300,11 @@ export default function MarketTable({
     }
 
     if (hideSmallCaps && !search) {
-      arr = arr.filter((a) => a.openInterest >= MIN_OI_USD);
+      // HIP-3 builder markets are a deliberately curated set the user wants
+      // visible; only apply the OI floor to the main crypto perps.
+      arr = arr.filter(
+        (a) => a.marketType === "hip3_perp" || a.openInterest >= MIN_OI_USD,
+      );
     }
 
     arr.sort((a, b) => {
@@ -561,7 +565,7 @@ export default function MarketTable({
                       isExpanded={selectedAsset === asset.coin}
                       onSelect={() => onSelectAsset(selectedAsset === asset.coin ? null : asset.coin)}
                       onTrade={(direction) => onTrade(asset.coin, direction)}
-                      tradingEnabled={tradingActive}
+                      tradingEnabled={tradingActive && asset.marketType !== "hip3_perp"}
                       fundingHistory={fundingHistories[asset.coin]}
                       setupSignal={setupSignal}
                       volumeVsAvg={radarVolumeByAsset[asset.coin]}

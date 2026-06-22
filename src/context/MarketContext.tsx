@@ -246,8 +246,15 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               oiChangePct ?? 0,
             );
 
+            // HIP-3 builder markets arrive as "dex:ASSET" (e.g. "xyz:BRENTOIL").
+            const colon = u.name.indexOf(":");
+            const isHip3 = colon !== -1;
+
             return {
               coin: u.name,
+              displayName: isHip3 ? u.name.slice(colon + 1) : u.name,
+              dex: isHip3 ? u.name.slice(0, colon) : undefined,
+              marketType: isHip3 ? "hip3_perp" : "perp",
               assetIndex: i,
               szDecimals: u.szDecimals,
               markPx,

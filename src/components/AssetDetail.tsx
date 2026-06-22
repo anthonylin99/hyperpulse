@@ -198,7 +198,15 @@ export default function AssetDetail({
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
-          <span className="text-zinc-50 font-bold text-sm">{asset.coin}</span>
+          <span className="text-zinc-50 font-bold text-sm">{asset.displayName}</span>
+          {asset.dex && (
+            <span
+              className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded bg-accent/10 text-accent"
+              title={`HIP-3 builder market on "${asset.dex}" dex`}
+            >
+              {asset.dex}
+            </span>
+          )}
           <span className="text-zinc-400">
             {formatUSD(asset.markPx, priceDecimals)}
           </span>
