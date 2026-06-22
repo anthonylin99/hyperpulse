@@ -9,6 +9,7 @@ import TopMoversPanel from "@/components/markets/TopMoversPanel";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
+import { normalizeMarketCoin } from "@/lib/marketCoins";
 
 export default function MarketsRoutePage({ initialAsset = null }: { initialAsset?: string | null }) {
   const { tradingEnabled } = useAppConfig();
@@ -20,7 +21,8 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
 
   useEffect(() => {
     if (!initialAsset) return;
-    const asset = initialAsset.toUpperCase();
+    const asset = normalizeMarketCoin(initialAsset);
+    if (!asset) return;
     setSelectedAsset(asset);
     window.setTimeout(() => {
       document.getElementById(`market-asset-${asset.replace(/[^a-zA-Z0-9_-]/g, "-")}`)?.scrollIntoView({

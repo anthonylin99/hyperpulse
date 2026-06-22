@@ -81,7 +81,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       coins.map(async (coin) => {
         try {
           const res = await fetch(
-            `/api/market/funding?coin=${coin}&startTime=${startTime}&endTime=${now}`,
+            `/api/market/funding?coin=${encodeURIComponent(coin)}&startTime=${startTime}&endTime=${now}`,
           );
           if (!res.ok) return;
           const data = await res.json();
@@ -122,10 +122,10 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       try {
         const [fundingRes, candleRes] = await Promise.all([
           fetch(
-            `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`,
+            `/api/market/funding?coin=${encodeURIComponent(asset.coin)}&startTime=${startTime}&endTime=${now}`,
           ),
           fetch(
-            `/api/market/candles?coin=${asset.coin}&interval=1h&startTime=${startTime}&endTime=${now}`,
+            `/api/market/candles?coin=${encodeURIComponent(asset.coin)}&interval=1h&startTime=${startTime}&endTime=${now}`,
           ),
         ]);
         if (!fundingRes.ok || !candleRes.ok) continue;
