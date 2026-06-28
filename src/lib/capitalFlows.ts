@@ -235,7 +235,7 @@ export function computeCapitalAdjustedEquityCurve(
 ): EquityPoint[] {
   const tradeEvents = trades.map((trade) => ({
     time: trade.exitTime,
-    amount: trade.pnl + trade.fundingPaid - trade.fees,
+    amount: trade.netPnl, // pnl + fundingPaid − fees
   }));
   const firstTradeEntry = trades.reduce<number | null>(
     (earliest, trade) =>

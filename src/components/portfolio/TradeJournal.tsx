@@ -37,7 +37,7 @@ function exportCSV(
 ) {
   const headers = [
     "Date", "Asset", "Direction", "Entry Price", "Exit Price",
-    "Size (USD)", "Initial Margin", "P&L", "P&L % (margin)", "Duration (min)", "Fees", "Funding", "Notes"
+    "Size (USD)", "Initial Margin", "P&L (gross)", "Net P&L", "P&L % (margin)", "Duration (min)", "Fees", "Funding", "Notes"
   ];
   const rows = trades.map((t) => [
     new Date(t.exitTime).toISOString(),
@@ -48,6 +48,7 @@ function exportCSV(
     t.notional.toFixed(2),
     sizingByTrade[t.id] ?? "Not captured",
     t.pnl.toFixed(2),
+    t.netPnl.toFixed(2),
     tradeReturnOnCapitalPct(t).toFixed(2),
     (t.duration / 60000).toFixed(1),
     t.fees.toFixed(4),
@@ -154,9 +155,9 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
 
     let next = enriched;
     if (filterResult === "winners") {
-      next = next.filter((t) => t.pnl > 0);
+      next = next.filter((t) => t.netPnl > 0);
     } else if (filterResult === "losers") {
-      next = next.filter((t) => t.pnl <= 0);
+      next = next.filter((t) => t.netPnl <= 0);
     }
 
     return [...next].sort((a, b) => {

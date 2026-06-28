@@ -35,7 +35,9 @@ export default function PnLWaterfall() {
     },
   ];
 
-  const netPnl = stats.totalPnl;
+  // True net = gross profit − gross loss − fees + funding, so the final bar ties out
+  // to the bars stacked above it (and to the "Trading P&L" stat).
+  const netPnl = stats.totalPnl - stats.totalFeesPaid + stats.totalFundingNet;
   const maxAbs = Math.max(...items.map((i) => Math.abs(i.value)), Math.abs(netPnl), 1);
 
   // Calculate what % of gross profit was lost to each category

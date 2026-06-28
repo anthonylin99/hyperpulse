@@ -39,11 +39,12 @@ export default function MonthlyPnL() {
         grouped.set(key, entry);
       }
 
-      entry.pnl += t.pnl;
+      // Net P&L (after fees + funding), consistent with the equity curve and headline win rate.
+      entry.pnl += t.netPnl;
       entry.total += 1;
-      if (t.pnl > 0) entry.wins += 1;
-      if (t.pnl > entry.best) entry.best = t.pnl;
-      if (t.pnl < entry.worst) entry.worst = t.pnl;
+      if (t.netPnl > 0) entry.wins += 1;
+      if (t.netPnl > entry.best) entry.best = t.netPnl;
+      if (t.netPnl < entry.worst) entry.worst = t.netPnl;
     }
 
     return Array.from(grouped.entries())

@@ -127,6 +127,7 @@ export function groupFillsIntoTrades(fills: Fill[]): RoundTripTrade[] {
           exitTime: fill.time,
           duration: fill.time - entryTime,
           pnl: closedPnl,
+          netPnl: closedPnl - (matchedOpenFees + closeFee), // funding merged in later
           pnlPct,
           fees: matchedOpenFees + closeFee,
           fundingPaid: 0, // merged later
@@ -149,15 +150,40 @@ export function mergeFundingIntoTrades(
   trades: RoundTripTrade[],
   funding: FundingEntry[],
 ): RoundTripTrade[] {
-  return trades.map((trade) => {
-    const tradeFunding = funding.filter(
-      (f) =>
-        f.coin === trade.coin &&
-        f.time >= trade.entryTime &&
-        f.time <= trade.exitTime,
+  // Each funding payment must be counted once. Adds + partial closes can produce
+  // several round-trip trades on the same coin whose [entryTime, exitTime] windows
+  // overlap; a naive per-trade filter would assign the same funding entry to all of
+  // them and overstate per-trade funding. Allocate each entry once, split by size
+  // across the trades that were genuinely open when it accrued.
+  const fundingByTrade = new Map<string, number>();
+  for (const trade of trades) fundingByTrade.set(trade.id, 0);
+
+  const tradesByCoin = new Map<string, RoundTripTrade[]>();
+  for (const trade of trades) {
+    const arr = tradesByCoin.get(trade.coin) ?? [];
+    arr.push(trade);
+    tradesByCoin.set(trade.coin, arr);
+  }
+
+  for (const f of funding) {
+    const open = (tradesByCoin.get(f.coin) ?? []).filter(
+      (t) => f.time >= t.entryTime && f.time <= t.exitTime,
     );
-    const fundingPaid = tradeFunding.reduce((s, f) => s + f.usdc, 0);
-    return { ...trade, fundingPaid };
+    if (open.length === 0) continue; // funding while flat / outside any round trip
+    if (open.length === 1) {
+      fundingByTrade.set(open[0].id, (fundingByTrade.get(open[0].id) ?? 0) + f.usdc);
+      continue;
+    }
+    const totalSize = open.reduce((s, t) => s + t.size, 0);
+    for (const t of open) {
+      const share = totalSize > 0 ? t.size / totalSize : 1 / open.length;
+      fundingByTrade.set(t.id, (fundingByTrade.get(t.id) ?? 0) + f.usdc * share);
+    }
+  }
+
+  return trades.map((trade) => {
+    const fundingPaid = fundingByTrade.get(trade.id) ?? 0;
+    return { ...trade, fundingPaid, netPnl: trade.pnl - trade.fees + fundingPaid };
   });
 }
 
@@ -204,22 +230,26 @@ export function computePortfolioStats(
 
   if (trades.length === 0) return empty;
 
-  const wins = trades.filter((t) => t.pnl > 0);
-  const losses = trades.filter((t) => t.pnl <= 0);
+  // Win/loss outcomes use NET P&L (after fees + funding) — that's what actually hit
+  // the account and matches the documented win-rate definition. Gross profit/loss are
+  // kept separately (below) for the P&L waterfall and the gross-based profit factor.
+  const wins = trades.filter((t) => t.netPnl > 0);
+  const losses = trades.filter((t) => t.netPnl <= 0);
 
-  const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
-  const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
+  const grossProfit = trades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+  const grossLoss = Math.abs(trades.filter((t) => t.pnl <= 0).reduce((s, t) => s + t.pnl, 0));
+  const totalPnl = trades.reduce((s, t) => s + t.pnl, 0); // gross closed P&L
+  const netTotalPnl = trades.reduce((s, t) => s + t.netPnl, 0); // after fees + funding
   const totalFees = trades.reduce((s, t) => s + t.fees, 0);
   const totalFundingNet = funding.reduce((s, f) => s + f.usdc, 0);
 
-  // Streaks
+  // Streaks (net outcome)
   let winStreak = 0,
     loseStreak = 0,
     maxWinStreak = 0,
     maxLoseStreak = 0;
   for (const t of trades) {
-    if (t.pnl > 0) {
+    if (t.netPnl > 0) {
       winStreak++;
       loseStreak = 0;
       maxWinStreak = Math.max(maxWinStreak, winStreak);
@@ -262,10 +292,13 @@ export function computePortfolioStats(
   const calmarRatio =
     maxDrawdown > 0 ? annualizedReturn / maxDrawdown : 0;
 
-  const sorted = [...trades].sort((a, b) => a.pnl - b.pnl);
+  const sorted = [...trades].sort((a, b) => a.netPnl - b.netPnl);
 
-  const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
-  const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+  // Average winner / loser use net P&L, consistent with the net win/loss split.
+  const netWinTotal = wins.reduce((s, t) => s + t.netPnl, 0);
+  const netLossTotal = Math.abs(losses.reduce((s, t) => s + t.netPnl, 0));
+  const avgWin = wins.length > 0 ? netWinTotal / wins.length : 0;
+  const avgLoss = losses.length > 0 ? netLossTotal / losses.length : 0;
 
   // Payoff ratio (risk/reward): how much you make on wins vs lose on losses
   const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
@@ -290,13 +323,13 @@ export function computePortfolioStats(
     ? losses.reduce((s, t) => s + t.duration, 0) / losses.length
     : 0;
 
-  // Largest single win/loss
-  const largestWin = wins.length > 0 ? Math.max(...wins.map((t) => t.pnl)) : 0;
-  const largestLoss = losses.length > 0 ? Math.min(...losses.map((t) => t.pnl)) : 0;
+  // Largest single net win/loss
+  const largestWin = wins.length > 0 ? Math.max(...wins.map((t) => t.netPnl)) : 0;
+  const largestLoss = losses.length > 0 ? Math.min(...losses.map((t) => t.netPnl)) : 0;
 
-  // R-multiple: express each trade's P&L as a multiple of avg loss ("1R")
+  // R-multiple: express each trade's net P&L as a multiple of avg loss ("1R")
   const avgRMultiple = avgLoss > 0
-    ? (totalPnl / trades.length) / avgLoss
+    ? (netTotalPnl / trades.length) / avgLoss
     : 0;
 
   return {
@@ -328,7 +361,7 @@ export function computePortfolioStats(
     worstTrade: sorted[0] ?? null,
     longestWinStreak: maxWinStreak,
     longestLoseStreak: maxLoseStreak,
-    expectancy: totalPnl / trades.length,
+    expectancy: netTotalPnl / trades.length,
     largestWin,
     largestLoss,
     avgRMultiple,
@@ -353,7 +386,7 @@ function computeMaxDrawdown(trades: RoundTripTrade[], startingBalance: number): 
   let currentDDStart = trades[0].exitTime;
 
   for (const trade of trades) {
-    equity += trade.pnl;
+    equity += trade.netPnl;
     if (equity > peak) {
       peak = equity;
       currentDDStart = trade.exitTime;
@@ -392,7 +425,7 @@ export function computeEquityCurve(
   points.push({ time: sorted[0].entryTime, equity, drawdown: 0 });
 
   for (const trade of sorted) {
-    equity += trade.pnl;
+    equity += trade.netPnl;
     peak = Math.max(peak, equity);
     const drawdown = peak > 0 ? (equity - peak) / peak : 0;
     points.push({ time: trade.exitTime, equity, drawdown });
