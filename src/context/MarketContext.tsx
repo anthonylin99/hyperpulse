@@ -18,6 +18,7 @@ import {
 import { fundingToSignal, computeFundingSignal } from "@/lib/signals";
 import { reportClientError } from "@/lib/clientErrorReporter";
 import {
+  HIP3_DEXS,
   MARKET_ENRICHMENT_INTERVAL_MS,
   POLL_INTERVAL_MARKET,
 } from "@/lib/constants";
@@ -81,7 +82,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       coins.map(async (coin) => {
         try {
           const res = await fetch(
-            `/api/market/funding?coin=${coin}&startTime=${startTime}&endTime=${now}`,
+            `/api/market/funding?coin=${encodeURIComponent(coin)}&startTime=${startTime}&endTime=${now}`,
           );
           if (!res.ok) return;
           const data = await res.json();
@@ -122,10 +123,10 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       try {
         const [fundingRes, candleRes] = await Promise.all([
           fetch(
-            `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`,
+            `/api/market/funding?coin=${encodeURIComponent(asset.coin)}&startTime=${startTime}&endTime=${now}`,
           ),
           fetch(
-            `/api/market/candles?coin=${asset.coin}&interval=1h&startTime=${startTime}&endTime=${now}`,
+            `/api/market/candles?coin=${encodeURIComponent(asset.coin)}&interval=1h&startTime=${startTime}&endTime=${now}`,
           ),
         ]);
         if (!fundingRes.ok || !candleRes.ok) continue;
@@ -246,8 +247,15 @@ export function MarketProvider({ children }: { children: ReactNode }) {
               oiChangePct ?? 0,
             );
 
+            // HIP-3 builder markets arrive as "dex:ASSET" (e.g. "xyz:BRENTOIL").
+            const colon = u.name.indexOf(":");
+            const isHip3 = colon !== -1;
+
             return {
               coin: u.name,
+              displayName: isHip3 ? u.name.slice(colon + 1) : u.name,
+              dex: isHip3 ? u.name.slice(0, colon) : undefined,
+              marketType: isHip3 ? "hip3_perp" : "perp",
               assetIndex: i,
               szDecimals: u.szDecimals,
               markPx,
@@ -334,34 +342,53 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     if (wsInitRef.current) return;
     wsInitRef.current = true;
 
-    let allMidsSub: { unsubscribe: () => Promise<void> } | null = null;
-    const initWs = async () => {
-      try {
-        const sub = getSubscriptionClient(getStoredNetwork());
+    const subs: Array<{ unsubscribe: () => Promise<void> }> = [];
 
-        allMidsSub = await sub.allMids((event) => {
-          const mids = event.mids;
-          setAssets((prev) =>
-            prev.map((asset) => {
-              const newMid = mids[asset.coin];
-              if (newMid) {
-                const newMidPx = parseFloat(newMid);
-                return { ...asset, midPx: newMidPx };
-              }
-              return asset;
-            }),
-          );
-          setLastUpdated(new Date());
-        });
+    // Each allMids stream keys mids by coin; the main dex uses plain symbols
+    // ("BTC") and HIP-3 builder dexes use the prefixed form ("xyz:BRENTOIL"),
+    // both of which match asset.coin — so one handler covers every stream.
+    const applyMids = (mids: Record<string, string>) => {
+      setAssets((prev) =>
+        prev.map((asset) => {
+          const newMid = mids[asset.coin];
+          if (newMid) {
+            return { ...asset, midPx: parseFloat(newMid) };
+          }
+          return asset;
+        }),
+      );
+      setLastUpdated(new Date());
+    };
+
+    const initWs = async () => {
+      const sub = getSubscriptionClient(getStoredNetwork());
+
+      // Main perp dex (crypto).
+      try {
+        subs.push(await sub.allMids((event) => applyMids(event.mids)));
       } catch (err) {
-        console.warn("WebSocket init failed, relying on REST polling:", err);
+        console.warn("WebSocket allMids (main) failed, relying on REST polling:", err);
+      }
+
+      // HIP-3 builder dexes (oil, metals, equities, …) — one stream per dex.
+      for (const dex of HIP3_DEXS) {
+        try {
+          subs.push(await sub.allMids({ dex }, (event) => applyMids(event.mids)));
+        } catch (err) {
+          console.warn(
+            `WebSocket allMids (${dex}) failed, relying on REST polling:`,
+            err,
+          );
+        }
       }
     };
 
     initWs();
 
     return () => {
-      allMidsSub?.unsubscribe().catch(console.warn);
+      for (const s of subs) {
+        s.unsubscribe().catch(console.warn);
+      }
     };
   }, []);
 

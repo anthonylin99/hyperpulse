@@ -59,6 +59,7 @@ export default function AssetDetail({
   const [tab, setTab] = useState<"price" | "liquidity" | "funding" | "leverage">("price");
   const [fundingView, setFundingView] = useState<"apr" | "hourly">("apr");
   const { openTicket } = useShadowBook();
+  const supportsLiquidityMap = asset.marketType !== "hip3_perp";
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const priceColor =
@@ -79,7 +80,7 @@ export default function AssetDetail({
       const startTime = now - days * 24 * 60 * 60 * 1000;
       const res = await fetch(
         withNetworkParam(
-          `/api/market/funding?coin=${asset.coin}&startTime=${startTime}&endTime=${now}`,
+          `/api/market/funding?coin=${encodeURIComponent(asset.coin)}&startTime=${startTime}&endTime=${now}`,
         )
       );
       if (!res.ok) return;
@@ -105,7 +106,7 @@ export default function AssetDetail({
       const interval = days <= 7 ? "1h" : "4h";
       const res = await fetch(
         withNetworkParam(
-          `/api/market/candles?coin=${asset.coin}&marketType=perp&interval=${interval}&startTime=${startTime}&endTime=${now}`,
+          `/api/market/candles?coin=${encodeURIComponent(asset.coin)}&marketType=perp&interval=${interval}&startTime=${startTime}&endTime=${now}`,
         )
       );
       if (!res.ok) return;
@@ -129,7 +130,7 @@ export default function AssetDetail({
     setLoadingOrderbook(true);
     setOrderbookError(null);
     try {
-      const res = await fetch(withNetworkParam(`/api/market/orderbook?coin=${asset.coin}`));
+      const res = await fetch(withNetworkParam(`/api/market/orderbook?coin=${encodeURIComponent(asset.coin)}`));
       if (!res.ok) throw new Error("Order book unavailable");
       const data = await res.json();
       setOrderbook({
@@ -157,6 +158,11 @@ export default function AssetDetail({
     if (tab !== "leverage") return;
     fetchOrderbook();
   }, [fetchOrderbook, tab]);
+
+  useEffect(() => {
+    if (supportsLiquidityMap || tab !== "liquidity") return;
+    setTab("price");
+  }, [supportsLiquidityMap, tab]);
 
   const activeFunding = fundingRange === 7 ? fundingHistory : extendedFunding;
   const chartData = useMemo(() => {
@@ -198,7 +204,15 @@ export default function AssetDetail({
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
-          <span className="text-zinc-50 font-bold text-sm">{asset.coin}</span>
+          <span className="text-zinc-50 font-bold text-sm">{asset.displayName}</span>
+          {asset.dex && (
+            <span
+              className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded bg-accent/10 text-accent"
+              title={`HIP-3 builder market on "${asset.dex}" dex`}
+            >
+              {asset.dex}
+            </span>
+          )}
           <span className="text-zinc-400">
             {formatUSD(asset.markPx, priceDecimals)}
           </span>
@@ -223,7 +237,9 @@ export default function AssetDetail({
       {/* Tab selector */}
       <div className="flex flex-wrap items-center gap-1 px-4 pb-2">
         <FilterChip label="Price chart" active={tab === "price"} onClick={() => setTab("price")} className="py-1.5 text-xs" />
-        <FilterChip label="Liquidity map" active={tab === "liquidity"} onClick={() => setTab("liquidity")} className="py-1.5 text-xs" />
+        {supportsLiquidityMap && (
+          <FilterChip label="Liquidity map" active={tab === "liquidity"} onClick={() => setTab("liquidity")} className="py-1.5 text-xs" />
+        )}
         <FilterChip label="Funding history" active={tab === "funding"} onClick={() => setTab("funding")} className="py-1.5 text-xs" />
         <FilterChip label="Positioning" active={tab === "leverage"} onClick={() => setTab("leverage")} className="py-1.5 text-xs" />
         <div className="ml-auto flex flex-wrap items-center gap-1">

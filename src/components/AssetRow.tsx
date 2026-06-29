@@ -80,7 +80,15 @@ export default function AssetRow({
       >
         <td className="px-2.5 py-0.5 whitespace-nowrap">
           <div className="flex items-center gap-2">
-            <span className="text-zinc-50 font-medium">{asset.coin}</span>
+            <span className="text-zinc-50 font-medium">{asset.displayName}</span>
+            {asset.dex && (
+              <span
+                className="text-[8px] uppercase tracking-wide px-1 py-0.5 rounded bg-accent/10 text-accent"
+                title={`HIP-3 builder market on "${asset.dex}" dex`}
+              >
+                {asset.dex}
+              </span>
+            )}
           </div>
         </td>
 

@@ -41,9 +41,29 @@ export const COLORS = {
   text: "#fafafa",
 } as const;
 
+// HIP-3 builder-deployed perp dexes to merge into the main perps list.
+// Each name is passed as the `dex` arg to Hyperliquid info endpoints
+// (meta / metaAndAssetCtxs / allMids). `xyz` carries oil, metals, equities,
+// FX and index markets. Add more dex names here to surface them.
+export const HIP3_DEXS = ["xyz"] as const;
+
 // Asset categories — Hyperliquid API doesn't provide categories,
 // so we maintain a static map. Unlisted assets default to "Other".
-export type AssetCategory = "L1" | "L2" | "DeFi" | "Meme" | "AI" | "Gaming" | "HL Native" | "Other";
+export type AssetCategory =
+  | "L1"
+  | "L2"
+  | "DeFi"
+  | "Meme"
+  | "AI"
+  | "Gaming"
+  | "HL Native"
+  | "Stocks"
+  | "Metals"
+  | "Energy"
+  | "Commodities"
+  | "FX"
+  | "Index"
+  | "Other";
 
 export const ASSET_CATEGORIES: Record<string, AssetCategory> = {
   // Layer 1
@@ -96,11 +116,37 @@ export const ASSET_CATEGORIES: Record<string, AssetCategory> = {
   JEFF: "HL Native",
 };
 
+// HIP-3 (builder dex) asset → category. Keyed by the asset part of
+// "dex:ASSET" (e.g. BRENTOIL from "xyz:BRENTOIL"). Non-equity markets are
+// listed explicitly; anything else on a HIP-3 dex defaults to "Stocks"
+// (the `xyz` dex is predominantly single-name equities).
+export const HIP3_ASSET_CATEGORIES: Record<string, AssetCategory> = {
+  // Energy
+  BRENTOIL: "Energy", CL: "Energy", NATGAS: "Energy", TTF: "Energy", XLE: "Energy",
+  // Metals
+  GOLD: "Metals", SILVER: "Metals", PLATINUM: "Metals", PALLADIUM: "Metals",
+  COPPER: "Metals", ALUMINIUM: "Metals", URANIUM: "Metals", URNM: "Metals",
+  // Agriculture / soft commodities
+  CORN: "Commodities", WHEAT: "Commodities",
+  // FX
+  EUR: "FX", JPY: "FX", GBP: "FX", KRW: "FX", DXY: "FX",
+  // Indices
+  SP500: "Index", JP225: "Index", KR200: "Index", NIFTY: "Index", IBOV: "Index",
+  VIX: "Index", VOL: "Index", XYZ100: "Index", H100: "Index", EWY: "Index",
+  EWJ: "Index", EWZ: "Index", EWT: "Index", SMH: "Index",
+};
+
 export const ALL_CATEGORIES: AssetCategory[] = [
   "L2", "AI", "Gaming", "HL Native",
+  "Stocks", "Metals", "Energy", "Commodities", "FX", "Index",
 ];
 
 export function getAssetCategory(coin: string): AssetCategory {
+  const colon = coin.indexOf(":");
+  if (colon !== -1) {
+    const asset = coin.slice(colon + 1);
+    return HIP3_ASSET_CATEGORIES[asset] ?? "Stocks";
+  }
   return ASSET_CATEGORIES[coin] ?? "Other";
 }
 

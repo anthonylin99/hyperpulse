@@ -3,7 +3,7 @@ import {
   jsonError,
   jsonSuccess,
   logServerError,
-  validateCoin,
+  validateMarketCoin,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   if (limited) return limited;
 
   const { searchParams } = new URL(request.url);
-  const coin = validateCoin(searchParams.get("coin"));
+  const coin = validateMarketCoin(searchParams.get("coin"));
 
   if (!coin) {
     return jsonError("A valid coin is required.", {

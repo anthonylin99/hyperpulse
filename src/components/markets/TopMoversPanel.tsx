@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { cn } from "@/lib/format";
+import { normalizeMarketCoin } from "@/lib/marketCoins";
 import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import { SectionEyebrow } from "@/components/trading-ui";
 
@@ -144,11 +145,12 @@ export default function TopMoversPanel() {
   const handleSelect = (coin: string, event: MouseEvent<HTMLAnchorElement>) => {
     if (pathname !== "/markets") return;
     event.preventDefault();
-    const upper = coin.toUpperCase();
-    setSelectedAsset(upper);
-    window.history.replaceState(null, "", `/markets?asset=${encodeURIComponent(upper)}`);
+    const asset = normalizeMarketCoin(coin);
+    if (!asset) return;
+    setSelectedAsset(asset);
+    window.history.replaceState(null, "", `/markets?asset=${encodeURIComponent(asset)}`);
     window.setTimeout(() => {
-      document.getElementById(marketAssetElementId(upper))?.scrollIntoView({
+      document.getElementById(marketAssetElementId(asset))?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });

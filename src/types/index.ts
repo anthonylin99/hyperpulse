@@ -20,6 +20,11 @@ export interface Signal {
 
 export interface MarketAsset {
   coin: string;
+  /** Display symbol without the HIP-3 dex prefix (e.g. "BRENTOIL"). */
+  displayName: string;
+  /** Builder dex name for HIP-3 markets (e.g. "xyz"); undefined for main perps. */
+  dex?: string;
+  marketType: "perp" | "hip3_perp";
   assetIndex: number;
   szDecimals: number;
   markPx: number;

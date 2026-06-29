@@ -1,9 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { normalizeMarketCoin } from "@/lib/marketCoins";
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 const COIN_REGEX = /^[A-Z0-9][A-Z0-9/:_-]{0,31}$/;
-const DEX_PREFIX_REGEX = /^[a-z0-9][a-z0-9_-]{0,23}$/;
-const MARKET_ASSET_REGEX = /^[A-Z0-9][A-Z0-9/_-]{0,31}$/;
 const VALID_INTERVALS = [
   "1m",
   "3m",
@@ -51,20 +50,7 @@ export function validateCoin(value: string | null): string | null {
 }
 
 export function validateMarketCoin(value: string | null): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed.includes(":")) return validateCoin(trimmed);
-
-  const parts = trimmed.split(":");
-  if (parts.length !== 2) return null;
-
-  const dex = parts[0].toLowerCase();
-  const asset = parts[1].toUpperCase();
-  if (!DEX_PREFIX_REGEX.test(dex) || !MARKET_ASSET_REGEX.test(asset)) {
-    return null;
-  }
-
-  return `${dex}:${asset}`;
+  return normalizeMarketCoin(value);
 }
 
 export function parseInterval(value: string | null, fallback: Interval = "1h"): Interval {

@@ -13,7 +13,7 @@ function TickerItem({ asset }: { asset: MarketAsset }) {
   const priceDecimals = asset.markPx < 1 ? 4 : 2;
   return (
     <Link
-      href={`/markets?asset=${asset.coin}`}
+      href={`/markets?asset=${encodeURIComponent(asset.coin)}`}
       className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-zinc-800/70 bg-zinc-950/50 px-3 py-1.5 transition hover:border-teal-400/30 hover:bg-teal-500/[0.06]"
     >
       <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-200">

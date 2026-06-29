@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Info, Radar, RefreshCw } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { cn } from "@/lib/format";
+import { normalizeMarketCoin } from "@/lib/marketCoins";
 import { formatEasternTime } from "@/lib/time";
 import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import type { MarketRadarSignal } from "@/types";
@@ -124,7 +125,8 @@ function useOpenMarketAsset(signal?: MarketRadarSignal) {
   return (event: MouseEvent<HTMLAnchorElement>) => {
     if (!signal || pathname !== "/markets") return;
     event.preventDefault();
-    const asset = signal.asset.toUpperCase();
+    const asset = normalizeMarketCoin(signal.asset);
+    if (!asset) return;
     setSelectedAsset(asset);
     window.history.replaceState(null, "", `/markets?asset=${encodeURIComponent(asset)}`);
     window.setTimeout(() => {

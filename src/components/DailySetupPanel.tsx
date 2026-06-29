@@ -8,6 +8,7 @@ import { SectionEyebrow } from "@/components/trading-ui";
 import { useMarket } from "@/context/MarketContext";
 import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import { cn, formatCompactUsd, formatFundingAPR, formatPct } from "@/lib/format";
+import { normalizeMarketCoin } from "@/lib/marketCoins";
 import { formatEasternTime } from "@/lib/time";
 
 type DailySetup = {
@@ -93,7 +94,8 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
   const handleOpen = (event: MouseEvent<HTMLAnchorElement>) => {
     if (!setup || setup.coin === "MARKET" || pathname !== "/markets") return;
     event.preventDefault();
-    const asset = setup.coin.toUpperCase();
+    const asset = normalizeMarketCoin(setup.coin);
+    if (!asset) return;
     setSelectedAsset(asset);
     window.history.replaceState(null, "", `/markets?asset=${encodeURIComponent(asset)}`);
     window.setTimeout(() => {

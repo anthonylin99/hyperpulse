@@ -5,7 +5,7 @@ import {
   jsonSuccess,
   logServerError,
   parseTimestamp,
-  validateCoin,
+  validateMarketCoin,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
 
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   if (limited) return limited;
 
   const { searchParams } = new URL(request.url);
-  const coin = validateCoin(searchParams.get("coin"));
+  const coin = validateMarketCoin(searchParams.get("coin"));
   const now = Date.now();
   const startTime = parseTimestamp(searchParams.get("startTime"), {
     min: 1,

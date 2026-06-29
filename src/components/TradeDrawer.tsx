@@ -224,6 +224,14 @@ export default function TradeDrawer({
   const handleSubmit = async () => {
     if (!exchangeClient || !asset) return;
 
+    // HIP-3 builder markets are view-only in HyperPulse. Their `assetIndex` is
+    // a merged-list position, NOT Hyperliquid's real asset id, so placing an
+    // order here would target the wrong asset. Block at the order path.
+    if (asset.marketType === "hip3_perp") {
+      toast.error("HIP-3 markets are view-only in HyperPulse");
+      return;
+    }
+
     const usd = parseFloat(sizeUSD);
     if (!usd || usd < 10) {
       toast.error("Minimum size is $10");
