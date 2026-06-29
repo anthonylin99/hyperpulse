@@ -123,7 +123,8 @@ export interface RoundTripTrade {
   entryTime: number;
   exitTime: number;
   duration: number; // ms
-  pnl: number; // USD (closed P&L from fills)
+  pnl: number; // USD (gross closed P&L from fills, before fees/funding)
+  netPnl: number; // USD (pnl - fees + fundingPaid) — what actually hit the account
   pnlPct: number; // %
   fees: number;
   fundingPaid: number;

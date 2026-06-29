@@ -10,7 +10,7 @@ import type { RoundTripTrade } from "@/types";
 import TradeAnalyzerModal from "./TradeAnalyzerModal";
 import { formatEasternDateTime } from "@/lib/time";
 
-type SortKey = "time" | "pnl" | "pnlPct" | "duration" | "coin";
+type SortKey = "time" | "pnl" | "netPnl" | "pnlPct" | "duration" | "coin";
 type SortDir = "asc" | "desc";
 type FilterResult = "all" | "winners" | "losers";
 
@@ -37,7 +37,7 @@ function exportCSV(
 ) {
   const headers = [
     "Date", "Asset", "Direction", "Entry Price", "Exit Price",
-    "Size (USD)", "Initial Margin", "P&L", "P&L % (margin)", "Duration (min)", "Fees", "Funding", "Notes"
+    "Size (USD)", "Initial Margin", "P&L (gross)", "Net P&L", "P&L % (margin)", "Duration (min)", "Fees", "Funding", "Notes"
   ];
   const rows = trades.map((t) => [
     new Date(t.exitTime).toISOString(),
@@ -48,6 +48,7 @@ function exportCSV(
     t.notional.toFixed(2),
     sizingByTrade[t.id] ?? "Not captured",
     t.pnl.toFixed(2),
+    t.netPnl.toFixed(2),
     tradeReturnOnCapitalPct(t).toFixed(2),
     (t.duration / 60000).toFixed(1),
     t.fees.toFixed(4),
@@ -154,9 +155,9 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
 
     let next = enriched;
     if (filterResult === "winners") {
-      next = next.filter((t) => t.pnl > 0);
+      next = next.filter((t) => t.netPnl > 0);
     } else if (filterResult === "losers") {
-      next = next.filter((t) => t.pnl <= 0);
+      next = next.filter((t) => t.netPnl <= 0);
     }
 
     return [...next].sort((a, b) => {
@@ -167,6 +168,9 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
           break;
         case "pnl":
           cmp = a.pnl - b.pnl;
+          break;
+        case "netPnl":
+          cmp = a.netPnl - b.netPnl;
           break;
         case "pnlPct":
           cmp = tradeReturnOnCapitalPct(a) - tradeReturnOnCapitalPct(b);
@@ -184,6 +188,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
 
   const summary = useMemo(() => {
     const totalPnl = sizedTrades.reduce((s, t) => s + t.pnl, 0);
+    const totalNetPnl = sizedTrades.reduce((s, t) => s + t.netPnl, 0);
     const totalFees = sizedTrades.reduce((s, t) => s + t.fees, 0);
     const totalCapitalIn = sizedTrades.reduce((sum, trade) => sum + (trade.capitalUsedUsd ?? 0), 0);
     const leverageValues = sizedTrades
@@ -195,7 +200,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
       leverageValues.length > 0
         ? leverageValues.reduce((sum, value) => sum + value, 0) / leverageValues.length
         : null;
-    return { totalPnl, totalFees, totalCapitalIn, avgLeverage, count, avgPnl };
+    return { totalPnl, totalNetPnl, totalFees, totalCapitalIn, avgLeverage, count, avgPnl };
   }, [sizedTrades]);
 
   const sizingByTrade = useMemo(() => {
@@ -252,7 +257,7 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
     </span>
   );
 
-  const COL_COUNT = 13; // 11 data columns + analyze button + note icon column
+  const COL_COUNT = 14; // 12 data columns + analyze button + note icon column
 
   return (
     <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/85">
@@ -465,9 +470,18 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               <th
                 className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
                 onClick={() => toggleSort("pnl")}
+                title="Gross closed P&L before fees and funding (matches Hyperliquid)"
               >
                 P&L
                 <SortIcon k="pnl" />
+              </th>
+              <th
+                className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
+                onClick={() => toggleSort("netPnl")}
+                title="Net P&L after fees and funding — what actually hit your account"
+              >
+                Net
+                <SortIcon k="netPnl" />
               </th>
               <th
                 className="text-center px-2 py-2 cursor-pointer hover:text-zinc-300"
@@ -573,6 +587,15 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
                     </td>
                     <td
                       className={cn(
+                        "px-2 py-2 text-center font-mono font-medium",
+                        trade.netPnl >= 0 ? "text-emerald-400" : "text-red-400",
+                      )}
+                    >
+                      {trade.netPnl >= 0 ? "+" : ""}
+                      {formatUSD(trade.netPnl)}
+                    </td>
+                    <td
+                      className={cn(
                         "px-2 py-2 text-center font-mono",
                         marginReturnPct >= 0 ? "text-emerald-400" : "text-red-400",
                       )}
@@ -658,6 +681,15 @@ export default function TradeJournal({ density = "compact" }: { density?: "compa
               >
                 {summary.totalPnl >= 0 ? "+" : ""}
                 {formatUSD(summary.totalPnl)}
+              </td>
+              <td
+                className={cn(
+                  "px-2 py-2 text-center text-xs font-mono font-medium",
+                  summary.totalNetPnl >= 0 ? "text-emerald-400" : "text-red-400",
+                )}
+              >
+                {summary.totalNetPnl >= 0 ? "+" : ""}
+                {formatUSD(summary.totalNetPnl)}
               </td>
               <td className="px-2 py-2 text-center text-xs font-mono text-zinc-400">
                 avg {summary.avgPnl >= 0 ? "+" : ""}

@@ -37,28 +37,29 @@ export default function AssetDetailModal({ coin, onClose }: AssetDetailModalProp
 
   const stats = useMemo(() => {
     if (coinTrades.length === 0) return null;
-    const wins = coinTrades.filter((t) => t.pnl > 0);
-    const losses = coinTrades.filter((t) => t.pnl <= 0);
-    const totalPnl = coinTrades.reduce((s, t) => s + t.pnl, 0);
+    // Win/loss outcomes use net P&L (after fees + funding), matching the headline stats.
+    const wins = coinTrades.filter((t) => t.netPnl > 0);
+    const losses = coinTrades.filter((t) => t.netPnl <= 0);
+    const totalPnl = coinTrades.reduce((s, t) => s + t.pnl, 0); // gross closed P&L
     const totalVolume = coinTrades.reduce((s, t) => s + t.notional, 0);
     const totalFees = coinTrades.reduce((s, t) => s + t.fees, 0);
     const totalFunding = coinFunding.reduce((s, f) => s + f.usdc, 0);
-    const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.pnl, 0) / wins.length : 0;
-    const avgLoss = losses.length > 0 ? losses.reduce((s, t) => s + t.pnl, 0) / losses.length : 0;
+    const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.netPnl, 0) / wins.length : 0;
+    const avgLoss = losses.length > 0 ? losses.reduce((s, t) => s + t.netPnl, 0) / losses.length : 0;
     const avgHold = coinTrades.reduce((s, t) => s + t.duration, 0) / coinTrades.length;
     const longs = coinTrades.filter((t) => t.direction === "long");
     const shorts = coinTrades.filter((t) => t.direction === "short");
     const longPnl = longs.reduce((s, t) => s + t.pnl, 0);
     const shortPnl = shorts.reduce((s, t) => s + t.pnl, 0);
-    const bestTrade = coinTrades.reduce((best, t) => (t.pnl > best.pnl ? t : best), coinTrades[0]);
-    const worstTrade = coinTrades.reduce((worst, t) => (t.pnl < worst.pnl ? t : worst), coinTrades[0]);
+    const bestTrade = coinTrades.reduce((best, t) => (t.netPnl > best.netPnl ? t : best), coinTrades[0]);
+    const worstTrade = coinTrades.reduce((worst, t) => (t.netPnl < worst.netPnl ? t : worst), coinTrades[0]);
 
-    // Cumulative P&L for sparkline
+    // Cumulative net P&L for sparkline (matches the equity curve basis)
     const cumPnl: { time: number; pnl: number }[] = [];
     let running = 0;
     const sorted = [...coinTrades].sort((a, b) => a.exitTime - b.exitTime);
     for (const t of sorted) {
-      running += t.pnl;
+      running += t.netPnl;
       cumPnl.push({ time: t.exitTime, pnl: running });
     }
 

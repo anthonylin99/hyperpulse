@@ -111,7 +111,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           const rawTrades = groupFillsIntoTrades(cachedFills);
           const tradesWithFunding = mergeFundingIntoTrades(rawTrades, data.funding ?? []);
           setTrades(tradesWithFunding);
-          const realizedNet = tradesWithFunding.reduce((sum, trade) => sum + trade.pnl, 0);
+          const realizedNet = tradesWithFunding.reduce((sum, trade) => sum + trade.netPnl, 0);
           const startBal =
             cachedCapitalSummary && Math.abs(cachedCapitalSummary.netExternalCapitalUsd) > 1
               ? Math.max(Math.abs(cachedCapitalSummary.netExternalCapitalUsd), 100)
@@ -356,7 +356,7 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
       );
       setTrades(tradesWithFunding);
 
-      const realizedNet = tradesWithFunding.reduce((s, t) => s + t.pnl, 0);
+      const realizedNet = tradesWithFunding.reduce((s, t) => s + t.netPnl, 0);
       let startBal =
         Math.abs(capitalFlowSummary.netExternalCapitalUsd) > 1
           ? Math.max(Math.abs(capitalFlowSummary.netExternalCapitalUsd), 100)
