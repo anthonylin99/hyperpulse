@@ -153,8 +153,8 @@ export function mergeFundingIntoTrades(
   // Each funding payment must be counted once. Adds + partial closes can produce
   // several round-trip trades on the same coin whose [entryTime, exitTime] windows
   // overlap; a naive per-trade filter would assign the same funding entry to all of
-  // them and overstate per-trade funding. Allocate each entry once, split by size
-  // across the trades that were genuinely open when it accrued.
+  // them and overstate per-trade funding. Allocate each entry once, by size, across
+  // the trades that were genuinely open when it accrued.
   const fundingByTrade = new Map<string, number>();
   for (const trade of trades) fundingByTrade.set(trade.id, 0);
 
@@ -169,15 +169,21 @@ export function mergeFundingIntoTrades(
     const open = (tradesByCoin.get(f.coin) ?? []).filter(
       (t) => f.time >= t.entryTime && f.time <= t.exitTime,
     );
-    if (open.length === 0) continue; // funding while flat / outside any round trip
-    if (open.length === 1) {
-      fundingByTrade.set(open[0].id, (fundingByTrade.get(open[0].id) ?? 0) + f.usdc);
-      continue;
-    }
-    const totalSize = open.reduce((s, t) => s + t.size, 0);
+    const matchedSize = open.reduce((s, t) => s + t.size, 0);
+    if (matchedSize <= 0) continue; // funding while flat / outside any round trip
+
+    // Funding is charged on the whole position (f.positionSize). When the matched
+    // round trips cover less size than that — e.g. open 2, pay funding, close 1 while
+    // 1 stays open (not yet a round trip) — only allocate the closed share so the
+    // closed trade does not absorb funding for still-open size. Fall back to a full
+    // split when positionSize is missing/unreliable so closed-size funding is never dropped.
+    const fundingSize = Math.abs(f.positionSize);
+    const allocatable =
+      Number.isFinite(fundingSize) && fundingSize > 0 && matchedSize < fundingSize
+        ? f.usdc * (matchedSize / fundingSize)
+        : f.usdc;
     for (const t of open) {
-      const share = totalSize > 0 ? t.size / totalSize : 1 / open.length;
-      fundingByTrade.set(t.id, (fundingByTrade.get(t.id) ?? 0) + f.usdc * share);
+      fundingByTrade.set(t.id, (fundingByTrade.get(t.id) ?? 0) + allocatable * (t.size / matchedSize));
     }
   }
 
@@ -282,13 +288,14 @@ export function computePortfolioStats(
   // Max drawdown from equity curve (starting balance + cumulative P&L)
   const { maxDrawdown, maxDrawdownPeriod } = computeMaxDrawdown(trades, startingBalance);
 
-  // Calmar ratio
+  // Calmar ratio — net return vs the (net) max drawdown, so a gross-positive but
+  // net-negative account can't show a positive ratio against a losing equity curve.
   const tradingDays =
     trades.length > 1
       ? (trades[trades.length - 1].exitTime - trades[0].entryTime) /
         (1000 * 60 * 60 * 24)
       : 1;
-  const annualizedReturn = tradingDays > 0 ? (totalPnl / tradingDays) * 365 : 0;
+  const annualizedReturn = tradingDays > 0 ? (netTotalPnl / tradingDays) * 365 : 0;
   const calmarRatio =
     maxDrawdown > 0 ? annualizedReturn / maxDrawdown : 0;
 
@@ -313,7 +320,7 @@ export function computePortfolioStats(
 
   // Recovery factor: net profit / max drawdown (in absolute terms)
   const maxDDAbsolute = maxDrawdown * startingBalance;
-  const recoveryFactor = maxDDAbsolute > 0 ? totalPnl / maxDDAbsolute : 0;
+  const recoveryFactor = maxDDAbsolute > 0 ? netTotalPnl / maxDDAbsolute : 0;
 
   // Win/loss duration analysis
   const avgWinDuration = wins.length > 0
