@@ -51,7 +51,7 @@ const SIDE_OPTIONS: Array<{ key: SideFilter; label: string }> = [
 ];
 
 const SEVERITY_OPTIONS: Array<{ key: SeverityFilter; label: string }> = [
-  { key: "all", label: "All quality" },
+  { key: "all", label: "All grades" },
   { key: "high", label: "High" },
   { key: "medium", label: "Medium" },
   { key: "low", label: "Low" },
@@ -196,7 +196,7 @@ function SignalDetail({ signal, onClose }: { signal: TerminalSignal | null; onCl
   if (!signal) {
     return (
       <aside className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-6 text-sm text-zinc-500">
-        Select a flagged setup to inspect the evidence, caveats, and paper-trade path.
+        Pick a setup. Check the trigger, the invalidation, and why it earned a flag.
       </aside>
     );
   }
@@ -230,8 +230,8 @@ function SignalDetail({ signal, onClose }: { signal: TerminalSignal | null; onCl
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-2">
           <Pill label="Side" value={signal.side} className={sideClasses(signal.side)} />
-          <Pill label="Quality" value={signal.severity} className={severityClasses(signal.severity)} />
-          <Pill label="Confidence" value={signal.confidence} />
+          <Pill label="Grade" value={signal.severity} className={severityClasses(signal.severity)} />
+          <Pill label="Read" value={signal.confidence} />
           <Pill label="Freshness" value={ageLabel(signal.freshnessMs)} />
         </div>
 
@@ -263,7 +263,7 @@ function SignalDetail({ signal, onClose }: { signal: TerminalSignal | null; onCl
           <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.08] p-3 text-xs leading-5 text-amber-100/80">
             <div className="mb-1 flex items-center gap-2 font-medium text-amber-200">
               <AlertTriangle className="h-3.5 w-3.5" />
-              Source caveat
+              How to use it
             </div>
             {signal.sourceCaveat}
           </div>
@@ -287,7 +287,7 @@ function SignalDetail({ signal, onClose }: { signal: TerminalSignal | null; onCl
             </Link>
           ) : (
             <div className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 text-sm text-zinc-600">
-              No paper action
+              No paper trade
             </div>
           )}
         </div>
@@ -383,10 +383,10 @@ export default function SignalsPage() {
             <div>
               <SectionEyebrow className="text-teal-300">Intel</SectionEyebrow>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-50 md:text-3xl">
-                Unified signal intelligence.
+                Setup board.
               </h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-                Market radar, momentum alerts, Reaction Map context, top movers, and vault operator watches in one read-only feed.
+                Daily setup, momentum flags, reaction levels, movers, and wallet reads ranked in one place.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
@@ -406,10 +406,10 @@ export default function SignalsPage() {
         </div>
 
         <div className="grid gap-px bg-zinc-800 md:grid-cols-4">
-          <StatTile label="Live signals" value={String(data?.summary.total ?? (loading ? "—" : 0))} helper="after source filters" tone="green" />
-          <StatTile label="High quality" value={String(data?.summary.highSeverity ?? "—")} helper="needs review first" tone="amber" />
-          <StatTile label="Alert hit rate" value={data?.summary.alertWinRatePct == null ? "n/a" : `${data.summary.alertWinRatePct.toFixed(0)}%`} helper="TP/SL outcome surface" tone="sky" />
-          <StatTile label="Vaults" value={String(data?.summary.vaultCount ?? "—")} helper="operator shortlist pool" />
+          <StatTile label="Live flags" value={String(data?.summary.total ?? (loading ? "—" : 0))} helper="filtered and ranked" tone="green" />
+          <StatTile label="High grade" value={String(data?.summary.highSeverity ?? "—")} helper="review these first" tone="amber" />
+          <StatTile label="Alert hit rate" value={data?.summary.alertWinRatePct == null ? "n/a" : `${data.summary.alertWinRatePct.toFixed(0)}%`} helper="TP/SL outcomes" tone="sky" />
+          <StatTile label="Vaults" value={String(data?.summary.vaultCount ?? "—")} helper="wallets worth watching" />
         </div>
       </section>
 
@@ -454,7 +454,7 @@ export default function SignalsPage() {
             Array.from({ length: 8 }).map((_, index) => <div key={index} className="skeleton h-32 rounded-xl" />)
           ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-6 py-12 text-center text-sm text-zinc-500">
-              No signals match this Intel view.
+              Nothing matches this view.
             </div>
           ) : (
             filtered.map((signal) => (

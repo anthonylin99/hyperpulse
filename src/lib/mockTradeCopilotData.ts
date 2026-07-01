@@ -72,7 +72,7 @@ export interface MockTradeCopilotData {
 }
 
 export const mockTradeCopilotData: MockTradeCopilotData = {
-  generatedAt: "Static concept snapshot",
+  generatedAt: "Concept snapshot",
   dailySetup: {
     asset: "SOL",
     side: "long",
@@ -91,29 +91,29 @@ export const mockTradeCopilotData: MockTradeCopilotData = {
     fundingApr: 11.4,
     whaleBias: "Slightly bullish",
     liquiditySignal: "Upside liquidity pocket near 79",
-    decisionLabel: "SOL long watch, momentum confirms",
-    move: "Wait for the $75.40 reclaim, then long toward $78.90-$82.40.",
+    decisionLabel: "SOL is the cleanest major. Trigger still matters.",
+    move: "Long only above $75.40. First trim $78.90, stretch target $82.40.",
     whyNow:
-      "SOL is the only major in this sample with price up, volume expanding, and OI rising together. The trade is not active until it reclaims the trigger.",
+      "SOL has price, volume, and OI rising together. No reclaim, no trade.",
     invalidLine: "A close back below $71.80 cancels the long. Stand aside below that line.",
     signalChecks: [
       {
-        label: "Momentum confirms",
+        label: "Momentum agrees",
         state: "pass",
         note: "Price, open interest, and volume are rising together.",
       },
       {
-        label: "Liquidity level is clean",
+        label: "Clean target",
         state: "pass",
         note: "Nearest upside objective sits near $79 with limited nearby resistance.",
       },
       {
-        label: "Whale / cohort read",
+        label: "Wallet read",
         state: "warn",
         note: "Profitable wallets lean long, but leverage is not aggressive.",
       },
       {
-        label: "Funding is not overcrowded",
+        label: "Funding not stretched",
         state: "pass",
         note: "Funding is mildly positive and below crowded-long thresholds.",
       },
@@ -138,29 +138,29 @@ export const mockTradeCopilotData: MockTradeCopilotData = {
       fundingApr: -3.5,
       whaleBias: "Bullish",
       liquiditySignal: "Two-sided chop",
-      decisionLabel: "BTC no trade, wait for range break",
+      decisionLabel: "BTC is chop. Do not force it.",
       move: "No trade. Stand aside until BTC breaks and holds $65,200.",
       whyNow:
-        "BTC is chopping in a tight range on falling volume. Whale positioning is constructive, but there is no fresh momentum to lean on yet.",
+        "BTC is range-bound on falling volume. Big wallets lean long, but momentum is not there.",
       invalidLine: "There is no long to lose. BTC only gets interesting on a break and hold above $65,200.",
       signalChecks: [
         {
-          label: "Momentum confirms",
+          label: "Momentum agrees",
           state: "fail",
           note: "Range-bound price action with declining 24h volume.",
         },
         {
-          label: "Liquidity level is clean",
+          label: "Clean target",
           state: "warn",
           note: "Liquidity is split above and below the current range.",
         },
         {
-          label: "Whale / cohort read",
+          label: "Wallet read",
           state: "pass",
           note: "Large-wallet positioning remains net long.",
         },
         {
-          label: "Funding is not overcrowded",
+          label: "Funding not stretched",
           state: "pass",
           note: "Funding is slightly negative, so long positioning is not crowded.",
         },
@@ -184,29 +184,29 @@ export const mockTradeCopilotData: MockTradeCopilotData = {
       fundingApr: 11.4,
       whaleBias: "Slightly bullish",
       liquiditySignal: "Upside magnet",
-      decisionLabel: "SOL long watch, momentum confirms",
-      move: "Wait for the $75.40 reclaim, then long toward $78.90-$82.40.",
+      decisionLabel: "SOL is the cleanest major. Trigger still matters.",
+      move: "Long only above $75.40. First trim $78.90, stretch target $82.40.",
       whyNow:
-        "SOL is the only major here with price, volume, and open interest rising together. It is not active until it reclaims the trigger and holds.",
+        "SOL has price, volume, and OI rising together. No reclaim, no trade.",
       invalidLine: "A close back below $71.80 cancels the long. Stand aside below that line.",
       signalChecks: [
         {
-          label: "Momentum confirms",
+          label: "Momentum agrees",
           state: "pass",
           note: "Price, open interest, and volume are rising together.",
         },
         {
-          label: "Liquidity level is clean",
+          label: "Clean target",
           state: "pass",
           note: "Nearest upside objective sits near $79 with limited nearby resistance.",
         },
         {
-          label: "Whale / cohort read",
+          label: "Wallet read",
           state: "warn",
           note: "Profitable wallets lean long, but leverage is not aggressive.",
         },
         {
-          label: "Funding is not overcrowded",
+          label: "Funding not stretched",
           state: "pass",
           note: "Funding is mildly positive and below crowded-long thresholds.",
         },
@@ -230,29 +230,29 @@ export const mockTradeCopilotData: MockTradeCopilotData = {
       fundingApr: -13.1,
       whaleBias: "Slightly bullish",
       liquiditySignal: "ATH liquidity above 76",
-      decisionLabel: "HYPE breakout watch",
-      move: "Wait for acceptance above $69.30, then long the breakout.",
+      decisionLabel: "HYPE needs a breakout. Do not front-run it.",
+      move: "Long only after acceptance above $69.30.",
       whyNow:
-        "Strong fundamentals, but live perp flow is cooling. Open interest and volume are fading, so wait for acceptance above the trigger.",
+        "Fundamentals are fine. Perp flow is cooling. Make price prove it.",
       invalidLine: "Below $64.80 it is spot-patience only. The breakout idea is off the table.",
       signalChecks: [
         {
-          label: "Momentum confirms",
+          label: "Momentum agrees",
           state: "warn",
           note: "Consolidating below ATH while OI and volume cool.",
         },
         {
-          label: "Liquidity level is clean",
+          label: "Clean target",
           state: "pass",
           note: "ATH liquidity above $76 gives the breakout a defined objective.",
         },
         {
-          label: "Whale / cohort read",
+          label: "Wallet read",
           state: "pass",
           note: "Large wallets are net long while fundamentals remain supportive.",
         },
         {
-          label: "Funding is not overcrowded",
+          label: "Funding not stretched",
           state: "pass",
           note: "Funding does not show a crowded long imbalance.",
         },
@@ -340,31 +340,31 @@ export const mockTradeCopilotData: MockTradeCopilotData = {
       label: "Builder revenue",
       value: "$18.4M",
       delta: "+12% 30d",
-      read: "Supports the medium-term HYPE story, but not an intraday entry by itself.",
+      read: "Good for the HYPE story. Not an entry.",
     },
     {
       label: "Protocol volume",
       value: "$63.2B",
       delta: "+9% 30d",
-      read: "Healthy base demand if price reclaims the breakout trigger.",
+      read: "Healthy demand if price reclaims the trigger.",
     },
     {
       label: "HYPE perp OI",
       value: "$1.38B",
       delta: "-4% 24h",
-      read: "Cooling leverage means the breakout needs fresh participation.",
+      read: "Cooling leverage means bulls need fresh buyers.",
     },
     {
       label: "Funding regime",
       value: "-0.0015%",
       delta: "shorts pay lightly",
-      read: "Not crowded enough for a contrarian long alone.",
+      read: "Not crowded enough to trade alone.",
     },
   ],
   feedbackPrompts: [
-    "Would you trust this setup enough to watch it?",
-    "Are the trigger, stop, and TP levels obvious in under 30 seconds?",
-    "What data feels missing before this becomes useful?",
+    "Would you act, watch, or pass?",
+    "Can you find trigger, stop, and TP in under 10 seconds?",
+    "What would make this setup wrong?",
     "Should HyperPulse show one best setup or a ranked board?",
   ],
 };

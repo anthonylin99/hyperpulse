@@ -22,14 +22,14 @@ function StandaloneShadowBook() {
               Shadow Book
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-50 sm:text-[2rem]">
-              Paper trade review, local to this browser.
+              Paper trades, graded locally.
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-zinc-400">
-              Intel links can stage paper ideas here without connecting a wallet or sending an order. Connect read-only later if you want portfolio context beside the paper ledger.
+              Stage the idea, mark the trigger, and review the outcome beside your wallet later.
             </p>
           </div>
           <span className="rounded-full border border-teal-300/20 bg-teal-300/10 px-3 py-1.5 text-xs font-medium text-teal-100">
-            No live execution
+            Paper only
           </span>
         </div>
       </section>
@@ -64,7 +64,7 @@ function PortfolioRouteContent() {
   if (loading && !isConnected) {
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-5 py-8 text-sm text-zinc-400">
-        Loading read-only wallet analytics...
+        Loading wallet review...
       </div>
     );
   }

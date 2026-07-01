@@ -341,7 +341,7 @@ const WORKER_ZONE_CAVEAT: ReactionSourceCaveat = {
 const COMBINED_CAVEAT: ReactionSourceCaveat = {
   exactPositions: false,
   source: "combined",
-  text: "Combines public Hyperliquid streams with inferred worker zones. Treat this as reaction context, not a standalone trade signal.",
+  text: "Public Hyperliquid streams plus inferred worker zones. Need trigger first.",
 };
 
 type LevelAccumulator = {

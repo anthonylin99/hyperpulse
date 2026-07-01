@@ -1697,7 +1697,7 @@ export default function PriceChart({
                 <SectionEyebrow>HYPE Fundamentals</SectionEyebrow>
                 <div className="mt-1 text-sm font-semibold text-zinc-100">{hypeFundamentals.decisionLabel}</div>
                 <div className="mt-1 text-xs leading-5 text-zinc-500">
-                  Official Hyperliquid public stats and live perp context. Fundamentals adjust level confidence; price trigger still rules.
+                  Public stats plus live perp context. Price trigger still rules.
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5 md:justify-end">
@@ -1708,7 +1708,7 @@ export default function PriceChart({
                   {hypeBiasLabel(hypeFundamentals.levelBias)}
                 </span>
                 <span className={cn("rounded-full border px-2 py-1 font-mono text-[11px]", hypeConfidenceClass(hypeFundamentals.confidenceAdjustment))}>
-                  Confidence {hypeFundamentals.confidenceAdjustment}
+                  Read {hypeFundamentals.confidenceAdjustment}
                 </span>
                 {hypeFundamentals.statsStale ? (
                   <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 font-mono text-[11px] text-amber-200">
@@ -1839,7 +1839,7 @@ function strengthDecisionText(band: ChartZoneBand): string {
   if (band.level.leverageBucket === "book") {
     return "Visible shelf. Respect it only if it stays when tested.";
   }
-  return "Light read. Use it as context, not a standalone signal.";
+  return "Light read. Need trigger first.";
 }
 
 function levelCaveatText(level: SupportResistanceLevel): string | null {

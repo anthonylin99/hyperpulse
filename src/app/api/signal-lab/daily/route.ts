@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       {
         generatedAt: Date.now(),
         lab: buildSignalLabSnapshot(snapshot),
-        caveat: "Browser Signal Lab freezes the first setup it sees each day. Server persistence can replace this in a later slice.",
+        note: "Browser freezes the first setup it sees each day.",
       },
       { cache: "public-market" },
     );

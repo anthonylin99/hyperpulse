@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "HyperPulse — Hyperliquid intelligence workspace";
+export const alt = "HyperPulse — Hyperliquid setup desk";
 export const size = {
   width: 1200,
   height: 630,
@@ -47,7 +47,7 @@ export default function TwitterImage() {
               color: "#a1a1aa",
             }}
           >
-            Read-only demo
+            Setup desk
           </div>
         </div>
 
@@ -64,11 +64,11 @@ export default function TwitterImage() {
                 fontWeight: 700,
               }}
             >
-              <span>Hyperliquid-native</span>
-              <span>market intelligence.</span>
+              <span>Hyperliquid</span>
+              <span>setup desk.</span>
             </div>
             <div style={{ fontSize: 28, lineHeight: 1.4, color: "#a1a1aa", maxWidth: 620 }}>
-              Live markets, cleaner portfolio review, and trader-facing context in one workspace.
+              Live markets, hard levels, wallet review, and trade tracking.
             </div>
             <div style={{ display: "flex", gap: "14px" }}>
               {["Markets", "Portfolio", "Docs"].map((chip) => (

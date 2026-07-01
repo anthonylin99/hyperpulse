@@ -46,7 +46,7 @@ type SignalLabPayload = {
     statusNote: string;
     setup: LabSetup;
   };
-  caveat: string;
+  note: string;
 };
 
 const STORAGE_PREFIX = "hyperpulse.signalLab.daily.";
@@ -89,21 +89,21 @@ function evaluateFrozenStatus(args: {
     return {
       status: "waiting",
       statusLabel: "No trade",
-      statusNote: "The lab is standing down until a cleaner setup appears.",
+      statusNote: "Nothing clean enough. Stand down.",
     };
   }
   if (liveMark == null || setup.trigger == null || setup.invalidation == null || setup.target == null) {
     return {
       status: "waiting",
       statusLabel: "Waiting",
-      statusNote: "Live mark or levels are unavailable.",
+      statusNote: "Missing live mark or levels.",
     };
   }
   if (now > lab.expiresAt) {
     return {
       status: "expired",
       statusLabel: "Expired",
-      statusNote: "The watch window elapsed before a decisive outcome.",
+      statusNote: "The window closed without a clean result.",
     };
   }
   if (setup.side === "short") {
@@ -219,9 +219,9 @@ export default function SignalLabPanel() {
   if (!setup || !status) {
     return (
       <section className="rounded-2xl border border-zinc-800 bg-[#0b1016] p-4">
-        <div className="flex items-center gap-2 text-sm text-zinc-500">
+      <div className="flex items-center gap-2 text-sm text-zinc-500">
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          Building Signal Lab.
+          Loading today&apos;s setup.
         </div>
       </section>
     );
@@ -233,14 +233,14 @@ export default function SignalLabPanel() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <SectionEyebrow className="text-teal-300">Signal Lab</SectionEyebrow>
+              <SectionEyebrow className="text-teal-300">Daily setup log</SectionEyebrow>
               <FlaskConical className="h-4 w-4 text-teal-300" />
             </div>
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-zinc-50">
-              Frozen daily setup.
+              Today&apos;s call, frozen.
             </h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-500">
-              One setup is frozen per day in this browser, then tracked against trigger, invalidation, target, and curated social context.
+              One setup per day. Track trigger, invalidation, target, and crowd read.
             </p>
           </div>
           <span className={cn("w-fit rounded-full border px-3 py-1.5 text-xs font-medium", statusClasses(status.status))}>
@@ -254,7 +254,7 @@ export default function SignalLabPanel() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-mono text-3xl font-semibold text-zinc-50">{setup.coin}</span>
             <span className={cn("rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]", setup.side === "short" ? "border-rose-500/25 bg-rose-500/10 text-rose-200" : setup.side === "long" ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-zinc-700 text-zinc-400")}>
-              {setup.side === "watch" ? "watch" : `${setup.side} watch`}
+              {setup.side === "watch" ? "No trade" : `${setup.side} setup`}
             </span>
             <span className="font-mono text-xs text-zinc-600">
               Frozen {formatEasternTime(status.generatedAt, true)}
@@ -278,7 +278,7 @@ export default function SignalLabPanel() {
 
         <aside className="space-y-3 bg-[#090d12] p-4">
           <div>
-            <SectionEyebrow>Social confirmation</SectionEyebrow>
+            <SectionEyebrow>Crowd read</SectionEyebrow>
             <div className={cn("mt-2 text-sm font-medium", alignmentClasses(setup.sentimentAlignment))}>
               {setup.socialContext.label}
             </div>
@@ -306,7 +306,7 @@ export default function SignalLabPanel() {
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/40 p-3 text-xs leading-5 text-zinc-500">
-              No curated takes loaded for this asset yet.
+              No curated takes for this asset yet.
             </div>
           )}
           {setup.side === "long" || setup.side === "short" ? (
@@ -318,9 +318,7 @@ export default function SignalLabPanel() {
               <BookOpenCheck className="h-4 w-4" />
             </Link>
           ) : null}
-          <p className="text-[11px] leading-5 text-zinc-600">
-            {setup.socialContext.caveat}
-          </p>
+          <p className="text-[11px] leading-5 text-zinc-600">Price trigger beats crowd read.</p>
         </aside>
       </div>
     </section>

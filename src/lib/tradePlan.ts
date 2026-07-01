@@ -345,7 +345,7 @@ export function buildTradePlan({
       invalidation: "n/a",
       targets: [],
       confidence: "low",
-      context: [lfxMode ? "This is a decision aid, not an automated trading signal." : "This is decision support, not an automated trading signal."],
+      context: ["Need a clean trigger before this becomes tradable."],
     };
   }
 

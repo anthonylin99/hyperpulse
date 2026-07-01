@@ -675,7 +675,7 @@ export interface FactorAiBrief {
   headline: string;
   summary: string;
   insights: FactorAiInsight[];
-  disclaimer?: string;
+  note?: string;
   generatedAt: string;
 }
 

@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     {
       generatedAt: Date.now(),
       source: "manual-curated",
-      caveat: "Curated analyst sentiment, not exhaustive X sentiment. Summaries are paraphrased and source links are preserved.",
+      note: "Curated takes with paraphrased summaries and source links.",
       takes,
     },
     { cache: "public-market" },

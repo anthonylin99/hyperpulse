@@ -348,9 +348,9 @@ export function deriveHypeFundamentals(args: {
     fundingRegime,
     evidence,
     caveats: [
-      "Uses Hyperliquid public stats-data and live Hyperliquid perp context, not ASXN scraping.",
-      "Volume, OI, and funding are fundamentals-adjacent proxies; revenue and buyback data need a reliable official source before being treated as valuation inputs.",
-      "Fundamentals adjust level confidence only. Price trigger, order flow, and invalidation remain the authority.",
+      "Public Hyperliquid stats plus live HYPE perp context.",
+      "Volume, OI, and funding are proxies until revenue and buyback data have a reliable official feed.",
+      "Fundamentals shape the read. Trigger and invalidation decide the trade.",
     ],
   };
 }

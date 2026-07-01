@@ -49,8 +49,8 @@ export default function TradeCopilotMockupPage() {
               <ArrowUpRight className="h-4 w-4 text-[#7fd6cf]" />
             </div>
             <div>
-              <div className="text-sm font-semibold tracking-tight text-white">HyperPulse | Setups</div>
-              <div className="text-xs text-[#7d808a]">Daily trade ideas with expandable detail.</div>
+              <div className="text-sm font-semibold tracking-tight text-white">HyperPulse | Setup Desk</div>
+              <div className="text-xs text-[#7d808a]">One board. Hard levels. Clear pass or play.</div>
             </div>
           </div>
           <div className="rounded-full border border-white/[0.07] bg-white/[0.03] px-3 py-1 font-mono text-xs text-[#9396a0]">
@@ -78,8 +78,8 @@ function SetupList({
     <section className="rounded-lg border border-white/[0.07] bg-[#111315] p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Trade Setups</div>
-          <h1 className="mt-2 text-lg font-semibold text-white">Today&apos;s board</h1>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Setup board</div>
+          <h1 className="mt-2 text-lg font-semibold text-white">Best looks first</h1>
         </div>
         <Target className="h-5 w-5 text-[#7fd6cf]" />
       </div>
@@ -112,7 +112,7 @@ function SetupList({
             </div>
 
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <MiniMetric label="Score" value={String(setup.confidence)} />
+              <MiniMetric label="Edge" value={String(setup.confidence)} />
               <MiniMetric label="Trigger" value={formatPrice(setup.trigger)} />
               <MiniMetric label="TP1" value={formatPrice(setup.tp1)} />
             </div>
@@ -121,7 +121,7 @@ function SetupList({
               <StatusPill status={setup.status} />
               <span className="inline-flex items-center gap-1 text-[11px] text-[#7d808a]">
                 <Maximize2 className="h-3 w-3" />
-                Detail
+                Open
               </span>
             </div>
           </button>
@@ -136,7 +136,7 @@ function ExpandedSetupDetail({ setup }: { setup: MockMarketSetup }) {
     <section className="rounded-lg border border-white/[0.07] bg-[#111315] p-4 shadow-[0_22px_90px_rgba(0,0,0,0.28)] sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Setup Detail</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Trade plan</div>
           <div className="mt-3 flex flex-wrap items-end gap-x-3 gap-y-2">
             <h2 className="font-mono text-5xl font-semibold tracking-tight text-white sm:text-6xl">{setup.asset}</h2>
             <div className="pb-2 text-sm font-semibold uppercase tracking-[0.12em] text-[#74c69d]">{setup.side}</div>
@@ -160,7 +160,7 @@ function ExpandedSetupDetail({ setup }: { setup: MockMarketSetup }) {
 
         <div className="rounded-lg border border-white/[0.07] bg-black/20 p-4">
           <div className="flex items-center justify-between">
-            <div className="text-xs font-medium text-[#9396a0]">Confidence</div>
+            <div className="text-xs font-medium text-[#9396a0]">Edge score</div>
             <div className="font-mono text-2xl font-semibold text-white">{setup.confidence}</div>
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
@@ -204,9 +204,9 @@ function ExpandedSetupDetail({ setup }: { setup: MockMarketSetup }) {
 function TradeRules({ setup }: { setup: MockMarketSetup }) {
   return (
     <section className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Execution Plan</div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Rules</div>
       <div className="mt-4 space-y-3">
-        <RuleRow label="Entry" value={`Accept above ${formatPrice(setup.trigger)} before considering the setup active.`} />
+        <RuleRow label="Entry" value={`Active only after acceptance above ${formatPrice(setup.trigger)}.`} />
         <RuleRow label="Risk" value={`Stop at ${formatPrice(setup.stop)}. Hard invalidation at ${formatPrice(setup.invalidation)}.`} />
         <RuleRow label="Profit" value={`First trim at ${formatPrice(setup.tp1)}. Leave runner only if momentum expands.`} />
       </div>
@@ -223,7 +223,7 @@ function TradeRules({ setup }: { setup: MockMarketSetup }) {
 function SignalQuality({ setup }: { setup: MockMarketSetup }) {
   return (
     <section className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Signal Checks</div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#5ec8c0]">Why this gets attention</div>
       <div className="mt-4 space-y-3">
         {setup.signalChecks.map((check) => (
           <div key={check.label} className="rounded-lg border border-white/[0.07] bg-black/20 p-3">

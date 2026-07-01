@@ -4,7 +4,7 @@ import { buildRouteMetadata } from "@/lib/site";
 export const metadata = buildRouteMetadata({
   title: "Intel — HyperPulse",
   description:
-    "A unified Hyperliquid-native intelligence feed for market radar, momentum alerts, Reaction Map context, top movers, and vault operator watches.",
+    "A Hyperliquid setup board for daily calls, momentum flags, reaction levels, movers, and wallet watches.",
   path: "/signals",
 });
 

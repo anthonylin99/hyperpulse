@@ -137,15 +137,15 @@ export default function HomePage() {
 
   const quickActions = useMemo<QuickAction[]>(() => {
     const actions: QuickAction[] = [
-      { title: "Markets", label: "Perps, spot, funding", href: "/markets", icon: LineChart, tone: "teal" },
-      { title: "Intel", label: "Unified signal feed", href: "/signals", icon: Sparkles, tone: "amber" },
+      { title: "Markets", label: "Find the clean tape", href: "/markets", icon: LineChart, tone: "teal" },
+      { title: "Intel", label: "Best setups first", href: "/signals", icon: Sparkles, tone: "amber" },
       { title: "Alerts", label: "Momentum blotter", href: "/alerts", icon: Bell, tone: "sky" },
-      { title: "Portfolio", label: isConnected ? "Wallet workspace" : "Read-only review", href: "/portfolio", icon: BriefcaseBusiness, tone: "zinc" },
-      { title: "Shadow Book", label: "Paper trade review", href: "/portfolio?section=shadow", icon: BookOpenCheck, tone: "teal" },
-      { title: "Docs", label: "Methodology", href: "/docs", icon: BookOpenText, tone: "zinc" },
+      { title: "Portfolio", label: isConnected ? "Position review" : "Paste a wallet", href: "/portfolio", icon: BriefcaseBusiness, tone: "zinc" },
+      { title: "Shadow Book", label: "Grade the trade", href: "/portfolio?section=shadow", icon: BookOpenCheck, tone: "teal" },
+      { title: "Docs", label: "Rules and tests", href: "/docs", icon: BookOpenText, tone: "zinc" },
     ];
     if (vaultsEnabled) {
-      actions.splice(3, 0, { title: "Vaults", label: "Operator leaderboard", href: "/vaults", icon: Gauge, tone: "rose" });
+      actions.splice(3, 0, { title: "Vaults", label: "Who is worth watching", href: "/vaults", icon: Gauge, tone: "rose" });
     }
     return actions;
   }, [isConnected, vaultsEnabled]);
@@ -156,12 +156,12 @@ export default function HomePage() {
         <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_12%_0%,rgba(45,212,191,0.13),transparent_34%),radial-gradient(circle_at_88%_0%,rgba(251,191,36,0.08),transparent_30%),#10151b] p-5 md:p-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <SectionEyebrow className="text-teal-300">Terminal Lobby</SectionEyebrow>
+              <SectionEyebrow className="text-teal-300">Trading desk</SectionEyebrow>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">
-                Hyperliquid-native market intelligence.
+                One clean Hyperliquid setup, then the tape behind it.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-400">
-                Fast discovery, explainable setup flags, read-only wallet review, and paper execution context in one compact workspace.
+                HyperPulse ranks the market, shows the trigger, marks the invalidation, and keeps bad trades out of the way.
               </p>
             </div>
             <div className="grid gap-2 text-xs sm:grid-cols-3 xl:min-w-[520px]">
@@ -180,8 +180,8 @@ export default function HomePage() {
           <aside className="bg-[#0b1016] p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <SectionEyebrow>Recently Flagged</SectionEyebrow>
-                <div className="mt-1 text-sm font-semibold text-zinc-100">Setups and watches</div>
+                <SectionEyebrow>Fresh flags</SectionEyebrow>
+                <div className="mt-1 text-sm font-semibold text-zinc-100">What deserves a look</div>
               </div>
               <Link href="/signals" className="text-xs text-teal-300 transition hover:text-teal-100">
                 Open Intel
@@ -196,7 +196,7 @@ export default function HomePage() {
                 </>
               ) : signals.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/45 px-4 py-8 text-center text-sm text-zinc-500">
-                  Intel feed is waiting for source data.
+                  No fresh flag worth showing.
                 </div>
               ) : (
                 signals.map((signal) => <SignalPreviewRow key={signal.id} signal={signal} />)
@@ -210,13 +210,13 @@ export default function HomePage() {
         <LandingProductPreview />
         <div className="space-y-5">
           <section className="rounded-2xl border border-zinc-800 bg-[#10151b] p-5">
-            <SectionEyebrow className="text-teal-300">Operating posture</SectionEyebrow>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-50">Signals stay explainable.</h2>
+            <SectionEyebrow className="text-teal-300">Desk rules</SectionEyebrow>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-50">No trigger, no trade.</h2>
             <div className="mt-4 grid gap-3">
               {[
-                { icon: ShieldCheck, label: "Read-only by default", body: "Connected wallets are used for review and paper workflows unless trading is explicitly enabled." },
-                { icon: Sparkles, label: "Source caveats attached", body: "Each Intel card carries evidence and methodology context instead of pretending a flag is certainty." },
-                { icon: RefreshCw, label: "Existing data surfaces", body: "The MVP composes market radar, alerts, reaction levels, top movers, and vault analytics already in HyperPulse." },
+                { icon: ShieldCheck, label: "Protect the account first", body: "Triggers, invalidation, and position review come before any trade idea." },
+                { icon: Sparkles, label: "Rank the setup, not the story", body: "Momentum, funding, levels, wallets, and crowd reads must agree enough to earn attention." },
+                { icon: RefreshCw, label: "One desk, fewer tabs", body: "Radar, alerts, reaction levels, movers, HYPE context, and wallet reads feed the same setup board." },
               ].map((item) => {
                 const Icon = item.icon;
                 return (

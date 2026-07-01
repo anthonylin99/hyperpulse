@@ -187,7 +187,7 @@ function buildDeterministicBrief(payload: RequestPayload): FactorAiBrief {
       title: `${laggard.name} is lagging`,
       body: `${laggard.shortLabel} is the weakest tracked factor at ${formatPercent(
         laggard.spread7d,
-      )} over 7d; treat constituent shorts as context, not a standalone signal.`,
+      )} over 7d; short ideas still need their own trigger.`,
       tone: (laggard.spread7d ?? 0) < 0 ? "cautious" : "neutral",
       tickers: laggardTickers,
     });
@@ -201,8 +201,8 @@ function buildDeterministicBrief(payload: RequestPayload): FactorAiBrief {
         }.`
       : "No valid factor payload was available.",
     insights,
-    disclaimer:
-      "Generated from supplied factor data only. OpenAI insights are disabled in this build.",
+    note:
+      "Deterministic factor math only. No LLM overlay in this build.",
     generatedAt: new Date().toISOString(),
   };
 }

@@ -63,7 +63,7 @@ export default function HypeTokenRoutePage() {
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full border border-teal-300/20 bg-teal-300/10 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-teal-200">
               <Landmark className="h-3.5 w-3.5" />
-              Hyperliquid Token Portfolio
+              HYPE desk
             </div>
             <div className="mt-4 flex flex-wrap items-end gap-3">
               <h1 className="text-4xl font-semibold tracking-tight text-zinc-50 md:text-6xl">HYPE</h1>
@@ -77,7 +77,7 @@ export default function HypeTokenRoutePage() {
               ) : null}
             </div>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">
-              A HYPE-only trading workspace for token levels, exchange-usage proxies, funding pressure, and live Hyperliquid market structure.
+              HYPE levels, exchange usage, funding pressure, and live Hyperliquid market structure in one view.
             </p>
           </div>
 
@@ -114,13 +114,13 @@ export default function HypeTokenRoutePage() {
               <CompactStat
                 label="Fundamental regime"
                 value={fundamentals ? regimeLabel(fundamentals.regime) : fundamentalsLoading ? "Loading" : "n/a"}
-                helper={fundamentals?.decisionLabel ?? "Uses Hyperliquid public stats and live perp context."}
+                helper={fundamentals?.decisionLabel ?? "Public stats plus live perp context."}
                 tone={confidenceTone}
               />
               <CompactStat
                 label="Level bias"
                 value={fundamentals ? levelBiasLabel(fundamentals.levelBias) : "n/a"}
-                helper="Changes confidence around chart levels, not execution."
+                helper="Use this to size trust in the level."
                 tone={confidenceTone}
               />
               <CompactStat
@@ -163,7 +163,7 @@ export default function HypeTokenRoutePage() {
 
           <section className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
             <div className="flex items-center justify-between gap-3">
-              <SectionEyebrow>Fundamental Read</SectionEyebrow>
+              <SectionEyebrow>HYPE read</SectionEyebrow>
               <SurfaceButton size="sm" tone="ghost" onClick={fetchFundamentals} disabled={fundamentalsLoading} aria-label="Refresh HYPE fundamentals">
                 <RefreshCcw className={cn("h-3.5 w-3.5", fundamentalsLoading && "animate-spin")} />
               </SurfaceButton>
@@ -189,11 +189,11 @@ export default function HypeTokenRoutePage() {
             <SectionEyebrow>Funding Snapshot</SectionEyebrow>
             <div className="mt-3 text-xs leading-5 text-zinc-500">
               {fundingHistory.length > 0
-                ? `${fundingHistory.length} recent HYPE funding samples loaded for the portfolio view.`
-                : "Funding history will populate as the market enrichment worker refreshes."}
+                ? `${fundingHistory.length} recent HYPE funding samples loaded.`
+                : "Waiting for funding history."}
             </div>
             <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs leading-5 text-zinc-400">
-              Treat funding as crowding context. HYPE levels still need price acceptance, rejection, or failed breakout confirmation.
+              Funding shows crowding. Price still has to accept, reject, or fail.
             </div>
           </section>
         </aside>
@@ -217,10 +217,10 @@ function HypeFundamentalAudit({
     <section className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <SectionEyebrow>Fundamentals Audit</SectionEyebrow>
-          <h2 className="mt-2 text-xl font-semibold text-zinc-100">HYPE regime inputs</h2>
+          <SectionEyebrow>Fundamentals</SectionEyebrow>
+          <h2 className="mt-2 text-xl font-semibold text-zinc-100">What changes the HYPE level read</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-            These inputs help decide whether to trust or fade HYPE reaction levels. They are not a standalone trade trigger.
+            Usage, OI, volume, and funding decide whether to trust the breakout or fade the level.
           </p>
         </div>
         <SurfaceButton size="sm" tone="secondary" onClick={onRefresh} disabled={loading}>

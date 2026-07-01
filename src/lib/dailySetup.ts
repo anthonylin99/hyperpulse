@@ -57,7 +57,7 @@ const MAX_CANDIDATES = 14;
 const DAY_MS = 86_400_000;
 const SETUP_CACHE_MS = 60_000;
 const SOCIAL_CAVEAT =
-  "Curated analyst sentiment, not exhaustive X sentiment. Sentiment can describe narrative crowding; it is not a trade signal by itself.";
+  "Curated crowd read. Price trigger and invalidation rule the trade.";
 
 let cachedDailySetup: { expiresAt: number; snapshot: DailySetupSnapshot } | null = null;
 let inflightDailySetup: Promise<DailySetupSnapshot> | null = null;
@@ -143,7 +143,7 @@ function noTradeSetup(): DailySetup {
     score: 0,
     rationale: [
       "No liquid market has both extreme funding and clean enough price confirmation.",
-      "Stand down beats forcing a trade.",
+      "Stand down. Forcing it is the trade to avoid.",
     ],
     guardrails: [
       "Do not trade funding alone.",

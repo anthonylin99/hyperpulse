@@ -335,13 +335,13 @@ function fromTopMovers(payload: TopMoversResponse | null): TerminalSignal[] {
       score: absMove,
       confidence: severity,
       freshnessMs: payload?.asOf ? Math.max(0, Date.now() - payload.asOf) : null,
-      evidence: [`Move from ${formatPrice(mover.prevPx)} to ${formatPrice(mover.markPx)}.`, "Use market structure, funding, and Reaction Map before acting."],
+      evidence: [`Move from ${formatPrice(mover.prevPx)} to ${formatPrice(mover.markPx)}.`, "Need structure, funding, and levels to agree."],
       metrics: [
         { label: "Move", value: formatPct(mover.pctChange), tone: mover.pctChange >= 0 ? "positive" : "negative" },
         { label: "Mark", value: formatPrice(mover.markPx) },
       ],
       source: "top-movers",
-      sourceCaveat: "Top mover scan is descriptive market context. It is not an execution signal by itself.",
+      sourceCaveat: "Mover only. Need a trigger before it becomes a setup.",
       routeHref: `/markets?asset=${encodeURIComponent(mover.coin)}`,
       paperTradeHref: paperTradeHref(mover.coin, mover.direction),
     };
@@ -373,7 +373,7 @@ function fromVaults(payload: VaultListResult | null): TerminalSignal[] {
       evidence: score.flags.length > 0 ? score.flags : ["Shortlist candidate. Inspect drawdown, lockups, and operator history before depositing."],
       metrics,
       source: "vaults",
-      sourceCaveat: "Vault rankings are descriptive and can suffer from survivorship bias. This is not a copy-trade instruction.",
+      sourceCaveat: "Watchlist only. Check drawdown, lockups, and operator history.",
       routeHref: `/vaults/${encodeURIComponent(vault.vaultAddress)}`,
       paperTradeHref: null,
     };
@@ -414,7 +414,7 @@ function fromDailySetup(payload: DailySetupResponse | null): TerminalSignal[] {
     ],
     metrics,
     source: "daily-setup-signal-lab",
-    sourceCaveat: `${setup.socialContext.caveat} Funding/price trigger remains the authority.`,
+    sourceCaveat: setup.socialContext.caveat,
     routeHref: `/markets?asset=${encodeURIComponent(setup.coin)}`,
     paperTradeHref: paperTradeHref(setup.coin, setup.side),
   }];

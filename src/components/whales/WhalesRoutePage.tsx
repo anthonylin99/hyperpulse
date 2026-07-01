@@ -180,7 +180,7 @@ export default function WhalesRoutePage({ initialAddress }: { initialAddress?: s
 
           {data?.universe.caveats.length ? (
             <div className="border-b border-amber-500/15 bg-amber-500/5 px-4 py-2 text-xs leading-5 text-amber-100/80">
-              {data.universe.caveats[0]} {data.universe.caveats[2]}
+              Tracked-wallet sample. Directional bias shows current exposure, not a copy-trade.
             </div>
           ) : null}
 

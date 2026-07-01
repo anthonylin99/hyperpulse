@@ -410,7 +410,7 @@ export default function LiquidityMapPanel({ coin }: { coin: string }) {
       {data ? (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-950/55 px-4 py-3 text-xs leading-5 text-zinc-500">
           {data.source === "tracked-liquidations-plus-book"
-            ? "Accuracy note: liquidation bands are estimated from monitored HyperPulse wallets with usable liquidation prices. Depth bands are current visible Hyperliquid L2 liquidity."
+            ? "Tracked wallet liquidation bands plus live Hyperliquid L2 depth."
             : data.caveat}
         </div>
       ) : null}

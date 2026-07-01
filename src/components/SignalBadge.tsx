@@ -20,13 +20,13 @@ const SIGNAL_EXPLANATIONS: Record<string, string> = {
   "Funding Elevated (trend)":
     "Funding is high, but historically that has tended to confirm trend continuation more than signal a fade.",
   "Funding Elevated (low corr)":
-    "Funding is high, but recent history does not show a strong enough funding-to-price relationship to make this very actionable.",
+    "Funding is high, but recent price follow-through is weak. Need structure first.",
   "Funding Cheap (trend)":
     "Funding is cheap or negative, but historically that has behaved more like trend continuation than a clean contrarian setup.",
   "Funding Cheap (low corr)":
-    "Funding is cheap or negative, but the historical relationship to forward returns is weak, so conviction should stay low.",
+    "Funding is cheap or negative, but forward returns have been noisy. Do not trade funding alone.",
   Neutral:
-    "No strong edge from funding versus recent history. Treat this as informational rather than a trade signal.",
+    "No funding edge. Look elsewhere unless price gives a clean level.",
   "Extreme Longs":
     "Funding is extremely positive, which usually means aggressive long positioning and higher squeeze-down risk.",
 };
@@ -45,7 +45,7 @@ export default function SignalBadge({ signal, oiChangePct }: SignalBadgeProps) {
   const confidence = signal.confidence ?? "low";
   const explanation =
     SIGNAL_EXPLANATIONS[signal.label] ??
-    "This label summarizes how current funding compares with recent history and whether that has mattered for forward price moves.";
+    "Funding compared with recent history and forward price follow-through.";
 
   const tooltip = [
     signal.fundingPercentile != null
