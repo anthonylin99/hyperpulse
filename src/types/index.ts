@@ -736,6 +736,58 @@ export interface FactorReport {
   };
 }
 
+// ─── HyperPulse Sentiment Index Types ───────────────────────────
+
+export type SentimentSide = "long" | "short";
+export type SentimentConfidence = "high" | "medium" | "low";
+
+export interface SentimentAsset {
+  symbol: string;
+  side: SentimentSide;
+  score: number;
+  displayPct: number;
+  confidence: SentimentConfidence;
+  marketHref: string;
+  markPx: number | null;
+  openInterestUsd: number | null;
+  oiChangeUsd: number | null;
+  buyNotionalUsd: number | null;
+  sellNotionalUsd: number | null;
+  netTakerFlowUsd: number | null;
+  fundingApr: number | null;
+  volumeProxy: number | null;
+  volumeVsBaseline: number | null;
+  reactionZoneUsd: number | null;
+  reason: string;
+}
+
+export interface SentimentReport {
+  id: string;
+  generatedAt: number;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel: string;
+  title: string;
+  summary: string;
+  totalLongPct: number;
+  totalShortPct: number;
+  netTiltPct: number;
+  confidence: SentimentConfidence;
+  topLongs: SentimentAsset[];
+  topShorts: SentimentAsset[];
+  assets: SentimentAsset[];
+  telegramSummary: string[];
+  methodology: string[];
+  coverage: {
+    trackedAssets: string[];
+    trackedAssetCount: number;
+    source: "reaction_map" | "hyperliquid_fallback" | "mixed";
+    stale: boolean;
+    lastEvidenceAt: number | null;
+    note: string;
+  };
+}
+
 
 // ─── Whale Intelligence Types ─────────────────────────────────
 
@@ -1069,6 +1121,116 @@ export interface MarketRadarSignal {
   scoreDetails?: MarketRadarScoreDetails;
 }
 
+// ─── Strategy Lab Types ─────────────────────────────────────────
+
+export type HighFundingReversalStatus =
+  | "eligible"
+  | "funding_not_extreme"
+  | "funding_history_thin"
+  | "price_not_extended"
+  | "market_unavailable";
+
+export interface HighFundingReversalCandidate {
+  asset: string;
+  status: HighFundingReversalStatus;
+  markPx: number | null;
+  return24hPct: number | null;
+  fundingApr: number | null;
+  fundingZ7d: number | null;
+  fundingSampleSize: number;
+  targetPrice: number | null;
+  stopPrice: number | null;
+  timeStopHours: number;
+  reason: string;
+}
+
+export interface HighFundingReversalReport {
+  id: string;
+  generatedAt: number;
+  title: string;
+  status: "shadow_only";
+  universe: string[];
+  candidates: HighFundingReversalCandidate[];
+  eligible: HighFundingReversalCandidate[];
+  rule: {
+    side: "short";
+    fundingZ7dMin: number;
+    fundingAprMin: number;
+    return24hMin: number;
+    takeProfitPct: number;
+    stopLossPct: number;
+    timeStopHours: number;
+    cooldownHours: number;
+  };
+  memoEvidence: {
+    fullSampleTrades: number;
+    fullSampleWinRatePct: number;
+    fullSampleAvgNetBps: number;
+    fullSampleProfitFactor: number;
+    shortSideTrades: number;
+    shortSideWinRatePct: number;
+    shortSideAvgNetBps: number;
+    shortSideProfitFactor: number;
+  };
+  passGates: string[];
+  caveats: string[];
+}
+
+export type TerminalSignalFamily =
+  | "daily_setup"
+  | "market_radar"
+  | "momentum_alert"
+  | "reaction_zone"
+  | "top_mover"
+  | "vault_operator";
+
+export type TerminalSignalSubjectType = "asset" | "vault";
+export type TerminalSignalSide = "long" | "short" | "neutral" | "watch";
+export type TerminalSignalSeverity = "high" | "medium" | "low";
+export type TerminalSignalConfidence = "high" | "medium" | "low";
+export type TerminalSignalMetricTone = "neutral" | "positive" | "negative" | "warning" | "info";
+
+export interface TerminalSignalMetric {
+  label: string;
+  value: string;
+  tone?: TerminalSignalMetricTone;
+}
+
+export interface TerminalSignal {
+  id: string;
+  family: TerminalSignalFamily;
+  subjectType: TerminalSignalSubjectType;
+  asset: string | null;
+  title: string;
+  summary: string;
+  side: TerminalSignalSide;
+  severity: TerminalSignalSeverity;
+  score: number | null;
+  confidence: TerminalSignalConfidence;
+  freshnessMs: number | null;
+  evidence: string[];
+  metrics: TerminalSignalMetric[];
+  source: string;
+  sourceCaveat?: string | null;
+  routeHref: string;
+  paperTradeHref?: string | null;
+}
+
+export interface TerminalSignalsSummary {
+  total: number;
+  highSeverity: number;
+  alertWinRatePct: number | null;
+  vaultCount: number;
+  generatedAt: number;
+}
+
+export interface TerminalSignalsResponse {
+  signals: TerminalSignal[];
+  summary: TerminalSignalsSummary;
+  warnings: string[];
+  sources: string[];
+  generatedAt: number;
+}
 
 export type MomentumAlertKind = "momentum_ignition" | "momentum_continuation";
 export type MomentumAlertSeverity = "high" | "medium" | "low";

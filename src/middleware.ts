@@ -6,8 +6,7 @@ export function middleware(request: NextRequest) {
 
   if (
     (!isFactorsEnabled() && pathname.startsWith("/factors")) ||
-    (!isVaultsEnabled() && pathname.startsWith("/vaults")) ||
-    pathname.startsWith("/whales")
+    (!isVaultsEnabled() && pathname.startsWith("/vaults"))
   ) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/markets";
@@ -19,5 +18,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/factors/:path*", "/vaults/:path*", "/whales/:path*"],
+  matcher: ["/factors/:path*", "/vaults/:path*"],
 };

@@ -47,107 +47,109 @@ export const COLORS = {
 // FX and index markets. Add more dex names here to surface them.
 export const HIP3_DEXS = ["xyz"] as const;
 
-// Asset categories — Hyperliquid API doesn't provide categories,
-// so we maintain a static map. Unlisted assets default to "Other".
-export type AssetCategory =
-  | "L1"
-  | "L2"
-  | "DeFi"
-  | "Meme"
-  | "AI"
-  | "Gaming"
-  | "HL Native"
-  | "Stocks"
-  | "Metals"
-  | "Energy"
-  | "Commodities"
-  | "FX"
-  | "Index"
-  | "Other";
-
-export const ASSET_CATEGORIES: Record<string, AssetCategory> = {
-  // Layer 1
-  BTC: "L1", ETH: "L1", SOL: "L1", AVAX: "L1", BNB: "L1", ADA: "L1",
-  DOT: "L1", NEAR: "L1", SUI: "L1", APT: "L1", TON: "L1", ATOM: "L1",
-  TRX: "L1", XRP: "L1", LTC: "L1", BCH: "L1", ETC: "L1", XLM: "L1",
-  FIL: "L1", HBAR: "L1", IOTA: "L1", ALGO: "L1", CELO: "L1", ICP: "L1",
-  INJ: "L1", SEI: "L1", MINA: "L1", TAO: "L1", KAS: "L1", STX: "L1",
-  BSV: "L1", NEO: "L1", ZEN: "L1", XMR: "L1", DASH: "L1", ZEC: "L1",
-  S: "L1", BERA: "L1", MOVE: "L1", IP: "L1",
-
-  // Layer 2 / Infrastructure
-  ARB: "L2", OP: "L2", STRK: "L2", MANTA: "L2", BLAST: "L2", ZK: "L2",
-  ZETA: "L2", POL: "L2", W: "L2", DYDX: "L2", IMX: "L2",
-  LINK: "L2", PYTH: "L2", ZRO: "L2", LAYER: "L2", LINEA: "L2",
-  INIT: "L2",
-
-  // DeFi
-  AAVE: "DeFi", UNI: "DeFi", CRV: "DeFi", COMP: "DeFi", SUSHI: "DeFi",
-  PENDLE: "DeFi", GMX: "DeFi", SNX: "DeFi", LDO: "DeFi", RUNE: "DeFi",
-  JUP: "DeFi", ONDO: "DeFi", ENS: "DeFi", CAKE: "DeFi", ETHFI: "DeFi",
-  ENA: "DeFi", MNT: "DeFi", RSR: "DeFi", MORPHO: "DeFi", USUAL: "DeFi",
-  AERO: "DeFi", EIGEN: "DeFi", KAITO: "DeFi", RESOLV: "DeFi", SKY: "DeFi",
-  STABLE: "DeFi", STBL: "DeFi", PAXG: "DeFi",
-
-  // Meme
-  DOGE: "Meme", kPEPE: "Meme", kSHIB: "Meme", WIF: "Meme", kBONK: "Meme",
-  POPCAT: "Meme", FARTCOIN: "Meme", TRUMP: "Meme", PNUT: "Meme",
-  MOODENG: "Meme", BRETT: "Meme", MEW: "Meme", TURBO: "Meme",
-  NOT: "Meme", BOME: "Meme", PEOPLE: "Meme", MEME: "Meme",
-  CHILLGUY: "Meme", PENGU: "Meme", kFLOKI: "Meme", MELANIA: "Meme",
-  VINE: "Meme", TST: "Meme", SPX: "Meme", kNEIRO: "Meme",
-  APE: "Meme", kLUNC: "Meme", USTC: "Meme", GOAT: "Meme",
-  GRASS: "Meme", DOOD: "Meme", PUMP: "Meme", YZY: "Meme",
-  BABY: "Meme", ANIME: "Meme", MON: "Meme", MEGA: "Meme",
-
-  // AI
-  FET: "AI", RENDER: "AI", VIRTUAL: "AI", AIXBT: "AI", GRIFFAIN: "AI",
-  ZEREBRO: "AI", IO: "AI", AR: "AI", WLD: "AI", BIO: "AI",
-  PROMPT: "AI", SOPH: "AI", PROVE: "AI",
-
-  // Gaming / NFT
-  AXS: "Gaming", GALA: "Gaming", SAND: "Gaming", SUPER: "Gaming",
-  YGG: "Gaming", BIGTIME: "Gaming", XAI: "Gaming", HMSTR: "Gaming",
-  NXPC: "Gaming", GMT: "Gaming", BANANA: "Gaming", ACE: "Gaming",
-  BLUR: "Gaming", ME: "Gaming",
-
-  // Hyperliquid Native
-  HYPE: "HL Native", PURR: "HL Native", HYPER: "HL Native",
-  JEFF: "HL Native",
-};
+// Broad market buckets for the Markets filter. Hyperliquid perps are mostly
+// crypto today, so unknown symbols intentionally default to Crypto.
+export type AssetCategory = "Crypto" | "Equities" | "Commodities" | "FX / Rates";
 
 // HIP-3 (builder dex) asset → category. Keyed by the asset part of
 // "dex:ASSET" (e.g. BRENTOIL from "xyz:BRENTOIL"). Non-equity markets are
-// listed explicitly; anything else on a HIP-3 dex defaults to "Stocks"
+// listed explicitly; anything else on a HIP-3 dex defaults to Equities
 // (the `xyz` dex is predominantly single-name equities).
 export const HIP3_ASSET_CATEGORIES: Record<string, AssetCategory> = {
-  // Energy
-  BRENTOIL: "Energy", CL: "Energy", NATGAS: "Energy", TTF: "Energy", XLE: "Energy",
-  // Metals
-  GOLD: "Metals", SILVER: "Metals", PLATINUM: "Metals", PALLADIUM: "Metals",
-  COPPER: "Metals", ALUMINIUM: "Metals", URANIUM: "Metals", URNM: "Metals",
+  // Energy / metals / agriculture
+  BRENTOIL: "Commodities", CL: "Commodities", NATGAS: "Commodities", TTF: "Commodities", XLE: "Commodities",
+  GOLD: "Commodities", SILVER: "Commodities", PLATINUM: "Commodities", PALLADIUM: "Commodities",
+  COPPER: "Commodities", ALUMINIUM: "Commodities", URANIUM: "Commodities", URNM: "Commodities",
   // Agriculture / soft commodities
   CORN: "Commodities", WHEAT: "Commodities",
   // FX
-  EUR: "FX", JPY: "FX", GBP: "FX", KRW: "FX", DXY: "FX",
-  // Indices
-  SP500: "Index", JP225: "Index", KR200: "Index", NIFTY: "Index", IBOV: "Index",
-  VIX: "Index", VOL: "Index", XYZ100: "Index", H100: "Index", EWY: "Index",
-  EWJ: "Index", EWZ: "Index", EWT: "Index", SMH: "Index",
+  EUR: "FX / Rates", JPY: "FX / Rates", GBP: "FX / Rates", KRW: "FX / Rates", DXY: "FX / Rates",
+  // Indices / ETFs
+  SP500: "Equities", JP225: "Equities", KR200: "Equities", NIFTY: "Equities", IBOV: "Equities",
+  VIX: "Equities", VOL: "Equities", XYZ100: "Equities", H100: "Equities", EWY: "Equities",
+  EWJ: "Equities", EWZ: "Equities", EWT: "Equities", SMH: "Equities",
 };
 
 export const ALL_CATEGORIES: AssetCategory[] = [
-  "L2", "AI", "Gaming", "HL Native",
-  "Stocks", "Metals", "Energy", "Commodities", "FX", "Index",
+  "Crypto",
+  "Equities",
+  "Commodities",
+  "FX / Rates",
 ];
+
+const EQUITY_SYMBOLS = new Set([
+  "AAPL",
+  "MSFT",
+  "NVDA",
+  "GOOGL",
+  "GOOG",
+  "AMZN",
+  "META",
+  "TSLA",
+  "NFLX",
+  "AMD",
+  "AVGO",
+  "MSTR",
+  "COIN",
+  "HOOD",
+  "PLTR",
+  "SPY",
+  "QQQ",
+  "IWM",
+  "DIA",
+  "SPX500",
+  "NAS100",
+  "US30",
+  "RUSSELL",
+]);
+
+const COMMODITY_SYMBOLS = new Set([
+  "XAU",
+  "XAG",
+  "GOLD",
+  "SILVER",
+  "PAXG",
+  "USOIL",
+  "UKOIL",
+  "WTI",
+  "BRENT",
+  "NATGAS",
+  "COPPER",
+]);
+
+const FX_RATE_SYMBOLS = new Set([
+  "EURUSD",
+  "GBPUSD",
+  "USDJPY",
+  "USDCHF",
+  "USDCAD",
+  "AUDUSD",
+  "NZDUSD",
+  "DXY",
+  "US10Y",
+  "US02Y",
+  "US2Y",
+  "US30Y",
+]);
+
+function normalizeMarketSymbol(symbol: string): string {
+  return symbol
+    .toUpperCase()
+    .replace(/^K(?=[A-Z])/, "")
+    .replace(/[-_/ ]?(PERP|USD|USDC)$/i, "");
+}
 
 export function getAssetCategory(coin: string): AssetCategory {
   const colon = coin.indexOf(":");
   if (colon !== -1) {
-    const asset = coin.slice(colon + 1);
-    return HIP3_ASSET_CATEGORIES[asset] ?? "Stocks";
+    const asset = normalizeMarketSymbol(coin.slice(colon + 1));
+    return HIP3_ASSET_CATEGORIES[asset] ?? "Equities";
   }
-  return ASSET_CATEGORIES[coin] ?? "Other";
+  const normalized = normalizeMarketSymbol(coin);
+  if (EQUITY_SYMBOLS.has(normalized)) return "Equities";
+  if (COMMODITY_SYMBOLS.has(normalized)) return "Commodities";
+  if (FX_RATE_SYMBOLS.has(normalized)) return "FX / Rates";
+  return "Crypto";
 }
 
 

@@ -14,6 +14,7 @@ import {
 } from "lightweight-charts";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick, formatEasternDateTime } from "@/lib/time";
+import { cn, formatCompactUsd, formatPct } from "@/lib/format";
 import {
   reactionLevelsToSupportResistanceLevels,
   type ReactionLevelsPayload,
@@ -1021,6 +1022,32 @@ function pivotShortLabel(level: SupportResistanceLevel): string {
   return level.kind === "support" ? "Pivot low" : "Pivot high";
 }
 
+function hypeRegimeLabel(value: NonNullable<ReactionLevelsPayload["hypeFundamentals"]>["regime"]): string {
+  if (value === "expanding") return "Usage expanding";
+  if (value === "cooling") return "Usage cooling";
+  if (value === "mixed") return "Mixed usage";
+  return "Unknown";
+}
+
+function hypeBiasLabel(value: NonNullable<ReactionLevelsPayload["hypeFundamentals"]>["levelBias"]): string {
+  if (value === "support_bid") return "Support bias";
+  if (value === "breakout_confirm") return "Breakout confirm";
+  if (value === "resistance_fade") return "Fade resistance";
+  if (value === "mean_revert") return "Mean reversion";
+  return "Neutral";
+}
+
+function hypeConfidenceClass(value: NonNullable<ReactionLevelsPayload["hypeFundamentals"]>["confidenceAdjustment"]): string {
+  if (value === "raise") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+  if (value === "lower") return "border-red-500/30 bg-red-500/10 text-red-200";
+  return "border-zinc-700 bg-zinc-950/80 text-zinc-300";
+}
+
+function formatHypeMetric(value: number | null | undefined, kind: "usd" | "pct"): string {
+  if (kind === "usd") return formatCompactUsd(value);
+  return formatPct(value);
+}
+
 export default function PriceChart({
   coin,
   marketType = "perp",
@@ -1134,6 +1161,7 @@ export default function PriceChart({
   );
   const highlightedZoneId = hoveredZoneId ?? selectedZoneId;
   const activeCandleReadout = hoverCandle ?? candleReadoutFromRawCandle(candles.at(-1));
+  const hypeFundamentals = reactionPayload?.hypeFundamentals ?? null;
 
   useEffect(() => {
     if (selectedZoneId && !zoneBands.some((band) => band.id === selectedZoneId)) {
@@ -1662,7 +1690,86 @@ export default function PriceChart({
             <div className="h-1.5 w-1/2 animate-pulse rounded-full bg-sky-400/70" />
           </div>
         ) : null}
+        {hypeFundamentals ? (
+          <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
+                <SectionEyebrow>HYPE Fundamentals</SectionEyebrow>
+                <div className="mt-1 text-sm font-semibold text-zinc-100">{hypeFundamentals.decisionLabel}</div>
+                <div className="mt-1 text-xs leading-5 text-zinc-500">
+                  Official Hyperliquid public stats and live perp context. Fundamentals adjust level confidence; price trigger still rules.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 md:justify-end">
+                <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-300">
+                  {hypeRegimeLabel(hypeFundamentals.regime)}
+                </span>
+                <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-1 font-mono text-[11px] text-sky-200">
+                  {hypeBiasLabel(hypeFundamentals.levelBias)}
+                </span>
+                <span className={cn("rounded-full border px-2 py-1 font-mono text-[11px]", hypeConfidenceClass(hypeFundamentals.confidenceAdjustment))}>
+                  Confidence {hypeFundamentals.confidenceAdjustment}
+                </span>
+                {hypeFundamentals.statsStale ? (
+                  <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-1 font-mono text-[11px] text-amber-200">
+                    History stale
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <HypeFundamentalMetric
+                label="7d volume"
+                value={formatHypeMetric(hypeFundamentals.metrics.volume7dUsd, "usd")}
+                sub={`Share ${formatHypeMetric(hypeFundamentals.metrics.volumeShare7dPct, "pct")}`}
+              />
+              <HypeFundamentalMetric
+                label="Live day volume"
+                value={formatHypeMetric(hypeFundamentals.metrics.liveDayVolumeUsd, "usd")}
+                sub={`30d share ${formatHypeMetric(hypeFundamentals.metrics.volumeShare30dPct, "pct")}`}
+              />
+              <HypeFundamentalMetric
+                label="Live OI"
+                value={formatHypeMetric(hypeFundamentals.metrics.liveOpenInterestUsd, "usd")}
+                sub={`7d OI ${formatHypeMetric(hypeFundamentals.metrics.openInterest7dChangePct, "pct")}`}
+              />
+              <HypeFundamentalMetric
+                label="Funding"
+                value={formatHypeMetric(hypeFundamentals.metrics.funding7dAvgApr, "pct")}
+                sub={`Live APR ${formatHypeMetric(hypeFundamentals.metrics.liveFundingApr, "pct")}`}
+              />
+            </div>
+            <div className="mt-3 grid gap-2 text-xs leading-5 text-zinc-500 md:grid-cols-3">
+              {hypeFundamentals.evidence.slice(0, 3).map((item) => (
+                <div key={item} className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-2">
+                  {item}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 text-[11px] leading-5 text-zinc-600">
+              {hypeFundamentals.caveats[1]}
+            </div>
+          </div>
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+function HypeFundamentalMetric({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-[#0d1016] p-2">
+      <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">{label}</div>
+      <div className="mt-1 font-mono text-sm font-semibold text-zinc-100">{value}</div>
+      <div className="mt-0.5 truncate text-[11px] text-zinc-500">{sub}</div>
     </div>
   );
 }

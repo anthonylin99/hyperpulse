@@ -1,0 +1,20 @@
+[
+  {
+    "id": "zec-critical-disclosure-private-discovery-2026-05-29",
+    "asset": "ZEC",
+    "title": "Zcash Orchard vulnerability privately discovered",
+    "eventTime": "2026-05-29T00:00:00.000Z",
+    "category": "security_disclosure",
+    "sourceUrl": "https://zfnd.org/zebra-4-5-3-and-5-0-0-emergency-soft-fork-and-nu-6-2-activation/",
+    "notes": "Used to test whether Hyperliquid volume/price anomalies appeared before the private discovery date cited in public reporting."
+  },
+  {
+    "id": "zec-nu6-2-patch-2026-06-03",
+    "asset": "ZEC",
+    "title": "Zcash NU6.2 emergency hard fork patch",
+    "eventTime": "2026-06-03T00:00:00.000Z",
+    "category": "security_patch",
+    "sourceUrl": "https://zfnd.org/zebra-4-5-3-and-5-0-0-emergency-soft-fork-and-nu-6-2-activation/",
+    "notes": "Patch/remediation marker for measuring post-event volume continuation and selloff acceleration."
+  }
+]

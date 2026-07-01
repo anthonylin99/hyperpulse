@@ -73,45 +73,26 @@ if (!DATABASE_URL) {
 
 const NETWORK = process.env.HYPERPULSE_NETWORK === "testnet" ? "testnet" : "mainnet";
 let ASSETS = [];
-const DEFAULT_REACTION_ASSETS = [
-  "BTC",
-  "ETH",
-  "SOL",
-  "HYPE",
-  "XRP",
-  "DOGE",
-  "SUI",
-  "ZEC",
-  "TON",
-  "TAO",
-  "AAVE",
-  "LINK",
-  "BNB",
-  "AVAX",
-  "ONDO",
-  "ENA",
-  "NEAR",
-  "WLD",
-  "PUMP",
-  "FARTCOIN",
-];
+// Keep Reaction Map lean by default. Market tables and Momentum Radar still cover
+// the wider universe; this websocket worker is the expensive raw bucket writer.
+const DEFAULT_REACTION_ASSETS = ["BTC", "ETH", "SOL", "HYPE", "ZEC", "TON", "SUI", "DOGE"];
 const CONFIGURED_ASSETS = parseList(process.env.REACTION_MAP_ASSETS ?? DEFAULT_REACTION_ASSETS.join(","), []);
-const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["15m", "1h", "4h", "1d"])
+const ZONE_WINDOWS_MS = parseList(process.env.REACTION_MAP_ZONE_WINDOWS, ["15m", "1h"])
   .map(windowMsFromLabel)
   .filter((value) => value != null);
 const WIDE_BOOK_N_SIG_FIGS = parseList(process.env.REACTION_MAP_WIDE_BOOK_N_SIG_FIGS, ["3"])
   .map((value) => Number(value))
   .filter((value) => [2, 3, 4, 5].includes(value));
-const BUCKET_MS = envNumber("REACTION_MAP_BUCKET_MS", 60_000, 5_000);
-const FLUSH_MS = envNumber("REACTION_MAP_FLUSH_MS", 180_000, 30_000);
-const PROMOTE_MS = envNumber("REACTION_MAP_PROMOTE_MS", 180_000, 30_000);
-const BOOK_FLUSH_BATCH_SIZE = Math.floor(envNumber("REACTION_MAP_BOOK_FLUSH_BATCH_SIZE", 750, 50));
-const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 10, 5);
-const MAX_ZONE_WINDOW_MS = Math.max(...ZONE_WINDOWS_MS, 4 * 60 * 60 * 1000);
+const BUCKET_MS = envNumber("REACTION_MAP_BUCKET_MS", 120_000, 30_000);
+const FLUSH_MS = envNumber("REACTION_MAP_FLUSH_MS", 300_000, 60_000);
+const PROMOTE_MS = envNumber("REACTION_MAP_PROMOTE_MS", 300_000, 60_000);
+const BOOK_FLUSH_BATCH_SIZE = Math.floor(envNumber("REACTION_MAP_BOOK_FLUSH_BATCH_SIZE", 400, 50));
+const BOOK_LEVEL_LIMIT = envNumber("REACTION_MAP_BOOK_LEVEL_LIMIT", 12, 5);
+const MAX_ZONE_WINDOW_MS = Math.max(...ZONE_WINDOWS_MS, 60 * 60 * 1000);
 const RAW_RETENTION_FLOOR_MS = MAX_ZONE_WINDOW_MS + 30 * 60 * 1000;
-const RAW_BUCKET_RETENTION_MS = envNumber("REACTION_MAP_RAW_RETENTION_MS", 6 * 60 * 60 * 1000, 60 * 60 * 1000);
+const RAW_BUCKET_RETENTION_MS = envNumber("REACTION_MAP_RAW_RETENTION_MS", 2 * 60 * 60 * 1000, 60 * 60 * 1000);
 const CONTEXT_RETENTION_MS = envNumber("REACTION_MAP_CONTEXT_RETENTION_MS", RAW_RETENTION_FLOOR_MS, RAW_RETENTION_FLOOR_MS);
-const EVENT_RETENTION_MS = envNumber("REACTION_MAP_EVENT_RETENTION_MS", 24 * 60 * 60 * 1000, 60 * 60 * 1000);
+const EVENT_RETENTION_MS = envNumber("REACTION_MAP_EVENT_RETENTION_MS", 6 * 60 * 60 * 1000, 60 * 60 * 1000);
 const STALE_ZONE_RETENTION_MS = envNumber("REACTION_MAP_STALE_ZONE_RETENTION_MS", 6 * 60 * 60 * 1000, 60 * 60 * 1000);
 const RETENTION_SWEEP_MS = envNumber("REACTION_MAP_RETENTION_SWEEP_MS", 10 * 60 * 1000, 60_000);
 const RETENTION_INITIAL_DELAY_MS = Math.min(RETENTION_SWEEP_MS, Math.max(60_000, Math.floor(PROMOTE_MS / 2)));
@@ -134,15 +115,15 @@ const ZONE_WIDTH_MAX_PCT = envNumber(
 const ZONE_WIDTH_AVG_MOVE_MULTIPLIER = envNumber("REACTION_MAP_ZONE_WIDTH_AVG_MOVE_X", 4, 0.5);
 const MAX_ZONES_STORED_PER_SIDE = Math.max(
   1,
-  Math.floor(envNumber("REACTION_MAP_MAX_ZONES_STORED_PER_SIDE", 10, 1)),
+  Math.floor(envNumber("REACTION_MAP_MAX_ZONES_STORED_PER_SIDE", 4, 1)),
 );
 const CARRIED_ZONE_LOOKBACK_MS = envNumber(
   "REACTION_MAP_CARRIED_ZONE_LOOKBACK_MS",
-  Math.max(CONTEXT_RETENTION_MS, 24 * 60 * 60 * 1000),
+  Math.max(CONTEXT_RETENTION_MS, 6 * 60 * 60 * 1000),
   60 * 60 * 1000,
 );
 const ALGORITHM_VERSION = "reaction-map-v2.1.0";
-const pool = new Pool({ connectionString: DATABASE_URL, max: 2 });
+const pool = new Pool({ connectionString: DATABASE_URL, max: 1 });
 const httpTransport = new HttpTransport({ isTestnet: NETWORK === "testnet" });
 const infoClient = new InfoClient({ transport: httpTransport });
 const transport = new WebSocketTransport({ isTestnet: NETWORK === "testnet" });

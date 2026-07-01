@@ -6,6 +6,7 @@ import {
   validateCoin,
 } from "@/lib/security";
 import { getInfoClient, resolveNetworkFromRequest } from "@/lib/hyperliquid";
+import { getHypeFundamentalsContext } from "@/lib/hypeFundamentals";
 import { getReactionLevelMap } from "@/lib/reactionLevelStore";
 import type { ReactionLevelsPayload, ReactionOrderBookShelf } from "@/lib/reactionLevels";
 
@@ -79,13 +80,29 @@ export async function GET(request: Request) {
       windowMs,
       requestUrl: url,
     });
-    return jsonSuccess(payloadWithLiveBook, { cache: "public-market" });
+    const enrichedPayload = await attachHypeFundamentals(payloadWithLiveBook, coin);
+    return jsonSuccess(enrichedPayload, { cache: "public-market" });
   } catch (error) {
     logServerError("api/market/reaction-levels", error);
     return jsonError("Unable to fetch Reaction Map right now.", {
       status: 502,
       cache: "public-market",
     });
+  }
+}
+
+async function attachHypeFundamentals(
+  payload: ReactionLevelsPayload,
+  coin: string,
+): Promise<ReactionLevelsPayload> {
+  if (coin.toUpperCase() !== "HYPE") return payload;
+  try {
+    return {
+      ...payload,
+      hypeFundamentals: await getHypeFundamentalsContext(),
+    };
+  } catch {
+    return payload;
   }
 }
 

@@ -14,6 +14,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { deploymentMode } = useAppConfig();
   const { lastUpdated } = useMarket();
+  if (pathname === "/mockups" || pathname.startsWith("/mockups/")) {
+    return <div className="min-h-screen bg-zinc-950 text-zinc-100">{children}</div>;
+  }
+
   if (pathname === "/world" || pathname.startsWith("/world/")) {
     return <div className="min-h-screen bg-[#050807] text-zinc-100">{children}</div>;
   }
@@ -21,12 +25,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const usesWorkspaceShell =
     pathname === "/markets" ||
     pathname.startsWith("/markets/") ||
+    pathname === "/signals" ||
+    pathname.startsWith("/signals/") ||
     pathname === "/alerts" ||
     pathname.startsWith("/alerts/") ||
     pathname === "/agent" ||
     pathname.startsWith("/agent/") ||
     pathname === "/portfolio" ||
     pathname.startsWith("/portfolio/") ||
+    pathname === "/whales" ||
+    pathname.startsWith("/whales/") ||
     pathname === "/vaults" ||
     pathname.startsWith("/vaults/") ||
     pathname === "/docs" ||
@@ -55,7 +63,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 md:pl-14">
       <div className="sticky top-0 z-40">
         <LiveTickerStrip />
         <Nav />

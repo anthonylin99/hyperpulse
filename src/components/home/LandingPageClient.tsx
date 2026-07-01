@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import HomePage from "@/components/HomePage";
+import HomePage from "../HomePage";
 
 function LandingContent() {
   const router = useRouter();
@@ -19,6 +19,9 @@ function LandingContent() {
         return "/";
       case "markets":
         return asset ? `/markets?asset=${encodeURIComponent(asset)}` : "/markets";
+      case "signals":
+      case "intel":
+        return "/signals";
       case "portfolio":
         return "/portfolio";
       case "vaults":

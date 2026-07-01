@@ -7,6 +7,7 @@ const quickLinks = [
   { href: "#overview", label: "Overview" },
   { href: "#portfolio", label: "Portfolio" },
   { href: "#markets", label: "Markets & Alerts" },
+  { href: "#strategy", label: "Strategy Lab" },
   { href: "#vaults", label: "Vaults" },
   { href: "#privacy", label: "Privacy" },
   { href: "#limits", label: "Limits" },
@@ -32,6 +33,16 @@ const productCards = [
     title: "Market Brief",
     href: "/docs/factors",
     body: "Read the biweekly HyperPulse tape note: top performers, themes, catalysts, and direct asset links.",
+  },
+  {
+    title: "Sentiment Index",
+    href: "/docs/sentiment",
+    body: "Share a weekly inferred Hyperliquid long/short sentiment card built from public flow, OI, funding, and Reaction Map zones.",
+  },
+  {
+    title: "Strategy Lab",
+    href: "/docs/strategy",
+    body: "Read the quant memo and track the high-funding short reversal as a shadow-only forward test.",
   },
 ];
 
@@ -164,6 +175,21 @@ export default function DocsPage() {
               <MiniCard title="Alerts page">Stores the exact alert price, alert time, current return, delivery state, and TP1/SL first-touch outcome.</MiniCard>
               <MiniCard title="Biweekly brief">Summarizes which assets led, why they likely moved, and which themes carried the Hyperliquid tape.</MiniCard>
             </div>
+          </Section>
+
+          <Section id="strategy" eyebrow="Strategy Lab" title="How quant research is used">
+            <p>
+              HyperPulse separates research from execution. The current strategy memo did not approve live capital; it
+              approved a shadow-only pilot for one narrow high-funding short reversal setup.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Formula label="Frozen short rule" value="funding_z_7d > 1.0 + funding APR > 25% + 24h return > 0.5%" />
+              <Formula label="Pilot exit rule" value="0.8% take-profit / 2.0% stop / 8h time stop / 4h cooldown" />
+            </div>
+            <p className="text-zinc-400">
+              The Strategy Lab page shows current candidates and rejected names, but treats everything as forward
+              validation. It is a research ledger, not a live-trading approval system.
+            </p>
           </Section>
 
           {vaultsEnabled ? (

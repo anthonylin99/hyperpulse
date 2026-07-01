@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { VaultFilters, DEFAULT_VAULT_FILTERS, type VaultFilterState } from "./VaultFilters";
@@ -11,6 +12,11 @@ import type { VaultListItem, VaultListResult } from "@/types/vaults";
 const MIN_TVL_FILTER = 100_000;
 const MIN_HISTORY_DAYS = 30;
 const MIN_SHARPE = 1;
+
+function formatPct(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
 
 export default function VaultsRoutePage() {
   const [items, setItems] = useState<VaultListItem[] | null>(null);
@@ -63,6 +69,12 @@ export default function VaultsRoutePage() {
     const protocolTvl = vaults.filter(isProtocolVault).reduce((sum, v) => sum + v.metrics.tvl, 0);
     return { totalTvl, protocolTvl };
   }, [items]);
+  const topOperators = useMemo(() => {
+    return [...(items ?? [])]
+      .filter((vault) => !vault.isClosed && vault.metrics.tvl > 0)
+      .sort((a, b) => b.metrics.score.score - a.metrics.score.score)
+      .slice(0, 4);
+  }, [items]);
 
   return (
     <div className="mx-auto max-w-[1540px] px-4 py-5 pb-20">
@@ -71,7 +83,7 @@ export default function VaultsRoutePage() {
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-zinc-50 md:text-4xl">Vaults</h1>
             <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-              A compact Hyperliquid vault directory sorted by TVL by default. Use it to shortlist operators, then inspect risk before depositing.
+              Hyperliquid operator leaderboard for shortlisting vaults, inspecting risk, and avoiding copy-trade assumptions.
             </p>
           </div>
           <div className="grid gap-2 text-xs sm:grid-cols-3 lg:min-w-[520px]">
@@ -81,6 +93,8 @@ export default function VaultsRoutePage() {
           </div>
         </div>
       </header>
+
+      {topOperators.length > 0 ? <OperatorWatchStrip items={topOperators} /> : null}
 
       <section className="mt-4 overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b0d10]">
         <div className="flex flex-col gap-3 border-b border-zinc-800 bg-zinc-950/70 p-3 lg:flex-row lg:items-center lg:justify-between">
@@ -114,6 +128,45 @@ export default function VaultsRoutePage() {
           <VaultsTable items={filtered} />
         )}
       </section>
+    </div>
+  );
+}
+
+function OperatorWatchStrip({ items }: { items: VaultListItem[] }) {
+  return (
+    <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {items.map((vault) => (
+        <Link
+          key={vault.vaultAddress}
+          href={`/vaults/${vault.vaultAddress}`}
+          className="group rounded-2xl border border-zinc-800 bg-[#0b1016] p-4 transition hover:border-emerald-400/25 hover:bg-[#0e151d]"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-zinc-100">{vault.name || "Unnamed vault"}</div>
+              <div className="mt-1 truncate font-mono text-[10px] text-zinc-600">{vault.leader}</div>
+            </div>
+            <span className="rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-emerald-200">
+              {vault.metrics.score.decision}
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <MiniMetric label="TVL" value={formatCompact(vault.metrics.tvl)} />
+            <MiniMetric label="30d" value={formatPct(vault.metrics.return30dPct)} tone={(vault.metrics.return30dPct ?? 0) >= 0 ? "green" : "red"} />
+            <MiniMetric label="Sharpe" value={vault.metrics.sharpe90d == null ? "n/a" : vault.metrics.sharpe90d.toFixed(2)} />
+          </div>
+          <div className="mt-3 line-clamp-2 text-xs leading-5 text-zinc-500">{vault.metrics.score.reason}</div>
+        </Link>
+      ))}
+    </section>
+  );
+}
+
+function MiniMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "green" | "red" }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/55 px-2 py-2">
+      <div className="text-[9px] uppercase tracking-[0.14em] text-zinc-600">{label}</div>
+      <div className={tone === "green" ? "mt-1 truncate font-mono text-xs text-emerald-300" : tone === "red" ? "mt-1 truncate font-mono text-xs text-rose-300" : "mt-1 truncate font-mono text-xs text-zinc-100"}>{value}</div>
     </div>
   );
 }

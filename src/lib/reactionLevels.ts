@@ -1,4 +1,5 @@
 import type { SupportResistanceLevel } from "@/types";
+import type { HypeFundamentalsContext } from "@/lib/hypeFundamentals";
 import type { MarketSetupSignal } from "@/lib/tradePlan";
 
 export type ReactionLabel =
@@ -297,6 +298,7 @@ export interface ReactionLevelsPayload {
     }>;
     trackedLiquidations: ReactionTrackedLiquidationBucket[];
   };
+  hypeFundamentals?: HypeFundamentalsContext;
 }
 
 type BuildReactionLevelsArgs = {

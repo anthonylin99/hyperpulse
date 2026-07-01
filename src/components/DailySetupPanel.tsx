@@ -3,7 +3,7 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RefreshCw, ShieldAlert, Target } from "lucide-react";
+import { ExternalLink, RefreshCw, ShieldAlert, Target } from "lucide-react";
 import { SectionEyebrow } from "@/components/trading-ui";
 import { useMarket } from "@/context/MarketContext";
 import { POLL_INTERVAL_MARKET } from "@/lib/constants";
@@ -29,6 +29,29 @@ type DailySetup = {
   score: number;
   rationale: string[];
   guardrails: string[];
+  sentimentAlignment: "confirms" | "contradicts" | "mixed" | "none";
+  decisionLabel: string;
+  socialContext: {
+    label: string;
+    note: string;
+    bullishCount: number;
+    bearishCount: number;
+    neutralCount: number;
+    caveat: string;
+  };
+  topTakes: Array<{
+    id: string;
+    ticker: string;
+    title: string;
+    analystHandle: string;
+    sourceUrl: string;
+    publishedAt: string;
+    summary: string;
+    stance: "bullish" | "bearish" | "neutral";
+    tags: string[];
+    confidence: "high" | "medium" | "low";
+    relatedTickers?: string[];
+  }>;
 };
 
 type DailySetupResponse = {
@@ -52,6 +75,13 @@ function sideClasses(side: DailySetup["side"]) {
   if (side === "short") return "border-rose-500/25 bg-rose-500/10 text-rose-200";
   if (side === "long") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
   return "border-zinc-700 bg-zinc-950/70 text-zinc-300";
+}
+
+function alignmentClasses(alignment: DailySetup["sentimentAlignment"]) {
+  if (alignment === "confirms") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
+  if (alignment === "contradicts") return "border-amber-500/25 bg-amber-500/10 text-amber-100";
+  if (alignment === "mixed") return "border-sky-500/25 bg-sky-500/10 text-sky-100";
+  return "border-zinc-800 bg-zinc-950/60 text-zinc-400";
 }
 
 export default function DailySetupPanel({ compact = false }: { compact?: boolean }) {
@@ -146,7 +176,7 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
                 </div>
                 <div className="mt-2 text-sm font-medium text-zinc-200">{setup.title}</div>
                 <div className="mt-1 text-xs leading-5 text-zinc-500">
-                  {setup.rationale[0] ?? "Wait for confirmation."}
+                  {setup.decisionLabel || setup.rationale[0] || "Wait for confirmation."}
                 </div>
               </div>
               <div className="shrink-0 text-right">
@@ -177,6 +207,44 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
               Risk rule
             </div>
             {setup.guardrails[0] ?? "Do not add to a losing position."}
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 text-[11px] leading-5">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="font-medium text-zinc-200">Social confirmation</span>
+              <span className={cn("rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]", alignmentClasses(setup.sentimentAlignment))}>
+                {setup.socialContext?.label ?? "No read"}
+              </span>
+            </div>
+            <div className="text-zinc-500">
+              {setup.socialContext?.note ?? "Curated social context is unavailable for this asset."}
+            </div>
+            {!compact && setup.topTakes?.length ? (
+              <div className="mt-2 space-y-2">
+                {setup.topTakes.slice(0, 2).map((take) => (
+                  <a
+                    key={take.id}
+                    href={take.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-lg border border-zinc-800 bg-[#090d12] p-2 transition hover:border-teal-300/25"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium text-zinc-200">{take.title}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-zinc-600" />
+                    </div>
+                    <div className="mt-1 text-zinc-600">
+                      {take.analystHandle} - {take.stance}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : null}
+            {!compact ? (
+              <div className="mt-2 text-[10px] leading-4 text-zinc-600">
+                {setup.socialContext?.caveat ?? "Sentiment is context only; funding and price trigger remain the authority."}
+              </div>
+            ) : null}
           </div>
 
           {!compact && setup.rationale.length > 1 ? (

@@ -19,6 +19,7 @@ interface AssetRowProps {
   index: number;
   isExpanded: boolean;
   onSelect: () => void;
+  onOpenWorkspace?: () => void;
   onTrade: (direction: "long" | "short") => void;
   tradingEnabled: boolean;
   fundingHistory?: { time: number; rate: number }[];
@@ -32,6 +33,7 @@ export default function AssetRow({
   index,
   isExpanded,
   onSelect,
+  onOpenWorkspace,
   onTrade,
   tradingEnabled,
   fundingHistory,
@@ -76,6 +78,12 @@ export default function AssetRow({
     <>
       <tr
         onClick={onSelect}
+        onDoubleClick={(event) => {
+          if (!onOpenWorkspace) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenWorkspace();
+        }}
         className={`h-8 border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer transition-colors text-xs font-mono ${rowBg} ${setupBg} ${isExpanded ? "bg-zinc-800/40" : ""}`}
       >
         <td className="px-2.5 py-0.5 whitespace-nowrap">
@@ -89,6 +97,11 @@ export default function AssetRow({
                 {asset.dex}
               </span>
             )}
+            {asset.coin === "HYPE" ? (
+              <span className="rounded border border-teal-400/20 bg-teal-400/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-teal-200">
+                Lab
+              </span>
+            ) : null}
           </div>
         </td>
 

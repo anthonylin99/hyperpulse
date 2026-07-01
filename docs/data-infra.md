@@ -117,7 +117,11 @@ MARKET_COLLECTOR_ONCE=true
 
 ## Reaction Map Ingestor
 
-The `reaction-map` worker subscribes to public Hyperliquid streams for BTC, ETH, and SOL:
+The `reaction-map` worker subscribes to a deliberately small curated set of public Hyperliquid streams by default:
+
+`BTC, ETH, SOL, HYPE, ZEC, TON, SUI, DOGE`
+
+Keep this worker narrow. It is the highest-write subsystem because it stores short-lived order-book and trade buckets. Momentum Radar can still scan the broader market without writing raw Reaction Map buckets.
 
 - `activeAssetCtx` for mark price, funding, and open-interest changes
 - `l2Book` and wide aggregated books for visible shelves
@@ -131,7 +135,7 @@ Every flush cycle, the worker:
 4. appends lifecycle events only for meaningful changes,
 5. prunes out-of-range short-lived aggregates.
 
-Cleanup uses `current spot +/- clamp(3 * recent average move, 2%, 35%)` with a hard time-cap fallback. Current zones and lifecycle events are preserved; stale current zones are marked instead of being deleted just because spot moved.
+Cleanup uses `current spot +/- clamp(3 * recent average move, 2%, 35%)` with a hard time-cap fallback. Current zones and lifecycle events are preserved; stale current zones are marked instead of being deleted just because spot moved. Default raw bucket retention is intentionally short; promoted current zones are the product-serving layer.
 
 Production should run this worker as an always-on Docker process on the DigitalOcean droplet. Vercel reads current zones through `/api/market/reaction-levels`; it should not persist exposure-zone rows.
 

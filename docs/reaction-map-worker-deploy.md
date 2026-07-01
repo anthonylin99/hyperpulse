@@ -19,17 +19,21 @@ Create a droplet `.env` next to the compose file, or set these values in the Lin
 ```bash
 NEON_DATABASE_URL="postgresql://...?sslmode=verify-full"
 NEON_DATABASE_URL_POOLING="postgresql://...?sslmode=verify-full"
-REACTION_MAP_ASSETS=BTC,ETH,SOL,HYPE,XRP,DOGE,ZEC,TON,SUI,ONDO,AAVE,LINK,BNB,AVAX,LTC,ADA,TRX,UNI,ENA,WIF
-REACTION_MAP_BUCKET_MS=60000
-REACTION_MAP_FLUSH_MS=15000
-REACTION_MAP_BOOK_LEVEL_LIMIT=40
-REACTION_MAP_WIDE_BOOK_N_SIG_FIGS=3,2
-REACTION_MAP_ZONE_WINDOWS=5m,15m,1h,4h
+REACTION_MAP_ASSETS=BTC,ETH,SOL,HYPE,ZEC,TON,SUI,DOGE
+REACTION_MAP_BUCKET_MS=120000
+REACTION_MAP_FLUSH_MS=300000
+REACTION_MAP_PROMOTE_MS=300000
+REACTION_MAP_BOOK_LEVEL_LIMIT=12
+REACTION_MAP_WIDE_BOOK_N_SIG_FIGS=3
+REACTION_MAP_ZONE_WINDOWS=15m,1h
 REACTION_MAP_ZONE_CLUSTER_WIDTH_PCT=0.8
 REACTION_MAP_ZONE_MIN_TRADE_NOTIONAL_USD=250000
 REACTION_MAP_CLEANUP_RANGE_MIN_PCT=2
 REACTION_MAP_CLEANUP_RANGE_MAX_PCT=35
-REACTION_MAP_RETENTION_MS=86400000
+REACTION_MAP_RAW_RETENTION_MS=7200000
+REACTION_MAP_CONTEXT_RETENTION_MS=7200000
+REACTION_MAP_EVENT_RETENTION_MS=21600000
+REACTION_MAP_STALE_ZONE_RETENTION_MS=21600000
 ```
 
 Do not commit the real Neon URL. Keep it in DigitalOcean secrets or a droplet-local `.env`.
@@ -68,10 +72,10 @@ reaction-map
 Healthy logs look like:
 
 ```text
-[reaction-map] starting network=mainnet assets=BTC,ETH,SOL,HYPE,XRP,DOGE,ZEC,AAVE bucketMs=60000
-[reaction-map] subscribed BTC wideBooks=3,2
-[reaction-map] subscribed ETH wideBooks=3,2
-[reaction-map] subscribed SOL wideBooks=3,2
+[reaction-map] starting network=mainnet assetCount=8 assets=BTC,ETH,SOL,HYPE,ZEC,TON,SUI,DOGE bucketMs=120000
+[reaction-map] subscribed BTC wideBooks=3
+[reaction-map] subscribed ETH wideBooks=3
+[reaction-map] subscribed SOL wideBooks=3
 [reaction-map] flushed context=... book=... trades=...
 ```
 
@@ -102,3 +106,12 @@ curl -fsS "https://hyperpulsehl.com/api/market/reaction-levels?coin=BTC&window=1
 ```
 
 The response should include `orderBook`, `positioning`, and `reactionZones` sections once the worker has flushed fresh buckets for the configured major assets. If the Linux worker is healthy but the frontend stays stale, check the frontend deploy env first: it needs `NEON_DATABASE_URL_POOLING` for runtime reads.
+
+## Cost Guardrail
+
+The Reaction Map is the highest-write subsystem in HyperPulse because it stores short-lived order-book and trade buckets. Keep it lean unless you are intentionally testing broader infrastructure:
+
+- Run only a small curated asset set for Reaction Map. Momentum Radar can still scan the broader market without writing raw buckets.
+- Keep raw order-book/trade retention short. The product only needs recent shelves plus promoted current zones.
+- Use `npm run reaction:prune:lean:dry-run` before cleanup and `npm run reaction:prune:lean:vacuum` only during a maintenance window, because `VACUUM FULL` rewrites and locks the affected tables.
+- Do not prune `momentum_alert_events`, `alert_outcomes`, factor reports, or portfolio analytics when the goal is Neon cost reduction; those tables are small and product-critical.

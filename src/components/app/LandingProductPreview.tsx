@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, BarChart3, BriefcaseBusiness } from "lucide-react";
+import { ArrowUpRight, BarChart3, BriefcaseBusiness, Gauge, Sparkles } from "lucide-react";
 import { cn } from "@/lib/format";
 
 const SLIDES = [
@@ -17,6 +17,15 @@ const SLIDES = [
     icon: BarChart3,
   },
   {
+    key: "intel",
+    label: "Intel",
+    title: "Unified signal intelligence",
+    description: "Radar, momentum alerts, Reaction Map context, top movers, and vault watches in one terminal feed.",
+    href: "/signals",
+    image: null,
+    icon: Sparkles,
+  },
+  {
     key: "portfolio",
     label: "Portfolio",
     title: "Chart-first wallet review",
@@ -24,6 +33,15 @@ const SLIDES = [
     href: "/portfolio",
     image: "/landing/portfolio-demo.png",
     icon: BriefcaseBusiness,
+  },
+  {
+    key: "vaults",
+    label: "Vaults",
+    title: "Operator leaderboard",
+    description: "Risk-adjusted vault screening with watch/review/avoid language before any deposit decision.",
+    href: "/vaults",
+    image: null,
+    icon: Gauge,
   },
 ] as const;
 
@@ -65,7 +83,7 @@ export default function LandingProductPreview() {
             ))}
           </div>
           <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-            Real product screenshots
+            Product surfaces
           </div>
         </div>
       </div>
@@ -80,14 +98,18 @@ export default function LandingProductPreview() {
                 index === activeIndex ? "opacity-100" : "pointer-events-none opacity-0",
               )}
             >
-              <Image
-                src={slide.image}
-                alt={`${slide.label} workspace screenshot`}
-                fill
-                priority={index === 0}
-                className="object-cover object-top"
-                sizes="(min-width: 1280px) 60vw, 100vw"
-              />
+              {slide.image ? (
+                <Image
+                  src={slide.image}
+                  alt={`${slide.label} workspace screenshot`}
+                  fill
+                  priority={index === 0}
+                  className="object-cover object-top"
+                  sizes="(min-width: 1280px) 60vw, 100vw"
+                />
+              ) : (
+                <SyntheticTerminalPreview label={slide.label} />
+              )}
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(5,10,12,0.04),rgba(5,10,12,0.16)_48%,rgba(5,10,12,0.72))]" />
             </div>
           ))}
@@ -110,9 +132,9 @@ export default function LandingProductPreview() {
 
             <div className="mt-6 grid gap-3">
               {[
-                "Captured from HyperPulse itself, not a synthetic marketing mock.",
-                "Mobile-safe carousel with manual tabs for quick scanning.",
-                "Matches the same shell traders land in after the CTA.",
+                "Signals, markets, wallet review, and vault screening share the same terminal frame.",
+                "Intel cards stay read-only and route paper ideas into the Shadow Book.",
+                "Future workflow controls can be added without changing the core navigation.",
               ].map((item) => (
                 <div
                   key={item}
@@ -147,6 +169,65 @@ export default function LandingProductPreview() {
               <ArrowUpRight className="h-4 w-4" />
             </Link>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SyntheticTerminalPreview({ label }: { label: string }) {
+  const rows =
+    label === "Intel"
+      ? [
+          ["BTC", "Momentum", "high", "+1.8%"],
+          ["HYPE", "Reaction", "medium", "0.7% away"],
+          ["TAO", "Mover", "high", "+8.2%"],
+          ["Vault", "Operator", "watch", "$13.6M"],
+        ]
+      : [
+          ["HyperGrowth", "watch", "21.9%", "$13.6M"],
+          ["Hyperrr", "review", "17.9%", "$1.5M"],
+          ["drkmttr", "watch", "15.3%", "$5.9M"],
+          ["HLT", "review", "13.9%", "$0.7M"],
+        ];
+
+  return (
+    <div className="absolute inset-0 bg-[#070b0f] p-5">
+      <div className="grid h-full grid-rows-[auto_1fr] gap-4 rounded-2xl border border-zinc-800 bg-[#0b1016] p-4">
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.16em] text-teal-300">{label}</div>
+            <div className="mt-1 text-lg font-semibold text-zinc-100">
+              {label === "Intel" ? "Recently flagged setups" : "Vault operator shortlist"}
+            </div>
+          </div>
+          <div className="rounded-lg border border-teal-300/20 bg-teal-300/10 px-2.5 py-1 font-mono text-xs text-teal-200">
+            LIVE
+          </div>
+        </div>
+        <div className="space-y-3 overflow-hidden">
+          {rows.map((row, index) => (
+            <div
+              key={`${label}-${row[0]}`}
+              className="grid grid-cols-[1fr_86px_68px] items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/65 px-3 py-3"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-mono text-sm text-zinc-100">{row[0]}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-zinc-600">{row[1]}</div>
+              </div>
+              <div
+                className={cn(
+                  "rounded-md border px-2 py-1 text-center text-[10px] uppercase tracking-[0.12em]",
+                  index % 2 === 0
+                    ? "border-amber-400/25 bg-amber-400/10 text-amber-200"
+                    : "border-sky-400/25 bg-sky-400/10 text-sky-200",
+                )}
+              >
+                {row[2]}
+              </div>
+              <div className="text-right font-mono text-xs text-teal-200">{row[3]}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

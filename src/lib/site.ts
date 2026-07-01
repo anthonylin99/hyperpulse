@@ -22,10 +22,13 @@ export function getPublicAppRoutes() {
   const routes = [
     { path: "/", label: "Home" },
     { path: "/markets", label: "Markets" },
+    { path: "/signals", label: "Intel" },
     { path: "/alerts", label: "Alerts" },
     { path: "/portfolio", label: "Portfolio" },
     { path: "/docs", label: "Docs" },
     { path: "/docs/factors", label: "Factor Report" },
+    { path: "/docs/sentiment", label: "Sentiment Index" },
+    { path: "/docs/strategy", label: "Strategy Lab" },
   ];
 
   if (isVaultsEnabled()) {

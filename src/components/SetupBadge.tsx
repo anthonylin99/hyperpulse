@@ -28,8 +28,8 @@ function formatSetupLevel(value: number | null | undefined): string | null {
 }
 
 export default function SetupBadge({ setup }: { setup?: MarketSetupSignal | null }) {
-  if (!setup) {
-    return <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-700">Scan</span>;
+  if (!setup || setup.type === "none") {
+    return <span className="text-[10px] uppercase tracking-[0.12em] text-zinc-800">—</span>;
   }
 
   const level = formatSetupLevel(setup.level);

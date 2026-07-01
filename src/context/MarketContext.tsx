@@ -70,7 +70,9 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const shouldFetchMarketEnrichment =
     pathname === "/" ||
     pathname === "/markets" ||
-    pathname.startsWith("/markets/");
+    pathname.startsWith("/markets/") ||
+    pathname === "/hype" ||
+    pathname.startsWith("/hype/");
 
   const fetchFundingHistories = useCallback(async (coins: string[]) => {
     const now = Date.now();

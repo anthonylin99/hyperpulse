@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
 import { useWallet } from "@/context/WalletContext";
 import AssetRow from "./AssetRow";
 import AssetDetail from "./AssetDetail";
-import type { MarketAsset, MarketRadarSignal, MomentumAlert, SpotAsset, SpotCategory } from "@/types";
+import type { MarketAsset, MarketRadarSignal, MomentumAlert, SpotAsset } from "@/types";
 import {
   ALL_CATEGORIES,
   getAssetCategory,
@@ -64,16 +65,7 @@ const SPOT_COLUMNS: { key: SpotSortKey; label: string; align: string }[] = [
   { key: "marketCap", label: "Mkt Cap", align: "text-right" },
 ];
 
-const RWA_SPOT_CATEGORIES = [
-  "Stocks",
-  "Indices/ETFs",
-  "Metals",
-  "Energy",
-  "Commodities",
-] as const satisfies readonly SpotCategory[];
-
-const SPOT_FILTERS: Array<SpotCategory | "All"> = ["All", ...RWA_SPOT_CATEGORIES];
-const RWA_SPOT_CATEGORY_SET: ReadonlySet<SpotCategory> = new Set(RWA_SPOT_CATEGORIES);
+const SPOT_FILTERS: Array<AssetCategory | "All"> = ["All", ...ALL_CATEGORIES];
 const REACTION_SCAN_INTERVAL_MS = POLL_INTERVAL_MARKET;
 const REACTION_DEFAULT_SIGNAL: MarketSetupSignal = {
   type: "none",
@@ -155,11 +147,19 @@ function getSpotSortValue(asset: SpotAsset, key: SpotSortKey): number | string {
   return asset[key];
 }
 
+function getSpotAssetCategory(asset: SpotAsset): AssetCategory {
+  if (asset.category === "Stocks" || asset.category === "Indices/ETFs") return "Equities";
+  if (asset.category === "Metals" || asset.category === "Energy" || asset.category === "Commodities") return "Commodities";
+  if (asset.category === "Crypto") return "Crypto";
+  return getAssetCategory(asset.symbol);
+}
+
 export default function MarketTable({
   selectedAsset,
   onSelectAsset,
   onTrade,
 }: MarketTableProps) {
+  const router = useRouter();
   const { tradingEnabled } = useAppConfig();
   const { assets, loading, fundingHistories } = useMarket();
   const { isConnected } = useWallet();
@@ -170,16 +170,14 @@ export default function MarketTable({
 
   const [perpSortKey, setPerpSortKey] = useState<PerpSortKey>("openInterest");
   const [perpSortAsc, setPerpSortAsc] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<AssetCategory | "All">(
-    "All"
-  );
+  const [categoryFilter, setCategoryFilter] = useState<AssetCategory | "All">("Crypto");
   const [hideSmallCaps, setHideSmallCaps] = useState(true);
 
   const [spotAssets, setSpotAssets] = useState<SpotAsset[]>([]);
   const [spotLoading, setSpotLoading] = useState(false);
   const [spotSortKey, setSpotSortKey] = useState<SpotSortKey>("dayVolume");
   const [spotSortAsc, setSpotSortAsc] = useState(false);
-  const [spotFilter, setSpotFilter] = useState<SpotCategory | "All">("All");
+  const [spotFilter, setSpotFilter] = useState<AssetCategory | "All">("All");
   const [setupSignals, setSetupSignals] = useState<Record<string, MarketSetupSignal>>({});
   const [momentumSignals, setMomentumSignals] = useState<Record<string, MarketSetupSignal>>({});
   const [radarVolumeByAsset, setRadarVolumeByAsset] = useState<Record<string, number>>({});
@@ -270,22 +268,17 @@ export default function MarketTable({
     };
   }, [mode]);
 
-  const rwaSpotAssets = useMemo(
-    () => spotAssets.filter((asset) => RWA_SPOT_CATEGORY_SET.has(asset.category)),
-    [spotAssets],
-  );
-
   const availableSpotFilters = useMemo(() => {
-    const categories = new Set(rwaSpotAssets.map((asset) => asset.category));
+    const categories = new Set(spotAssets.map((asset) => getSpotAssetCategory(asset)));
     return SPOT_FILTERS.filter((filter) => filter === "All" || categories.has(filter));
-  }, [rwaSpotAssets]);
+  }, [spotAssets]);
 
   useEffect(() => {
-    if (mode === "spot" && !spotLoading && rwaSpotAssets.length === 0) {
+    if (mode === "spot" && !spotLoading && spotAssets.length === 0) {
       setMode("perps");
       setSpotFilter("All");
     }
-  }, [mode, rwaSpotAssets.length, spotLoading]);
+  }, [mode, spotAssets.length, spotLoading]);
 
   const perpsFiltered = useMemo(() => {
     let arr = [...assets];
@@ -367,7 +360,7 @@ export default function MarketTable({
   }, [mode, reactionAssetKey]);
 
   const spotFiltered = useMemo(() => {
-    let arr = [...rwaSpotAssets];
+    let arr = [...spotAssets];
 
     if (search) {
       const q = search.toUpperCase();
@@ -377,7 +370,7 @@ export default function MarketTable({
     }
 
     if (spotFilter !== "All") {
-      arr = arr.filter((a) => a.category === spotFilter);
+      arr = arr.filter((a) => getSpotAssetCategory(a) === spotFilter);
     }
 
     arr.sort((a, b) => {
@@ -390,7 +383,7 @@ export default function MarketTable({
     });
 
     return arr;
-  }, [rwaSpotAssets, search, spotFilter, spotSortKey, spotSortAsc]);
+  }, [spotAssets, search, spotFilter, spotSortKey, spotSortAsc]);
 
   const perpsTotalOI = useMemo(
     () => perpsFiltered.reduce((sum, a) => sum + a.openInterest, 0),
@@ -555,7 +548,7 @@ export default function MarketTable({
                 {perpsFiltered.map((asset, index) => {
                   const setupSignal =
                     momentumSignals[asset.coin] ??
-                    (isDefaultReactionAsset(asset.coin) ? setupSignals[asset.coin] : REACTION_DEFAULT_SIGNAL);
+                    (isDefaultReactionAsset(asset.coin) ? setupSignals[asset.coin] ?? REACTION_DEFAULT_SIGNAL : null);
 
                   return (
                     <AssetRow
@@ -564,6 +557,7 @@ export default function MarketTable({
                       index={index}
                       isExpanded={selectedAsset === asset.coin}
                       onSelect={() => onSelectAsset(selectedAsset === asset.coin ? null : asset.coin)}
+                      onOpenWorkspace={asset.coin === "HYPE" ? () => router.push("/hype") : undefined}
                       onTrade={(direction) => onTrade(asset.coin, direction)}
                       tradingEnabled={tradingActive && asset.marketType !== "hip3_perp"}
                       fundingHistory={fundingHistories[asset.coin]}
@@ -646,7 +640,7 @@ export default function MarketTable({
                       <td className="px-2.5 py-0.5 text-right text-zinc-300 whitespace-nowrap">
                         {formatCompact(asset.marketCap)}
                       </td>
-                      <td className="px-2.5 py-0.5 text-zinc-400 whitespace-nowrap">{asset.category}</td>
+                      <td className="px-2.5 py-0.5 text-zinc-400 whitespace-nowrap">{getSpotAssetCategory(asset)}</td>
                       <td className="px-2.5 py-0.5 text-zinc-500 whitespace-nowrap">{asset.market}</td>
                     </tr>
                   );
@@ -665,7 +659,7 @@ export default function MarketTable({
             <div className="flex h-32 flex-col items-center justify-center gap-1 px-4 text-center font-mono text-sm text-zinc-600">
               <div>No spot markets match your filters</div>
               <div className="max-w-xl text-[11px] font-sans text-zinc-500">
-                HyperPulse lists stocks, indices/ETFs, metals, energy, and commodity spot markets when Hyperliquid exposes them.
+                HyperPulse lists crypto, equities, commodities, and FX/rates markets when Hyperliquid exposes them.
               </div>
             </div>
           )}
@@ -679,7 +673,7 @@ export default function MarketTable({
             </>
           ) : (
             <>
-              <span>{spotFiltered.length} of {rwaSpotAssets.length} spot assets</span>
+              <span>{spotFiltered.length} of {spotAssets.length} spot assets</span>
               <span>Market cap: {formatCompact(spotTotalMcap)}</span>
             </>
           )}
