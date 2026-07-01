@@ -5,7 +5,7 @@ import { Activity, BarChart3, Crosshair, Gauge, Landmark, RefreshCcw, ShieldAler
 import PriceChart from "@/components/PriceChart";
 import { FilterChip, SectionEyebrow, SurfaceButton } from "@/components/trading-ui";
 import { useMarket } from "@/context/MarketContext";
-import { cn, formatCompactUsd, formatFundingAPR, formatPct, formatUSD } from "@/lib/format";
+import { cn, formatCompactUsd, formatPct, formatUSD } from "@/lib/format";
 import type { HypeFundamentalsContext } from "@/lib/hypeFundamentals";
 
 type HypeView = "overview" | "levels" | "fundamentals";
@@ -24,6 +24,10 @@ type HypeLevelPlan = {
     label: string;
     price: number;
     role: "trigger" | "target" | "support" | "invalid" | "risk";
+    probability: number;
+    grade: "A" | "B" | "C";
+    distancePct: number;
+    action: string;
     note: string;
   }>;
 };
@@ -39,6 +43,57 @@ function formatPrice(value: number | null | undefined): string {
   if (value >= 1000) return formatUSD(value, 0);
   if (value >= 100) return formatUSD(value, 2);
   return formatUSD(value, 2);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function distancePct(mark: number, price: number): number {
+  if (!Number.isFinite(mark) || mark <= 0 || !Number.isFinite(price)) return 0;
+  return ((price - mark) / mark) * 100;
+}
+
+function levelProbability(args: {
+  role: HypeLevelPlan["levels"][number]["role"];
+  distancePct: number;
+  breakoutBias: boolean;
+  supportBias: boolean;
+  fadeBias: boolean;
+  oiExpanding: boolean;
+  fundingHot: boolean;
+}) {
+  const distance = Math.abs(args.distancePct);
+  const base =
+    args.role === "trigger"
+      ? 63
+      : args.role === "support"
+        ? 59
+        : args.role === "invalid"
+          ? 68
+          : args.role === "risk"
+            ? 48
+            : 54;
+  const biasBoost =
+    args.role === "trigger" && args.breakoutBias
+      ? 9
+      : args.role === "support" && args.supportBias
+        ? 8
+        : args.role === "target" && args.breakoutBias
+          ? 7
+          : args.role === "invalid" && args.fadeBias
+            ? 5
+            : 0;
+  const flowBoost = args.oiExpanding && (args.role === "trigger" || args.role === "target") ? 5 : 0;
+  const fundingPenalty = args.fundingHot && args.role === "target" ? -7 : args.fundingHot && args.role === "invalid" ? 4 : 0;
+  const distancePenalty = distance > 9 ? -10 : distance > 6 ? -6 : distance < 0.4 ? -4 : 0;
+  return clamp(Math.round(base + biasBoost + flowBoost + fundingPenalty + distancePenalty), 35, 82);
+}
+
+function probabilityGrade(probability: number): "A" | "B" | "C" {
+  if (probability >= 68) return "A";
+  if (probability >= 56) return "B";
+  return "C";
 }
 
 function deriveHypeLevelPlan(args: {
@@ -83,20 +138,38 @@ function deriveHypeLevelPlan(args: {
   const risk = fundingHot
     ? `Funding is stretched. Keep size smaller and do not add if ${formatPrice(invalid)} breaks.`
     : `Hard invalidation sits near ${formatPrice(invalid)}. Below that, wait for ${formatPrice(flush)} or a fresh reclaim.`;
+  const levelInputs = [
+    { label: "Reclaim trigger", price: reclaim, role: "trigger" as const, action: "Trade only on acceptance", note: "Longs need acceptance above this." },
+    { label: "Breakout target", price: breakout, role: "target" as const, action: "First checkpoint", note: "First upside checkpoint." },
+    { label: "Profit zone", price: target, role: "target" as const, action: "Trim or trail", note: "Trim if momentum stalls here." },
+    { label: "ATH / price discovery", price: stretch, role: "target" as const, action: "Unload into strength", note: "Unload or trail if flow cools." },
+    { label: "Support to defend", price: support, role: "support" as const, action: "Buy defense only", note: "Lose this and longs are on defense." },
+    { label: "Hard invalidation", price: invalid, role: "invalid" as const, action: "Exit, no adding", note: "No adding below this line." },
+    { label: "Flush watch", price: flush, role: "risk" as const, action: "Wait for exhaustion", note: "Next area to look for forced selling to exhaust." },
+  ];
 
   return {
     bias,
     plan,
     risk,
-    levels: [
-      { label: "Reclaim trigger", price: reclaim, role: "trigger", note: "Longs need acceptance above this." },
-      { label: "Breakout target", price: breakout, role: "target", note: "First upside checkpoint." },
-      { label: "Profit zone", price: target, role: "target", note: "Trim if momentum stalls here." },
-      { label: "ATH / price discovery", price: stretch, role: "target", note: "Unload or trail if flow cools." },
-      { label: "Support to defend", price: support, role: "support", note: "Lose this and longs are on defense." },
-      { label: "Hard invalidation", price: invalid, role: "invalid", note: "No adding below this line." },
-      { label: "Flush watch", price: flush, role: "risk", note: "Next area to look for forced selling to exhaust." },
-    ],
+    levels: levelInputs.map((level) => {
+      const dist = distancePct(mark, level.price);
+      const probability = levelProbability({
+        role: level.role,
+        distancePct: dist,
+        breakoutBias,
+        supportBias,
+        fadeBias,
+        oiExpanding,
+        fundingHot,
+      });
+      return {
+        ...level,
+        distancePct: dist,
+        probability,
+        grade: probabilityGrade(probability),
+      };
+    }),
   };
 }
 
@@ -144,6 +217,9 @@ export default function HypeTokenRoutePage() {
       }),
     [fundamentals?.levelBias, hype?.fundingAPR, hype?.markPx, hype?.oiChangePct, hype?.priceChange24h],
   );
+  const primaryTrigger = levelPlan.levels.find((level) => level.role === "trigger");
+  const primaryInvalid = levelPlan.levels.find((level) => level.role === "invalid");
+  const primaryTarget = levelPlan.levels.find((level) => level.label === "Profit zone") ?? levelPlan.levels.find((level) => level.role === "target");
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-5 px-1 py-2">
@@ -171,9 +247,9 @@ export default function HypeTokenRoutePage() {
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[520px]">
-            <HeroMetric label="Open interest" value={hype ? formatCompactUsd(hype.openInterest) : "n/a"} />
-            <HeroMetric label="24h volume" value={hype ? formatCompactUsd(hype.dayVolume) : "n/a"} />
-            <HeroMetric label="Funding APR" value={hype ? formatFundingAPR(hype.fundingAPR) : "n/a"} />
+            <HeroMetric label="Trigger" value={formatPrice(primaryTrigger?.price)} helper={primaryTrigger ? `${primaryTrigger.probability}% ${primaryTrigger.grade}` : undefined} />
+            <HeroMetric label="Invalid" value={formatPrice(primaryInvalid?.price)} helper={primaryInvalid ? `${primaryInvalid.probability}% ${primaryInvalid.grade}` : undefined} />
+            <HeroMetric label="Target" value={formatPrice(primaryTarget?.price)} helper={primaryTarget ? `${primaryTarget.probability}% ${primaryTarget.grade}` : undefined} />
           </div>
         </div>
       </section>
@@ -239,7 +315,9 @@ export default function HypeTokenRoutePage() {
               </SurfaceButton>
             </div>
             <div className="mt-3 space-y-2">
-              {levelPlan.levels.slice(0, 5).map((level) => (
+              {levelPlan.levels
+                .filter((level) => level.role === "trigger" || level.role === "support" || level.role === "invalid" || level.label === "Profit zone")
+                .map((level) => (
                 <LevelRow key={level.label} level={level} />
               ))}
               {fundamentalsError ? (
@@ -294,7 +372,9 @@ function HypeTradePlan({ plan, mark }: { plan: HypeLevelPlan; mark: number | nul
       </div>
 
       <div className="grid gap-px bg-zinc-800 md:grid-cols-2 xl:grid-cols-4">
-        {plan.levels.map((level) => (
+        {plan.levels
+          .filter((level) => level.role === "trigger" || level.role === "support" || level.role === "invalid" || level.label === "Profit zone")
+          .map((level) => (
           <LevelCard key={level.label} level={level} />
         ))}
       </div>
@@ -339,9 +419,18 @@ function LevelCard({ level }: { level: HypeLevelPlan["levels"][number] }) {
           <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{level.label}</div>
           <div className="mt-2 font-mono text-lg font-semibold text-zinc-100">{formatPrice(level.price)}</div>
         </div>
-        <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.12em]", levelTone(level.role))}>
-          {level.role}
+        <div className="shrink-0 text-right">
+          <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.12em]", levelTone(level.role))}>
+            {level.grade}
+          </span>
+          <div className="mt-1 font-mono text-[10px] text-zinc-500">{level.probability}%</div>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="rounded border border-zinc-800 bg-zinc-900/60 px-1.5 py-0.5 font-mono text-zinc-400">
+          {level.distancePct >= 0 ? "+" : ""}{level.distancePct.toFixed(1)}%
         </span>
+        <span className="text-zinc-300">{level.action}</span>
       </div>
       <div className="mt-2 text-xs leading-5 text-zinc-500">{level.note}</div>
     </div>
@@ -353,9 +442,16 @@ function LevelRow({ level }: { level: HypeLevelPlan["levels"][number] }) {
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/45 px-3 py-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 text-xs font-medium text-zinc-300">{level.label}</div>
-        <div className="font-mono text-xs text-zinc-100">{formatPrice(level.price)}</div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={cn("rounded border px-1.5 py-0.5 font-mono text-[10px]", levelTone(level.role))}>{level.grade}</span>
+          <div className="font-mono text-xs text-zinc-100">{formatPrice(level.price)}</div>
+        </div>
       </div>
-      <div className="mt-1 text-[11px] leading-4 text-zinc-500">{level.note}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] leading-4 text-zinc-500">
+        <span>{level.probability}% quality</span>
+        <span>{level.distancePct >= 0 ? "+" : ""}{level.distancePct.toFixed(1)}%</span>
+        <span>{level.action}</span>
+      </div>
     </div>
   );
 }
@@ -411,11 +507,14 @@ function HypeFundamentalAudit({
   );
 }
 
-function HeroMetric({ label, value }: { label: string; value: string }) {
+function HeroMetric({ label, value, helper }: { label: string; value: string; helper?: string }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
       <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
-      <div className="mt-1 font-mono text-sm font-semibold text-zinc-100">{value}</div>
+      <div className="mt-1 flex items-baseline justify-between gap-2">
+        <div className="font-mono text-sm font-semibold text-zinc-100">{value}</div>
+        {helper ? <div className="font-mono text-[10px] text-zinc-500">{helper}</div> : null}
+      </div>
     </div>
   );
 }
