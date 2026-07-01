@@ -9,6 +9,22 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PRIVATE_BUILD_WORKER=1
 ENV NODE_OPTIONS=--max-old-space-size=1536
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so they
+# must be present during `next build` (not just at runtime). Passed from compose
+# build.args. Safe to be empty — the public read-only site still works; only
+# wallet-connect (Privy) and build-time public flags need real values.
+ARG NEXT_PUBLIC_PRIVY_APP_ID=""
+ARG NEXT_PUBLIC_APP_URL=""
+ARG NEXT_PUBLIC_ENABLE_TRADING="false"
+ARG NEXT_PUBLIC_ENABLE_FACTORS="false"
+ARG NEXT_PUBLIC_ENABLE_VAULTS="false"
+ARG NEXT_PUBLIC_ENABLE_SAVED_WALLETS="true"
+ENV NEXT_PUBLIC_PRIVY_APP_ID=${NEXT_PUBLIC_PRIVY_APP_ID} \
+    NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL} \
+    NEXT_PUBLIC_ENABLE_TRADING=${NEXT_PUBLIC_ENABLE_TRADING} \
+    NEXT_PUBLIC_ENABLE_FACTORS=${NEXT_PUBLIC_ENABLE_FACTORS} \
+    NEXT_PUBLIC_ENABLE_VAULTS=${NEXT_PUBLIC_ENABLE_VAULTS} \
+    NEXT_PUBLIC_ENABLE_SAVED_WALLETS=${NEXT_PUBLIC_ENABLE_SAVED_WALLETS}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

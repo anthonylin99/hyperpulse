@@ -1,0 +1,114 @@
+# Production overlay for self-hosted deployment (DigitalOcean droplet).
+#
+# Compose it WITH the base file — the base defines the web + worker builds,
+# this overlay adds a self-hosted Postgres, a Caddy TLS reverse proxy, turns
+# the database gate on, and points every service at the local Postgres:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm migrate
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Requires a .env file (see .env.production.example). DATABASE_URL flows into
+# every service via the base file's database-env anchor; this overlay only has
+# to add HYPERPULSE_DB_ENABLED (not part of that anchor) and the infra services.
+
+x-db-gate: &db-gate
+  HYPERPULSE_DB_ENABLED: "true"
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env (postgres://hyperpulse:PASSWORD@postgres:5432/hyperpulse)}
+
+x-depends-postgres: &depends-postgres
+  postgres:
+    condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hyperpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-hyperpulse}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No host port published — Postgres is reachable only on the private
+    # compose network (as "postgres:5432"). Never expose it publicly.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hyperpulse} -d ${POSTGRES_DB:-hyperpulse}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env (e.g. hyperpulsehl.com)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  migrate:
+    depends_on:
+      <<: *depends-postgres
+    environment:
+      <<: *db-gate
+
+  web:
+    build:
+      args:
+        NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:-}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+        NEXT_PUBLIC_ENABLE_TRADING: ${NEXT_PUBLIC_ENABLE_TRADING:-false}
+        NEXT_PUBLIC_ENABLE_FACTORS: ${NEXT_PUBLIC_ENABLE_FACTORS:-false}
+        NEXT_PUBLIC_ENABLE_VAULTS: ${NEXT_PUBLIC_ENABLE_VAULTS:-false}
+        NEXT_PUBLIC_ENABLE_SAVED_WALLETS: ${NEXT_PUBLIC_ENABLE_SAVED_WALLETS:-true}
+    restart: unless-stopped
+    # Base publishes "${WEB_PORT:-3000}:3000". Set WEB_PORT=127.0.0.1:3000 in
+    # .env so this binds to localhost only — Docker's port publishing bypasses
+    # ufw, so a bare "3000:3000" would be reachable from the public internet.
+    # Caddy reaches the app over the compose network as "web:3000" regardless.
+    depends_on:
+      <<: *depends-postgres
+    environment:
+      <<: *db-gate
+
+  market-collector:
+    depends_on:
+      <<: *depends-postgres
+    environment:
+      <<: *db-gate
+
+  momentum-alerts:
+    depends_on:
+      <<: *depends-postgres
+    environment:
+      <<: *db-gate
+
+  reaction-map:
+    depends_on:
+      <<: *depends-postgres
+    environment:
+      <<: *db-gate
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
