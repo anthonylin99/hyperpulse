@@ -84,6 +84,24 @@ function alignmentClasses(alignment: DailySetup["sentimentAlignment"]) {
   return "border-zinc-800 bg-zinc-950/60 text-zinc-400";
 }
 
+function setupActionLabel(setup: DailySetup | undefined): string {
+  if (!setup) return "Loading";
+  if (setup.status === "no-trade" || setup.side === "watch") return "No trade";
+  return setup.side === "long" ? "Long setup" : "Short setup";
+}
+
+function setupInstruction(setup: DailySetup): string {
+  if (setup.status === "no-trade" || setup.side === "watch") {
+    return "Nothing clean enough. Keep powder dry.";
+  }
+  const trigger = formatPrice(setup.trigger);
+  const invalid = formatPrice(setup.invalidation);
+  if (setup.side === "long") {
+    return `Only long if it reclaims ${trigger}. Wrong below ${invalid}.`;
+  }
+  return `Only short if it loses ${trigger}. Wrong above ${invalid}.`;
+}
+
 export default function DailySetupPanel({ compact = false }: { compact?: boolean }) {
   const [data, setData] = useState<DailySetupResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,7 +160,7 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
         <div className="min-w-0">
           <SectionEyebrow>Daily Setup</SectionEyebrow>
           <div className="mt-1 text-sm font-medium text-zinc-100">
-            Funding-based watch
+            {setupActionLabel(setup)}
           </div>
           <div className="mt-0.5 font-mono text-[10px] text-zinc-600">
             {data?.generatedAt ? formatEasternTime(data.generatedAt, true) : "warming up"}
@@ -171,12 +189,14 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
                     {setup.coin}
                   </span>
                   <span className={cn("rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]", sideClasses(setup.side))}>
-                    {setup.side === "watch" ? "No trade" : `${setup.side} watch`}
+                    {setupActionLabel(setup)}
                   </span>
                 </div>
-                <div className="mt-2 text-sm font-medium text-zinc-200">{setup.title}</div>
+                <div className="mt-2 text-sm font-semibold leading-5 text-zinc-100">
+                  {setupInstruction(setup)}
+                </div>
                 <div className="mt-1 text-xs leading-5 text-zinc-500">
-                  {setup.decisionLabel || setup.rationale[0] || "Wait for confirmation."}
+                  {setup.rationale[0] || setup.title || "Wait for confirmation."}
                 </div>
               </div>
               <div className="shrink-0 text-right">
@@ -186,13 +206,6 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
             </div>
           </Link>
 
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <Metric label="Funding" value={formatFundingAPR(setup.fundingApr)} tone={Math.abs(setup.fundingApr) >= 20 ? "hot" : "neutral"} />
-            <Metric label="24h" value={formatPct(setup.priceChange24h)} tone={setup.priceChange24h >= 0 ? "green" : "red"} />
-            <Metric label="OI" value={formatCompactUsd(setup.openInterestUsd)} />
-            <Metric label="Volume" value={formatCompactUsd(setup.volume24hUsd)} />
-          </div>
-
           {isActionable ? (
             <div className="grid grid-cols-3 gap-2 text-[11px]">
               <Metric label="Trigger" value={formatPrice(setup.trigger)} tone="green" />
@@ -200,6 +213,13 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
               <Metric label="Target" value={formatPrice(setup.target)} />
             </div>
           ) : null}
+
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <Metric label="Funding" value={formatFundingAPR(setup.fundingApr)} tone={Math.abs(setup.fundingApr) >= 20 ? "hot" : "neutral"} />
+            <Metric label="24h" value={formatPct(setup.priceChange24h)} tone={setup.priceChange24h >= 0 ? "green" : "red"} />
+            <Metric label="OI" value={formatCompactUsd(setup.openInterestUsd)} />
+            <Metric label="Volume" value={formatCompactUsd(setup.volume24hUsd)} />
+          </div>
 
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-100/90">
             <div className="mb-1 flex items-center gap-2 font-medium text-amber-200">
@@ -211,7 +231,7 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/55 px-3 py-2 text-[11px] leading-5">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="font-medium text-zinc-200">Social confirmation</span>
+              <span className="font-medium text-zinc-200">Crowd read</span>
               <span className={cn("rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]", alignmentClasses(setup.sentimentAlignment))}>
                 {setup.socialContext?.label ?? "No read"}
               </span>
@@ -242,7 +262,7 @@ export default function DailySetupPanel({ compact = false }: { compact?: boolean
             ) : null}
             {!compact ? (
               <div className="mt-2 text-[10px] leading-4 text-zinc-600">
-                {setup.socialContext?.caveat ?? "Sentiment is context only; funding and price trigger remain the authority."}
+                Price trigger beats the crowd read.
               </div>
             ) : null}
           </div>
