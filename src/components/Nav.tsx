@@ -56,18 +56,24 @@ export default function Nav() {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-14 flex-col border-r border-teal-300/10 bg-[#070a0d]/95 shadow-[10px_0_40px_rgba(0,0,0,0.28)] backdrop-blur md:flex">
-        <div className="flex h-14 items-center justify-center border-b border-zinc-900/90">
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-44 flex-col border-r border-teal-300/10 bg-[#070a0d]/95 shadow-[10px_0_40px_rgba(0,0,0,0.28)] backdrop-blur md:flex">
+        <div className="flex h-14 items-center border-b border-zinc-900/90 px-3">
           <Link
             href="/"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-teal-300/15 bg-teal-300/5 text-teal-200 transition hover:border-teal-300/35 hover:bg-teal-300/10"
+            className="flex min-w-0 items-center gap-2 rounded-lg text-teal-200 transition hover:text-teal-100"
             aria-label="HyperPulse home"
           >
-            <BrandLogo compact markClassName="h-7 w-7" textClassName="hidden" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-teal-300/15 bg-teal-300/5">
+              <BrandLogo compact markClassName="h-7 w-7" textClassName="hidden" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[10px] uppercase tracking-[0.18em] text-zinc-600">HyperPulse</span>
+              <span className="block truncate text-sm font-semibold text-zinc-100">Setup desk</span>
+            </span>
           </Link>
         </div>
 
-        <nav className="flex flex-1 flex-col items-center gap-2 px-2 py-3" aria-label="Primary terminal navigation">
+        <nav className="flex flex-1 flex-col gap-1.5 px-2 py-3" aria-label="Primary terminal navigation">
           {tabs.map((tab) => {
             const active = tab.key === "home"
               ? pathname === "/"
@@ -80,14 +86,14 @@ export default function Nav() {
                 title={tab.label}
                 aria-label={tab.label}
                 className={cn(
-                  "group relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
+                  "group flex h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left transition-colors",
                   active
                     ? "bg-teal-300/12 text-teal-100 shadow-[0_0_0_1px_rgba(45,212,191,0.18)]"
                     : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-100",
                 )}
               >
-                <Icon className="h-4 w-4" />
-                <span className="pointer-events-none absolute left-11 top-1/2 z-50 -translate-y-1/2 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate text-sm font-medium">
                   {tab.label}
                 </span>
               </Link>

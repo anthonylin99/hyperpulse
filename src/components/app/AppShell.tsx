@@ -33,6 +33,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/agent/") ||
     pathname === "/portfolio" ||
     pathname.startsWith("/portfolio/") ||
+    pathname === "/hype" ||
+    pathname.startsWith("/hype/") ||
     pathname === "/whales" ||
     pathname.startsWith("/whales/") ||
     pathname === "/vaults" ||
@@ -63,7 +65,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 md:pl-14">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 md:pl-44">
       <div className="sticky top-0 z-40">
         <LiveTickerStrip />
         <Nav />
