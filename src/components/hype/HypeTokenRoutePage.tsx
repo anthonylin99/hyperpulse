@@ -25,6 +25,7 @@ export default function HypeTokenRoutePage() {
   const { assets, loading, error, fundingHistories, lastUpdated } = useMarket();
   const [view, setView] = useState<HypeView>("overview");
   const [fundamentals, setFundamentals] = useState<HypeFundamentalsContext | null>(null);
+  const [researchedLevelPlan, setResearchedLevelPlan] = useState<HypeLevelPlan | null>(null);
   const [fundamentalsLoading, setFundamentalsLoading] = useState(false);
   const [fundamentalsError, setFundamentalsError] = useState<string | null>(null);
   const hype = useMemo(() => assets.find((asset) => asset.coin === "HYPE") ?? null, [assets]);
@@ -34,9 +35,15 @@ export default function HypeTokenRoutePage() {
     setFundamentalsLoading(true);
     setFundamentalsError(null);
     try {
-      const response = await fetch("/api/hype/fundamentals");
-      if (!response.ok) throw new Error("HYPE fundamentals unavailable.");
-      setFundamentals((await response.json()) as HypeFundamentalsContext);
+      const [fundamentalsResponse, levelsResponse] = await Promise.all([
+        fetch("/api/hype/fundamentals"),
+        fetch("/api/hype/levels"),
+      ]);
+      if (!fundamentalsResponse.ok) throw new Error("HYPE fundamentals unavailable.");
+      setFundamentals((await fundamentalsResponse.json()) as HypeFundamentalsContext);
+      if (levelsResponse.ok) {
+        setResearchedLevelPlan((await levelsResponse.json()) as HypeLevelPlan);
+      }
     } catch (err) {
       setFundamentalsError(err instanceof Error ? err.message : "HYPE fundamentals unavailable.");
     } finally {
@@ -54,7 +61,7 @@ export default function HypeTokenRoutePage() {
     : hype.priceChange24h > 0
       ? "text-emerald-300"
       : "text-red-300";
-  const levelPlan = useMemo(
+  const fallbackLevelPlan = useMemo(
     () =>
       deriveHypeLevelPlan({
         mark: hype?.markPx ?? null,
@@ -65,6 +72,7 @@ export default function HypeTokenRoutePage() {
       }),
     [fundamentals?.levelBias, hype?.fundingAPR, hype?.markPx, hype?.oiChangePct, hype?.priceChange24h],
   );
+  const levelPlan = researchedLevelPlan ?? fallbackLevelPlan;
   const primaryTrigger = levelPlan.levels.find((level) => level.role === "trigger");
   const primaryInvalid = levelPlan.levels.find((level) => level.role === "invalid");
   const primaryTarget = levelPlan.levels.find((level) => level.label === "Profit zone") ?? levelPlan.levels.find((level) => level.role === "target");
@@ -164,7 +172,7 @@ export default function HypeTokenRoutePage() {
             </div>
             <div className="mt-3 space-y-2">
               {levelPlan.levels
-                .filter((level) => level.role === "trigger" || level.role === "support" || level.role === "invalid" || level.label === "Profit zone")
+                .filter((level) => level.role === "trigger" || level.role === "target" || level.role === "support" || level.role === "invalid")
                 .map((level) => (
                 <LevelRow key={level.label} level={level} />
               ))}
@@ -221,7 +229,7 @@ function HypeTradePlan({ plan, mark }: { plan: HypeLevelPlan; mark: number | nul
 
       <div className="grid gap-px bg-zinc-800 md:grid-cols-2 xl:grid-cols-4">
         {plan.levels
-          .filter((level) => level.role === "trigger" || level.role === "support" || level.role === "invalid" || level.label === "Profit zone")
+          .filter((level) => level.role === "trigger" || level.role === "target" || level.role === "support" || level.role === "invalid")
           .map((level) => (
           <LevelCard key={level.label} level={level} />
         ))}

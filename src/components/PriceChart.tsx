@@ -7,6 +7,7 @@ import {
   CrosshairMode,
   LineStyle,
   createChart,
+  type AutoscaleInfoProvider,
   type CandlestickData,
   type IChartApi,
   type MouseEventParams,
@@ -931,6 +932,28 @@ type ChartHypeLevelLine = {
   labelY: number;
 };
 
+const extendAutoscaleForHypeLevels = (
+  levels: HypeTradeLevel[],
+  currentPrice: number | null,
+): AutoscaleInfoProvider => (baseImplementation) => {
+  const result = baseImplementation();
+  if (result == null || result.priceRange == null || levels.length === 0) return result;
+  const overlayPrices = levels
+    .map((level) => level.price)
+    .filter((price) => Number.isFinite(price) && price > 0);
+  if (overlayPrices.length === 0) return result;
+  const minOverlay = Math.min(...overlayPrices);
+  const maxOverlay = Math.max(...overlayPrices);
+  const padding = Math.max((maxOverlay - minOverlay) * 0.08, (currentPrice ?? maxOverlay) * 0.003);
+  return {
+    ...result,
+    priceRange: {
+      minValue: Math.min(result.priceRange.minValue, minOverlay - padding),
+      maxValue: Math.max(result.priceRange.maxValue, maxOverlay + padding),
+    },
+  };
+};
+
 type ChartContextResponse = {
   currentPrice: number;
   candles: Array<Record<string, string | number>>;
@@ -1176,7 +1199,7 @@ export default function PriceChart({
   const visibleHypeLevels = useMemo(
     () =>
       coin.toUpperCase() === "HYPE"
-        ? hypeLevels.filter((level) => level.role === "trigger" || level.role === "support" || level.role === "invalid" || level.label === "Profit zone")
+        ? hypeLevels.filter((level) => level.role === "trigger" || level.role === "target" || level.role === "support" || level.role === "invalid")
         : [],
     [coin, hypeLevels],
   );
@@ -1398,6 +1421,7 @@ export default function PriceChart({
         precision,
         minMove: minMoveForPrecision(precision),
       },
+      autoscaleInfoProvider: extendAutoscaleForHypeLevels(visibleHypeLevels, currentPrice),
     });
 
     candleSeries.setData(data);
