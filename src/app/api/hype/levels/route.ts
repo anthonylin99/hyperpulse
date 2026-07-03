@@ -1,5 +1,5 @@
 import { getInfoClient } from "@/lib/hyperliquid";
-import { getHypeFundamentalsContext, getHypeLiveContext } from "@/lib/hypeFundamentals";
+import { getHypeLiveContext } from "@/lib/hypeFundamentals";
 import { deriveHypeLevelPlan, type HypeResearchLevel } from "@/lib/hypeLevels";
 import {
   enforceRateLimit,
@@ -166,9 +166,8 @@ export async function GET(request: Request) {
   if (limited) return limited;
 
   try {
-    const [{ byInterval, endTime }, fundamentals, live] = await Promise.all([
+    const [{ byInterval, endTime }, live] = await Promise.all([
       fetchHypeCandles(),
-      getHypeFundamentalsContext(),
       getHypeLiveContext(),
     ]);
     const mark = live.markPrice ?? byInterval["15m"].at(-1)?.close ?? null;
@@ -214,9 +213,9 @@ export async function GET(request: Request) {
     const plan = deriveHypeLevelPlan({
       mark,
       priceChange24h: live.priceChange24hPct,
-      oiChangePct: fundamentals.metrics.openInterest7dChangePct,
+      oiChangePct: null,
       fundingApr: live.fundingApr,
-      levelBias: fundamentals.levelBias,
+      levelBias: undefined,
       researchedLevels,
       allTimeHigh,
       generatedAt: endTime,

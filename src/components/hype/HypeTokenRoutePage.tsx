@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, BarChart3, Crosshair, Gauge, Landmark, RefreshCcw, ShieldAlert, Target } from "lucide-react";
 import PriceChart from "@/components/PriceChart";
 import { FilterChip, SectionEyebrow, SurfaceButton } from "@/components/trading-ui";
 import { useMarket } from "@/context/MarketContext";
+import { useHypeLevelPlan } from "@/hooks/useHypeLevelPlan";
 import { cn, formatCompactUsd, formatPct, formatUSD } from "@/lib/format";
-import { deriveHypeLevelPlan, formatHypeLevelPrice, type HypeLevelPlan } from "@/lib/hypeLevels";
+import { formatHypeLevelPrice, type HypeLevelPlan } from "@/lib/hypeLevels";
 import type { HypeFundamentalsContext } from "@/lib/hypeFundamentals";
 
 type HypeView = "overview" | "levels" | "fundamentals";
@@ -25,35 +26,41 @@ export default function HypeTokenRoutePage() {
   const { assets, loading, error, fundingHistories, lastUpdated } = useMarket();
   const [view, setView] = useState<HypeView>("overview");
   const [fundamentals, setFundamentals] = useState<HypeFundamentalsContext | null>(null);
-  const [researchedLevelPlan, setResearchedLevelPlan] = useState<HypeLevelPlan | null>(null);
   const [fundamentalsLoading, setFundamentalsLoading] = useState(false);
   const [fundamentalsError, setFundamentalsError] = useState<string | null>(null);
   const hype = useMemo(() => assets.find((asset) => asset.coin === "HYPE") ?? null, [assets]);
   const fundingHistory = fundingHistories.HYPE ?? [];
+  const {
+    levelPlan,
+    loading: levelsLoading,
+    error: levelsError,
+    refresh: refreshLevels,
+  } = useHypeLevelPlan({
+    mark: hype?.markPx ?? null,
+    priceChange24h: hype?.priceChange24h ?? null,
+    oiChangePct: hype?.oiChangePct ?? null,
+    fundingApr: hype?.fundingAPR ?? null,
+    levelBias: fundamentals?.levelBias,
+  });
 
-  async function fetchFundamentals() {
+  const fetchFundamentals = useCallback(async () => {
     setFundamentalsLoading(true);
     setFundamentalsError(null);
     try {
-      const [fundamentalsResponse, levelsResponse] = await Promise.all([
-        fetch("/api/hype/fundamentals"),
-        fetch("/api/hype/levels"),
-      ]);
+      const fundamentalsResponse = await fetch("/api/hype/fundamentals");
       if (!fundamentalsResponse.ok) throw new Error("HYPE fundamentals unavailable.");
       setFundamentals((await fundamentalsResponse.json()) as HypeFundamentalsContext);
-      if (levelsResponse.ok) {
-        setResearchedLevelPlan((await levelsResponse.json()) as HypeLevelPlan);
-      }
+      await refreshLevels();
     } catch (err) {
       setFundamentalsError(err instanceof Error ? err.message : "HYPE fundamentals unavailable.");
     } finally {
       setFundamentalsLoading(false);
     }
-  }
+  }, [refreshLevels]);
 
   useEffect(() => {
     fetchFundamentals();
-  }, []);
+  }, [fetchFundamentals]);
 
   const priceDecimals = hype && hype.markPx >= 100 ? 2 : 3;
   const priceTone = hype == null || hype.priceChange24h === 0
@@ -61,18 +68,6 @@ export default function HypeTokenRoutePage() {
     : hype.priceChange24h > 0
       ? "text-emerald-300"
       : "text-red-300";
-  const fallbackLevelPlan = useMemo(
-    () =>
-      deriveHypeLevelPlan({
-        mark: hype?.markPx ?? null,
-        priceChange24h: hype?.priceChange24h ?? null,
-        oiChangePct: hype?.oiChangePct ?? null,
-        fundingApr: hype?.fundingAPR ?? null,
-        levelBias: fundamentals?.levelBias,
-      }),
-    [fundamentals?.levelBias, hype?.fundingAPR, hype?.markPx, hype?.oiChangePct, hype?.priceChange24h],
-  );
-  const levelPlan = researchedLevelPlan ?? fallbackLevelPlan;
   const primaryTrigger = levelPlan.levels.find((level) => level.role === "trigger");
   const primaryInvalid = levelPlan.levels.find((level) => level.role === "invalid");
   const primaryTarget = levelPlan.levels.find((level) => level.label === "Profit zone") ?? levelPlan.levels.find((level) => level.role === "target");
@@ -166,8 +161,8 @@ export default function HypeTokenRoutePage() {
           <section className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
             <div className="flex items-center justify-between gap-3">
               <SectionEyebrow>Key levels</SectionEyebrow>
-              <SurfaceButton size="sm" tone="ghost" onClick={fetchFundamentals} disabled={fundamentalsLoading} aria-label="Refresh HYPE fundamentals">
-                <RefreshCcw className={cn("h-3.5 w-3.5", fundamentalsLoading && "animate-spin")} />
+              <SurfaceButton size="sm" tone="ghost" onClick={fetchFundamentals} disabled={fundamentalsLoading || levelsLoading} aria-label="Refresh HYPE fundamentals">
+                <RefreshCcw className={cn("h-3.5 w-3.5", (fundamentalsLoading || levelsLoading) && "animate-spin")} />
               </SurfaceButton>
             </div>
             <div className="mt-3 space-y-2">
@@ -176,9 +171,9 @@ export default function HypeTokenRoutePage() {
                 .map((level) => (
                 <LevelRow key={level.label} level={level} />
               ))}
-              {fundamentalsError ? (
+              {fundamentalsError || levelsError ? (
                 <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-                  {fundamentalsError}
+                  {fundamentalsError ?? levelsError}
                 </div>
               ) : null}
             </div>

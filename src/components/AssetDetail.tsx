@@ -17,6 +17,7 @@ import { getFundingRegime } from "@/lib/fundingRegime";
 import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick } from "@/lib/time";
 import { useShadowBook } from "@/context/ShadowBookContext";
+import { useHypeLevelPlan } from "@/hooks/useHypeLevelPlan";
 import {
   computePositioningContext,
   formatPositioningDepth,
@@ -60,6 +61,14 @@ export default function AssetDetail({
   const [fundingView, setFundingView] = useState<"apr" | "hourly">("apr");
   const { openTicket } = useShadowBook();
   const supportsLiquidityMap = asset.marketType !== "hip3_perp";
+  const isHype = asset.coin.toUpperCase() === "HYPE";
+  const { levelPlan: hypeLevelPlan } = useHypeLevelPlan({
+    enabled: isHype,
+    mark: asset.markPx,
+    priceChange24h: asset.priceChange24h,
+    oiChangePct: asset.oiChangePct,
+    fundingApr: asset.fundingAPR,
+  });
 
   const priceDecimals = asset.markPx < 0.01 ? 6 : asset.markPx < 1 ? 4 : 2;
   const priceColor =
@@ -268,6 +277,7 @@ export default function AssetDetail({
               compact
               fundingAPR={asset.fundingAPR}
               fundingPercentile={fundingRegime.percentile}
+              hypeLevels={isHype ? hypeLevelPlan.levels : undefined}
             />
           </div>
         ) : tab === "liquidity" ? (
