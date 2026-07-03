@@ -19,6 +19,7 @@ import {
   reactionLevelsToSupportResistanceLevels,
   type ReactionLevelsPayload,
 } from "@/lib/reactionLevels";
+import { type HypeTradeLevel } from "@/lib/hypeLevels";
 import { SectionEyebrow } from "@/components/trading-ui";
 import type { SupportResistanceLevel } from "@/types";
 
@@ -28,6 +29,7 @@ interface PriceChartProps {
   compact?: boolean;
   fundingAPR?: number | null;
   fundingPercentile?: number | null;
+  hypeLevels?: HypeTradeLevel[];
 }
 
 type TradingInterval = "5" | "15" | "60" | "240" | "D";
@@ -922,6 +924,13 @@ type ChartPivotLine = {
   labelY: number;
 };
 
+type ChartHypeLevelLine = {
+  id: string;
+  level: HypeTradeLevel;
+  y: number;
+  labelY: number;
+};
+
 type ChartContextResponse = {
   currentPrice: number;
   candles: Array<Record<string, string | number>>;
@@ -1052,6 +1061,7 @@ export default function PriceChart({
   coin,
   marketType = "perp",
   compact = false,
+  hypeLevels = [],
 }: PriceChartProps) {
   const chartFrameRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -1068,6 +1078,7 @@ export default function PriceChart({
   const [candleRetryNonce, setCandleRetryNonce] = useState(0);
   const [zoneBands, setZoneBands] = useState<ChartZoneBand[]>([]);
   const [pivotLineMarkers, setPivotLineMarkers] = useState<ChartPivotLine[]>([]);
+  const [hypeLevelMarkers, setHypeLevelMarkers] = useState<ChartHypeLevelLine[]>([]);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
   const [hoveredPivotId, setHoveredPivotId] = useState<string | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
@@ -1162,6 +1173,13 @@ export default function PriceChart({
   const highlightedZoneId = hoveredZoneId ?? selectedZoneId;
   const activeCandleReadout = hoverCandle ?? candleReadoutFromRawCandle(candles.at(-1));
   const hypeFundamentals = reactionPayload?.hypeFundamentals ?? null;
+  const visibleHypeLevels = useMemo(
+    () =>
+      coin.toUpperCase() === "HYPE"
+        ? hypeLevels.filter((level) => level.role === "trigger" || level.role === "support" || level.role === "invalid" || level.label === "Profit zone")
+        : [],
+    [coin, hypeLevels],
+  );
 
   useEffect(() => {
     if (selectedZoneId && !zoneBands.some((band) => band.id === selectedZoneId)) {
@@ -1431,10 +1449,12 @@ export default function PriceChart({
     const renderZoneBands = () => {
       const nextBands: ChartZoneBand[] = [];
       const nextPivotLines: ChartPivotLine[] = [];
+      const nextHypeLines: ChartHypeLevelLine[] = [];
       const chartHeight = container.clientHeight;
       if (chartHeight <= 0) {
         setZoneBands([]);
         setPivotLineMarkers([]);
+        setHypeLevelMarkers([]);
         return;
       }
 
@@ -1482,8 +1502,19 @@ export default function PriceChart({
           labelY: clamp(y - 10, 8, Math.max(8, chartHeight - 26)),
         });
       });
+      visibleHypeLevels.forEach((level) => {
+        const y = candleSeries.priceToCoordinate(level.price);
+        if (y == null || y < 0 || y > chartHeight) return;
+        nextHypeLines.push({
+          id: `hype-plan-${level.role}-${level.label}-${level.price}`,
+          level,
+          y,
+          labelY: clamp(y - 10, 8, Math.max(8, chartHeight - 26)),
+        });
+      });
       setZoneBands(nextBands);
       setPivotLineMarkers(nextPivotLines);
+      setHypeLevelMarkers(nextHypeLines);
     };
     const scheduleZoneBandRender = () => {
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
@@ -1548,13 +1579,14 @@ export default function PriceChart({
       if (zoneFrame != null) window.cancelAnimationFrame(zoneFrame);
       setZoneBands([]);
       setPivotLineMarkers([]);
+      setHypeLevelMarkers([]);
       setHoveredZoneId(null);
       setHoveredPivotId(null);
       setHoverCandle(null);
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, currentPrice, interval, visiblePivotLevels, visibleDownsideFlows, visibleUpsideFlows]);
+  }, [candles, currentPrice, interval, visiblePivotLevels, visibleDownsideFlows, visibleHypeLevels, visibleUpsideFlows]);
 
   const levelSourceNote =
     combinedMapWarming
@@ -1678,6 +1710,7 @@ export default function PriceChart({
                 hoveredPivotId={hoveredPivotId}
                 onHover={setHoveredPivotId}
               />
+              <HypePlanLevelOverlay lines={hypeLevelMarkers} />
             </>
           )}
         </div>
@@ -1984,6 +2017,89 @@ function PivotLineTooltip({ line }: { line: ChartPivotLine }) {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function hypePlanTone(role: HypeTradeLevel["role"]) {
+  if (role === "trigger") {
+    return {
+      rgb: "45, 212, 191",
+      borderClass: "border-teal-300/45",
+      textClass: "text-teal-100",
+      bgClass: "bg-teal-400/10",
+    };
+  }
+  if (role === "target") {
+    return {
+      rgb: "52, 211, 153",
+      borderClass: "border-emerald-300/45",
+      textClass: "text-emerald-100",
+      bgClass: "bg-emerald-400/10",
+    };
+  }
+  if (role === "support") {
+    return {
+      rgb: "125, 211, 252",
+      borderClass: "border-sky-300/45",
+      textClass: "text-sky-100",
+      bgClass: "bg-sky-400/10",
+    };
+  }
+  if (role === "invalid") {
+    return {
+      rgb: "248, 113, 113",
+      borderClass: "border-red-300/45",
+      textClass: "text-red-100",
+      bgClass: "bg-red-400/10",
+    };
+  }
+  return {
+    rgb: "251, 191, 36",
+    borderClass: "border-amber-300/45",
+    textClass: "text-amber-100",
+    bgClass: "bg-amber-400/10",
+  };
+}
+
+function HypePlanLevelOverlay({ lines }: { lines: ChartHypeLevelLine[] }) {
+  if (lines.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[72]">
+      {lines.map((line) => {
+        const tone = hypePlanTone(line.level.role);
+        return (
+          <div key={line.id}>
+            <div
+              className="absolute left-0 right-[64px] border-t sm:right-[76px]"
+              style={{
+                top: line.y,
+                borderColor: `rgba(${tone.rgb}, ${line.level.grade === "A" ? 0.78 : 0.54})`,
+                boxShadow: line.level.grade === "A" ? `0 0 14px rgba(${tone.rgb}, 0.16)` : "none",
+              }}
+            />
+            <div
+              className={cn(
+                "absolute left-3 flex max-w-[calc(100%-5rem)] items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] leading-4 shadow-lg shadow-black/25 backdrop-blur-md md:left-36",
+                tone.borderClass,
+                tone.bgClass,
+                tone.textClass,
+              )}
+              style={{ top: line.labelY }}
+            >
+              <span className="font-semibold">{line.level.label}</span>
+              <span className="font-mono text-zinc-100">{formatLevelPrice(line.level.price)}</span>
+              <span className="rounded border border-white/10 px-1 font-mono">{line.level.grade}</span>
+              <span className="font-mono text-zinc-300">{line.level.probability}%</span>
+              <span className="hidden font-mono text-zinc-400 sm:inline">
+                {line.level.distancePct >= 0 ? "+" : ""}
+                {line.level.distancePct.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
