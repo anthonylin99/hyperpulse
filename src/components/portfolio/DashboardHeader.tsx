@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Activity, RefreshCw, Wallet2 } from "lucide-react";
+import Link from "next/link";
+import { Activity, RefreshCw, Share2, Wallet2 } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { usePortfolio } from "@/context/PortfolioContext";
@@ -176,6 +177,17 @@ export default function DashboardHeader() {
               />
               {refreshing ? "Refreshing…" : "Refresh"}
             </button>
+            {address && (
+              <Link
+                href={`/card/${address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl border border-teal-900/40 bg-teal-500/[0.08] px-3 py-2 text-sm text-teal-300 transition-colors hover:bg-teal-500/[0.14]"
+              >
+                <Share2 className="h-4 w-4" />
+                Share review
+              </Link>
+            )}
             <button
               onClick={handleDisconnect}
               className="rounded-xl border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
