@@ -1,0 +1,84 @@
+{
+  "generatedAt": 1784073096466,
+  "startTime": 1773704943355,
+  "endTime": 1784072943355,
+  "windowDays": 120,
+  "assetCount": 25,
+  "roundTripFeePct": 0.09,
+  "tiers": {
+    "medium": {
+      "24h": {
+        "n": 613,
+        "meanNetPct": 0.1,
+        "medianNetPct": 0.33,
+        "hitRate": 0.515,
+        "positiveMonths": 1,
+        "totalMonths": 5
+      },
+      "72h": {
+        "n": 352,
+        "meanNetPct": 0.26,
+        "medianNetPct": 0.26,
+        "hitRate": 0.517,
+        "positiveMonths": 3,
+        "totalMonths": 5
+      }
+    },
+    "high": {
+      "24h": {
+        "n": 118,
+        "meanNetPct": 0.94,
+        "medianNetPct": 0.74,
+        "hitRate": 0.585,
+        "positiveMonths": 5,
+        "totalMonths": 5
+      },
+      "72h": {
+        "n": 83,
+        "meanNetPct": 2.06,
+        "medianNetPct": 0.02,
+        "hitRate": 0.506,
+        "positiveMonths": 4,
+        "totalMonths": 5
+      }
+    },
+    "high_actionable": {
+      "24h": {
+        "n": 85,
+        "meanNetPct": 1.09,
+        "medianNetPct": 0.65,
+        "hitRate": 0.565,
+        "positiveMonths": 5,
+        "totalMonths": 5
+      },
+      "72h": {
+        "n": 65,
+        "meanNetPct": 3.63,
+        "medianNetPct": 1.4,
+        "hitRate": 0.554,
+        "positiveMonths": 4,
+        "totalMonths": 5
+      }
+    },
+    "extreme": {
+      "24h": {
+        "n": 30,
+        "meanNetPct": 2.16,
+        "medianNetPct": 1.94,
+        "hitRate": 0.567,
+        "positiveMonths": 3,
+        "totalMonths": 4
+      },
+      "72h": {
+        "n": 23,
+        "meanNetPct": 3.62,
+        "medianNetPct": 4.42,
+        "hitRate": 0.609,
+        "positiveMonths": 3,
+        "totalMonths": 4
+      }
+    }
+  },
+  "baselineLong72hPct": 0.26,
+  "methodology": "Backtest, not live results. Score reconstructed hourly from public funding + candles (OI component uses the no-data fallback). Event = a fresh crossing of the tier threshold (score must reset below it between events), cooldown = horizon. Return = fading the crowded side, net of funding carry received and taker fees."
+}

@@ -19,6 +19,7 @@ import { formatEasternChartTick } from "@/lib/time";
 import { useShadowBook } from "@/context/ShadowBookContext";
 import { useHypeLevelPlan } from "@/hooks/useHypeLevelPlan";
 import { buildPositioningStressAlert, type PositioningStressAlert } from "@/lib/crowding";
+import { getTrackRecord, getTrackRecordCell } from "@/lib/crowdingTrackRecordData";
 import {
   computePositioningContext,
   formatPositioningDepth,
@@ -578,12 +579,30 @@ function PositioningStressRead({ alert }: { alert: PositioningStressAlert }) {
           </div>
         ))}
       </div>
+      <StressHistoryNote alert={alert} />
       <div className="mt-2 text-[11px] leading-4 text-zinc-500">
         {alert.missingData.includes("wallet cohort split unavailable in v1")
           ? "Cohort split is not indexed yet. This is a proxy from funding, OI, price, and volume."
           : "Cohort split available."}
       </div>
     </section>
+  );
+}
+
+function StressHistoryNote({ alert }: { alert: PositioningStressAlert }) {
+  // The cited cohort is high-severity WITH price confirmation — watch-only
+  // cards must not inherit that follow-through claim.
+  if (alert.severity !== "high" && alert.severity !== "extreme") return null;
+  if (alert.status !== "actionable_watch") return null;
+  const day = getTrackRecordCell("high_actionable", 24);
+  if (!day) return null;
+  return (
+    <div className="mt-2 rounded-xl border border-zinc-800/80 bg-zinc-950/45 px-3 py-2 text-xs leading-5 text-zinc-400">
+      What usually followed: in a {getTrackRecord().windowDays}-day backtest, stress this severe resolved{" "}
+      <span className="font-mono text-zinc-200">{formatPct(day.meanNetPct)}</span> against the crowded side within 24h
+      ({day.n} events, {day.positiveMonths}/{day.totalMonths} months positive) — and chasing it inside 8h scored flat
+      or worse. Backtest, not live results.
+    </div>
   );
 }
 
