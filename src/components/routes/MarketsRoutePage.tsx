@@ -5,6 +5,7 @@ import { MousePointerClick } from "lucide-react";
 import DailySetupPanel from "@/components/DailySetupPanel";
 import MarketRadarPanel from "@/components/MarketRadarPanel";
 import MarketTable from "@/components/MarketTable";
+import CrowdingDeskPanel from "@/components/markets/CrowdingDeskPanel";
 import TopMoversPanel from "@/components/markets/TopMoversPanel";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
@@ -41,8 +42,8 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
           </div>
         )}
 
-        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
-          <section className="order-2 min-w-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/75 xl:order-1">
+        <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_300px] 2xl:items-start">
+          <section className="order-1 min-w-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/75">
             <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-3">
               <div className="flex flex-col gap-1">
                 <div>
@@ -65,8 +66,9 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             />
           </section>
 
-          <div className="order-1 min-w-0 space-y-4 xl:order-2">
+          <div className="order-2 grid min-w-0 gap-4 lg:grid-cols-2 2xl:block 2xl:space-y-4">
             <DailySetupPanel />
+            <CrowdingDeskPanel />
             <MarketRadarPanel variant="rail" />
             <TopMoversPanel />
           </div>

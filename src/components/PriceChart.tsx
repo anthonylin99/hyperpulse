@@ -326,6 +326,8 @@ const MIN_BOOK_FALLBACK_NOTIONAL_USD = 20_000_000;
 const MIN_BOOK_FALLBACK_PRIORITY = 24;
 const MAX_PRIMARY_REACTION_LEVELS = 5;
 const MIN_LEVELS_PER_SIDE = 1;
+const MAX_HYPE_LEVEL_LABELS = 4;
+const MIN_HYPE_LABEL_GAP_PX = 25;
 
 function timeframeLabelFor(level: SupportResistanceLevel): ApiInterval | null {
   return (level as ChartLevel).timeframeLabel ?? null;
@@ -576,6 +578,63 @@ function levelReadFor(level: SupportResistanceLevel, side: "downside" | "upside"
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function distributeVerticalLabels<T extends { id: string; y: number }>(
+  items: T[],
+  chartHeight: number,
+  minGap = MIN_HYPE_LABEL_GAP_PX,
+): Record<string, number> {
+  if (items.length === 0) return {};
+  const minY = 34;
+  const maxY = Math.max(minY, chartHeight - 30);
+  const sorted = [...items].sort((a, b) => a.y - b.y);
+  const positions = sorted.map((item) => clamp(item.y - 10, minY, maxY));
+
+  for (let index = 1; index < positions.length; index += 1) {
+    positions[index] = Math.max(positions[index], positions[index - 1] + minGap);
+  }
+
+  if (positions[positions.length - 1] > maxY) positions[positions.length - 1] = maxY;
+
+  for (let index = positions.length - 2; index >= 0; index -= 1) {
+    positions[index] = Math.min(positions[index], positions[index + 1] - minGap);
+  }
+
+  if (positions[0] < minY) {
+    const offset = minY - positions[0];
+    for (let index = 0; index < positions.length; index += 1) {
+      positions[index] += offset;
+    }
+  }
+
+  return Object.fromEntries(sorted.map((item, index) => [item.id, clamp(positions[index], minY, maxY)]));
+}
+
+function hypeLevelLabelPriority(line: ChartHypeLevelLine): number {
+  const roleScore =
+    line.level.role === "trigger"
+      ? 100
+      : line.level.role === "support"
+        ? 90
+        : line.level.role === "invalid"
+          ? 80
+          : line.level.role === "target"
+            ? 70
+            : 40;
+  const gradeScore = line.level.grade === "A" ? 8 : line.level.grade === "B" ? 4 : 0;
+  const distancePenalty = Math.min(16, Math.abs(line.level.distancePct) * 1.4);
+  return roleScore + gradeScore - distancePenalty;
+}
+
+function compactHypeLevelLabel(level: HypeTradeLevel): string {
+  if (level.role === "trigger") return "Trigger";
+  if (level.role === "support") return "Support";
+  if (level.role === "invalid") return "Invalid";
+  const target = level.label.match(/TP\s*\d/i)?.[0]?.replace(/\s+/g, "");
+  if (target) return target.toUpperCase();
+  if (level.role === "target") return "TP";
+  return level.label.split("/")[0]?.trim() || level.label;
 }
 
 function levelVisualStrength(level: SupportResistanceLevel, index: number): number {
@@ -930,6 +989,7 @@ type ChartHypeLevelLine = {
   level: HypeTradeLevel;
   y: number;
   labelY: number;
+  labelVisible: boolean;
 };
 
 const extendAutoscaleForHypeLevels = (
@@ -1526,16 +1586,35 @@ export default function PriceChart({
           labelY: clamp(y - 10, 8, Math.max(8, chartHeight - 26)),
         });
       });
+      const rawHypeLines: ChartHypeLevelLine[] = [];
       visibleHypeLevels.forEach((level) => {
         const y = candleSeries.priceToCoordinate(level.price);
         if (y == null || y < 0 || y > chartHeight) return;
-        nextHypeLines.push({
+        rawHypeLines.push({
           id: `hype-plan-${level.role}-${level.label}-${level.price}`,
           level,
           y,
           labelY: clamp(y - 10, 8, Math.max(8, chartHeight - 26)),
+          labelVisible: false,
         });
       });
+      const labeledHypeIds = new Set(
+        [...rawHypeLines]
+          .sort((a, b) => hypeLevelLabelPriority(b) - hypeLevelLabelPriority(a))
+          .slice(0, MAX_HYPE_LEVEL_LABELS)
+          .map((line) => line.id),
+      );
+      const labelPositions = distributeVerticalLabels(
+        rawHypeLines.filter((line) => labeledHypeIds.has(line.id)),
+        chartHeight,
+      );
+      nextHypeLines.push(
+        ...rawHypeLines.map((line) => ({
+          ...line,
+          labelY: labelPositions[line.id] ?? line.labelY,
+          labelVisible: labeledHypeIds.has(line.id),
+        })),
+      );
       setZoneBands(nextBands);
       setPivotLineMarkers(nextPivotLines);
       setHypeLevelMarkers(nextHypeLines);
@@ -2103,24 +2182,22 @@ function HypePlanLevelOverlay({ lines }: { lines: ChartHypeLevelLine[] }) {
                 boxShadow: line.level.grade === "A" ? `0 0 14px rgba(${tone.rgb}, 0.16)` : "none",
               }}
             />
-            <div
-              className={cn(
-                "absolute left-3 flex max-w-[calc(100%-5rem)] items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] leading-4 shadow-lg shadow-black/25 backdrop-blur-md md:left-36",
-                tone.borderClass,
-                tone.bgClass,
-                tone.textClass,
-              )}
-              style={{ top: line.labelY }}
-            >
-              <span className="font-semibold">{line.level.label}</span>
-              <span className="font-mono text-zinc-100">{formatLevelPrice(line.level.price)}</span>
-              <span className="rounded border border-white/10 px-1 font-mono">{line.level.grade}</span>
-              <span className="font-mono text-zinc-300">{line.level.probability}%</span>
-              <span className="hidden font-mono text-zinc-400 sm:inline">
-                {line.level.distancePct >= 0 ? "+" : ""}
-                {line.level.distancePct.toFixed(1)}%
-              </span>
-            </div>
+            {line.labelVisible ? (
+              <div
+                className={cn(
+                  "absolute left-2 flex max-w-[min(190px,calc(100%-5rem))] items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] leading-4 shadow-lg shadow-black/25 backdrop-blur-md md:left-4",
+                  tone.borderClass,
+                  tone.bgClass,
+                  tone.textClass,
+                )}
+                style={{ top: line.labelY }}
+                title={`${line.level.label} ${formatLevelPrice(line.level.price)} - ${line.level.probability}% - ${line.level.grade}`}
+              >
+                <span className="shrink-0 font-semibold">{compactHypeLevelLabel(line.level)}</span>
+                <span className="shrink-0 font-mono text-zinc-100">{formatLevelPrice(line.level.price)}</span>
+                <span className="rounded border border-white/10 px-1 font-mono">{line.level.grade}</span>
+              </div>
+            ) : null}
           </div>
         );
       })}
