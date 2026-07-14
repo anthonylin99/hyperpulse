@@ -18,6 +18,7 @@ import { withNetworkParam } from "@/lib/hyperliquid";
 import { formatEasternChartTick } from "@/lib/time";
 import { useShadowBook } from "@/context/ShadowBookContext";
 import { useHypeLevelPlan } from "@/hooks/useHypeLevelPlan";
+import { buildPositioningStressAlert, type PositioningStressAlert } from "@/lib/crowding";
 import {
   computePositioningContext,
   formatPositioningDepth,
@@ -201,6 +202,10 @@ export default function AssetDetail({
     fundingRegime,
     orderbook,
   });
+  const crowdingAlert = useMemo(
+    () => buildPositioningStressAlert({ asset, fundingHistory }),
+    [asset, fundingHistory],
+  );
   const regimeColor =
     fundingRegime.tone === "red"
       ? "text-red-400"
@@ -271,7 +276,7 @@ export default function AssetDetail({
       {/* Chart area */}
       <div className="min-w-0 px-4 pb-3">
         {tab === "price" ? (
-          <div className="min-h-[720px] min-w-0">
+          <div className="min-h-[720px] min-w-0 space-y-3">
             <PriceChart
               coin={asset.coin}
               compact
@@ -279,6 +284,7 @@ export default function AssetDetail({
               fundingPercentile={fundingRegime.percentile}
               hypeLevels={isHype ? hypeLevelPlan.levels : undefined}
             />
+            <PositioningStressRead alert={crowdingAlert} />
           </div>
         ) : tab === "liquidity" ? (
           <LiquidityMapPanel coin={asset.coin} />
@@ -534,6 +540,50 @@ function TapeMetric({
       <div className="mt-1 font-mono text-sm text-zinc-100">{value}</div>
       {helper ? <div className="mt-0.5 text-[10px] text-zinc-600">{helper}</div> : null}
     </div>
+  );
+}
+
+function stressTone(alert: PositioningStressAlert): "amber" | "red" | "neutral" {
+  if (alert.severity === "extreme" || alert.severity === "high") return "red";
+  if (alert.status === "watch_only" || alert.severity === "medium") return "amber";
+  return "neutral";
+}
+
+function PositioningStressRead({ alert }: { alert: PositioningStressAlert }) {
+  const tone = stressTone(alert);
+  const toneClass =
+    tone === "red"
+      ? "border-red-500/25 bg-red-500/10"
+      : tone === "amber"
+        ? "border-amber-500/25 bg-amber-500/10"
+        : "border-zinc-800 bg-zinc-950/55";
+  return (
+    <section className={cn("rounded-2xl border px-4 py-3", toneClass)}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <SectionEyebrow>Positioning stress</SectionEyebrow>
+          <div className="mt-1 text-sm font-semibold text-zinc-100">{alert.label}</div>
+          <div className="mt-1 max-w-3xl text-xs leading-5 text-zinc-400">{alert.decision}</div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-right">
+          <TapeMetric label="Score" value={alert.score.toFixed(0)} />
+          <TapeMetric label="Funding" value={formatPct(alert.fundingApr)} />
+          <TapeMetric label="OI" value={formatCompactUsd(alert.openInterestUsd)} />
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {alert.evidence.slice(0, 4).map((item) => (
+          <div key={item} className="rounded-xl border border-zinc-800/80 bg-zinc-950/45 px-3 py-2 text-xs leading-5 text-zinc-400">
+            {item}
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-[11px] leading-4 text-zinc-500">
+        {alert.missingData.includes("wallet cohort split unavailable in v1")
+          ? "Cohort split is not indexed yet. This is a proxy from funding, OI, price, and volume."
+          : "Cohort split available."}
+      </div>
+    </section>
   );
 }
 

@@ -50,13 +50,16 @@ export default function HypeTokenRoutePage() {
       const fundamentalsResponse = await fetch("/api/hype/fundamentals");
       if (!fundamentalsResponse.ok) throw new Error("HYPE fundamentals unavailable.");
       setFundamentals((await fundamentalsResponse.json()) as HypeFundamentalsContext);
-      await refreshLevels();
     } catch (err) {
       setFundamentalsError(err instanceof Error ? err.message : "HYPE fundamentals unavailable.");
     } finally {
       setFundamentalsLoading(false);
     }
-  }, [refreshLevels]);
+  }, []);
+
+  const refreshHypeDesk = useCallback(async () => {
+    await Promise.all([fetchFundamentals(), refreshLevels()]);
+  }, [fetchFundamentals, refreshLevels]);
 
   useEffect(() => {
     fetchFundamentals();
@@ -136,7 +139,7 @@ export default function HypeTokenRoutePage() {
               fundamentals={fundamentals}
               loading={fundamentalsLoading}
               error={fundamentalsError}
-              onRefresh={fetchFundamentals}
+              onRefresh={refreshHypeDesk}
             />
           ) : null}
         </main>
@@ -161,7 +164,7 @@ export default function HypeTokenRoutePage() {
           <section className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
             <div className="flex items-center justify-between gap-3">
               <SectionEyebrow>Key levels</SectionEyebrow>
-              <SurfaceButton size="sm" tone="ghost" onClick={fetchFundamentals} disabled={fundamentalsLoading || levelsLoading} aria-label="Refresh HYPE fundamentals">
+              <SurfaceButton size="sm" tone="ghost" onClick={refreshHypeDesk} disabled={fundamentalsLoading || levelsLoading} aria-label="Refresh HYPE fundamentals">
                 <RefreshCcw className={cn("h-3.5 w-3.5", (fundamentalsLoading || levelsLoading) && "animate-spin")} />
               </SurfaceButton>
             </div>
