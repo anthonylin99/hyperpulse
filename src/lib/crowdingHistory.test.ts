@@ -46,16 +46,24 @@ test("buildStressSeries stays quiet on calm funding", () => {
   assert.ok(series.every((point) => point.score < 46), "calm market must not reach medium tier");
 });
 
-test("extractStressEvents enforces the cooldown window", () => {
+test("a regime that stays elevated is one event, not one per cooldown", () => {
   const hours = 200;
   const closes = Array.from({ length: hours }, (_, index) => 100 * (1 - 0.001 * index));
   const rates = Array.from({ length: hours }, () => HOT);
   const series = buildStressSeries(makeCandles(closes), makeFunding(rates));
   const events = extractStressEvents(series, 62, 24, false);
-  assert.ok(events.length >= 2);
-  for (let index = 1; index < events.length; index += 1) {
-    assert.ok(events[index].time - events[index - 1].time > 24 * HOUR_MS);
-  }
+  assert.equal(events.length, 1, "no fresh crossing after the first, so no second event");
+});
+
+test("extractStressEvents re-arms only after the score resets below the threshold", () => {
+  const hours = 300;
+  const closes = Array.from({ length: hours }, (_, index) => 100 * (1 - 0.0005 * index));
+  // Hot for 100h, calm for 60h (resets), hot again.
+  const rates = Array.from({ length: hours }, (_, index) => (index < 100 || index >= 160 ? HOT : CALM));
+  const series = buildStressSeries(makeCandles(closes), makeFunding(rates));
+  const events = extractStressEvents(series, 62, 24, false);
+  assert.equal(events.length, 2, "one event per distinct stress regime");
+  assert.ok(events[1].time - events[0].time > 24 * HOUR_MS);
 });
 
 test("fadeReturn pays the fader when a crowded long unwinds", () => {
@@ -82,9 +90,10 @@ test("fadeReturn returns null when the horizon runs past the data", () => {
 });
 
 test("computeTrackRecord pools events and reports insufficient cells honestly", () => {
-  const hours = 400;
+  const hours = 600;
   const closes = Array.from({ length: hours }, (_, index) => 100 * (1 - 0.0005 * index));
-  const rates = Array.from({ length: hours }, () => HOT);
+  // Alternating stress regimes (60h hot / 40h calm) so each cycle is a fresh crossing.
+  const rates = Array.from({ length: hours }, (_, index) => (index % 100 < 60 ? HOT : CALM));
   const record = computeTrackRecord(
     [
       { coin: "AAA", candles: makeCandles(closes), funding: makeFunding(rates) },
