@@ -8,6 +8,8 @@
     "start": "node scripts/start.mjs",
     "lint": "next lint",
     "test:crowding": "node --test --experimental-transform-types src/lib/crowding.test.ts",
+    "test:crowding-history": "node --test --experimental-transform-types src/lib/crowdingHistory.test.ts",
+    "research:crowding-track": "node --experimental-transform-types scripts/build-crowding-track-record.ts",
     "test:whales": "node --test --experimental-transform-types src/lib/whaleAnalyticsCore.test.ts",
     "test:hype": "node --test --experimental-transform-types src/lib/hypeFundamentals.test.ts",
     "test:anomalies": "node --test --experimental-transform-types src/lib/eventVolumeAnomalyBacktest.test.ts",

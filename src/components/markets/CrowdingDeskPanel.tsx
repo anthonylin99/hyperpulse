@@ -10,6 +10,7 @@ import { normalizeMarketCoin } from "@/lib/marketCoins";
 import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import { SectionEyebrow } from "@/components/trading-ui";
 import type { CrowdingDeskPayload, PositioningStressAlert } from "@/lib/crowding";
+import { formatTrackRecordWindow, getTrackRecordCell } from "@/lib/crowdingTrackRecordData";
 
 function marketAssetElementId(asset: string) {
   return `market-asset-${asset.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -141,6 +142,28 @@ export default function CrowdingDeskPanel() {
           ))}
         </div>
       )}
+
+      <TrackRecordFootnote />
     </section>
+  );
+}
+
+function TrackRecordFootnote() {
+  const day = getTrackRecordCell("high_actionable", 24);
+  const threeDay = getTrackRecordCell("high_actionable", 72);
+  if (!day || !threeDay) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/45 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-600">
+        Signal track record · backtest {formatTrackRecordWindow()}
+      </div>
+      <div className="mt-1 text-[11px] leading-4 text-zinc-400">
+        Past high alerts with price confirmation: fading the crowd averaged{" "}
+        <span className="font-mono text-zinc-200">{formatPct(day.meanNetPct)}</span> over 24h ({day.n} events,{" "}
+        {day.positiveMonths}/{day.totalMonths} months positive) and{" "}
+        <span className="font-mono text-zinc-200">{formatPct(threeDay.meanNetPct)}</span> over 3 days. Backtest, not
+        live results. Chasing into the alert scored flat or worse inside 8h.
+      </div>
+    </div>
   );
 }
