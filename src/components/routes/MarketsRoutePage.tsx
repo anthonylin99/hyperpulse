@@ -7,6 +7,7 @@ import MarketRadarPanel from "@/components/MarketRadarPanel";
 import MarketTable from "@/components/MarketTable";
 import CrowdingDeskPanel from "@/components/markets/CrowdingDeskPanel";
 import TopMoversPanel from "@/components/markets/TopMoversPanel";
+import TradeIdeasPanel from "@/components/markets/TradeIdeasPanel";
 import TradeDrawer from "@/components/TradeDrawer";
 import { useAppConfig } from "@/context/AppConfigContext";
 import { useMarket } from "@/context/MarketContext";
@@ -41,6 +42,8 @@ export default function MarketsRoutePage({ initialAsset = null }: { initialAsset
             Failed to fetch market data — retrying...
           </div>
         )}
+
+        <TradeIdeasPanel />
 
         <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1fr)_300px] 2xl:items-start">
           <section className="order-1 min-w-0 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/75">

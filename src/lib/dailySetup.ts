@@ -258,7 +258,7 @@ export function signalLabStatusForSetup(setup: DailySetup, generatedAt: number, 
   };
 }
 
-async function buildDailySetupSnapshotUncached(info: InfoClient, now = Date.now()): Promise<DailySetupSnapshot> {
+export async function buildDailySetupCandidates(info: InfoClient, now = Date.now()): Promise<DailySetup[]> {
   const [meta, assetCtxs] = (await info.metaAndAssetCtxs()) as unknown as [
     { universe?: Array<{ name: string; isDelisted?: boolean }> },
     AssetContext[],
@@ -408,6 +408,11 @@ async function buildDailySetupSnapshotUncached(info: InfoClient, now = Date.now(
     }
   }
 
+  return candidates;
+}
+
+async function buildDailySetupSnapshotUncached(info: InfoClient, now = Date.now()): Promise<DailySetupSnapshot> {
+  const candidates = await buildDailySetupCandidates(info, now);
   const setup = roundedDailySetup(pickCandidate(candidates));
   return {
     id: `daily-setup-${dayId(now)}-${setup.coin.toLowerCase()}-${setup.side}`,
