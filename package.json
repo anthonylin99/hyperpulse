@@ -73,6 +73,9 @@
     "typescript": "^5"
   },
   "overrides": {
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "wagmi@>=3": {
+      "@wagmi/core": "3.4.11"
+    }
   }
 }
