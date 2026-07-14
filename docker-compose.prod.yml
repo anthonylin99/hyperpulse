@@ -95,6 +95,9 @@ services:
       <<: *depends-postgres
     environment:
       <<: *db-gate
+      # The worker exits immediately unless this is "true" — without it a
+      # fresh droplet never populates market_assets / context snapshots.
+      ENABLE_MARKET_COLLECTOR: "true"
 
   momentum-alerts:
     depends_on:
