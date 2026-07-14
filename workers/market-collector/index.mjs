@@ -59,10 +59,12 @@ if (process.env.ENABLE_MARKET_COLLECTOR !== "true") {
 }
 
 const DATABASE_URL = normalizeDatabaseUrl(
-  process.env.NEON_DATABASE_URL_POOLING ??
-    process.env.NEON_DATABASE_URL ??
-    process.env.DATABASE_URL ??
-    process.env.POSTGRES_URL ??
+  // `||` (not `??`) so empty-string env vars fall through: the compose
+  // database-env anchor defaults the unused NEON_* vars to "".
+  process.env.NEON_DATABASE_URL_POOLING ||
+    process.env.NEON_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
     "",
 );
 if (!DATABASE_URL) {

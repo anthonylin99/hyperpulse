@@ -1,0 +1,9 @@
+# Caddy auto-HTTPS reverse proxy for HyperPulse.
+# DOMAIN is injected from the environment (see docker-compose.prod.yml / .env).
+# Caddy obtains + renews a Let's Encrypt certificate automatically on first run,
+# so the droplet's DNS A record must already point here and ports 80/443 be open.
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
