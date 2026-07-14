@@ -590,7 +590,10 @@ function PositioningStressRead({ alert }: { alert: PositioningStressAlert }) {
 }
 
 function StressHistoryNote({ alert }: { alert: PositioningStressAlert }) {
+  // The cited cohort is high-severity WITH price confirmation — watch-only
+  // cards must not inherit that follow-through claim.
   if (alert.severity !== "high" && alert.severity !== "extreme") return null;
+  if (alert.status !== "actionable_watch") return null;
   const day = getTrackRecordCell("high_actionable", 24);
   if (!day) return null;
   return (

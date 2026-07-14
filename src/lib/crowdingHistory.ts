@@ -159,14 +159,23 @@ export function extractStressEvents(
   horizonHours: number,
   requireActionable: boolean,
 ): StressPoint[] {
+  // An event is a fresh crossing: the score must have been below the tier
+  // threshold (or the side flat) since the previous event. A regime that
+  // simply stays elevated past the cooldown is one event, not many —
+  // otherwise long-lived alerts are over-weighted in the track record.
   const events: StressPoint[] = [];
   let cooldownUntil = -1;
+  let armed = true;
   for (const point of series) {
-    if (point.time <= cooldownUntil) continue;
-    if (point.side === "none" || point.score < threshold) continue;
+    if (point.side === "none" || point.score < threshold) {
+      armed = true;
+      continue;
+    }
+    if (!armed || point.time <= cooldownUntil) continue;
     if (requireActionable && !point.actionable) continue;
     events.push(point);
     cooldownUntil = point.time + horizonHours * HOUR_MS;
+    armed = false;
   }
   return events;
 }
@@ -266,6 +275,6 @@ export function computeTrackRecord(
     tiers,
     baselineLong72hPct: baselineCount > 0 ? Math.round((baselineSum / baselineCount) * 100 * 100) / 100 : 0,
     methodology:
-      "Backtest, not live results. Score reconstructed hourly from public funding + candles (OI component uses the no-data fallback). Event = first hour the score crosses the tier threshold, cooldown = horizon. Return = fading the crowded side, net of funding carry received and taker fees.",
+      "Backtest, not live results. Score reconstructed hourly from public funding + candles (OI component uses the no-data fallback). Event = a fresh crossing of the tier threshold (score must reset below it between events), cooldown = horizon. Return = fading the crowded side, net of funding carry received and taker fees.",
   };
 }
