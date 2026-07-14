@@ -44,7 +44,8 @@
     "reaction:prune:vacuum": "node scripts/prune-reaction-map.mjs --apply --vacuum-full",
     "reaction:prune:lean:dry-run": "node scripts/prune-reaction-map.mjs --hours=2 --context-hours=2 --event-hours=6 --stale-zone-hours=6",
     "reaction:prune:lean:apply": "node scripts/prune-reaction-map.mjs --hours=2 --context-hours=2 --event-hours=6 --stale-zone-hours=6 --apply",
-    "reaction:prune:lean:vacuum": "node scripts/prune-reaction-map.mjs --hours=2 --context-hours=2 --event-hours=6 --stale-zone-hours=6 --apply --vacuum-full"
+    "reaction:prune:lean:vacuum": "node scripts/prune-reaction-map.mjs --hours=2 --context-hours=2 --event-hours=6 --stale-zone-hours=6 --apply --vacuum-full",
+    "test:ideas": "node --test --experimental-transform-types src/lib/tradeIdeas.test.ts"
   },
   "dependencies": {
     "@farcaster/miniapp-sdk": "^0.3.0",
