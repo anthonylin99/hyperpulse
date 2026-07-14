@@ -6,6 +6,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useMarket } from "@/context/MarketContext";
 import { cn, formatCompactUsd, formatPct } from "@/lib/format";
+import { withNetworkParam } from "@/lib/hyperliquid";
 import { normalizeMarketCoin } from "@/lib/marketCoins";
 import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import { SectionEyebrow } from "@/components/trading-ui";
@@ -79,7 +80,7 @@ export default function CrowdingDeskPanel() {
     let cancelled = false;
     const load = async () => {
       try {
-        const response = await fetch("/api/crowding/alerts");
+        const response = await fetch(withNetworkParam("/api/crowding/alerts"));
         if (!response.ok || cancelled) return;
         const next = (await response.json()) as CrowdingDeskPayload;
         if (mounted) setData(next);
