@@ -130,6 +130,19 @@ test("same coin, same side from both families merges into one conviction-A combi
   assert.ok(idea.trackRecordNote != null);
 });
 
+test("watch_only crowding + same-coin setup merges to B, not A", () => {
+  const payload = composeTradeIdeas({
+    setups: [makeSetup({ coin: "SOL", trigger: 146, invalidation: 155, target: 132 })],
+    crowdingAlerts: [makeAlert({ status: "watch_only" })],
+    trackRecordCell,
+    now: NOW,
+  });
+  assert.equal(payload.ideas.length, 1);
+  assert.equal(payload.ideas[0].source, "combined");
+  assert.equal(payload.ideas[0].conviction, "B", "unconfirmed crowding must not mint an A");
+  assert.equal(payload.ideas[0].trackRecordNote, null);
+});
+
 test("conflicting sides on the same coin: crowding wins and the setup is dropped", () => {
   const payload = composeTradeIdeas({
     setups: [makeSetup({ coin: "SOL", side: "long", trigger: 152, invalidation: 145, target: 165 })],

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Crosshair, RefreshCw, ShieldCheck } from "lucide-react";
 import { useMarket } from "@/context/MarketContext";
 import { cn, formatPct } from "@/lib/format";
+import { withNetworkParam } from "@/lib/hyperliquid";
 import { normalizeMarketCoin } from "@/lib/marketCoins";
 import { POLL_INTERVAL_MARKET } from "@/lib/constants";
 import { SectionEyebrow } from "@/components/trading-ui";
@@ -104,7 +105,7 @@ export default function TradeIdeasPanel() {
     let mounted = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/ideas");
+        const response = await fetch(withNetworkParam("/api/ideas"));
         if (!response.ok) return;
         const next = (await response.json()) as TradeIdeasPayload;
         if (mounted) setData(next);

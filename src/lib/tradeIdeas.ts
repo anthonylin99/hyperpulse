@@ -135,11 +135,13 @@ function ideaFromDailySetup(setup: DailySetup): TradeIdea | null {
 function mergeIdeas(crowding: TradeIdea, setup: TradeIdea): TradeIdea {
   // Same coin flagged by both families: the funding setup carries the
   // sharper levels (it has a target and 24h-range anchoring); crowding
-  // upgrades the conviction and contributes its evidence.
+  // contributes its evidence. Conviction upgrades to A only when the
+  // crowding side is itself confirmed — a watch_only crowding signal
+  // plus a funding setup is still an unconfirmed watch, not "A · confirmed".
   return {
     ...setup,
     id: `combined-${setup.coin.toLowerCase()}-${setup.side}`,
-    conviction: "A",
+    conviction: crowding.conviction === "A" ? "A" : "B",
     source: "combined",
     thesis: crowding.thesis,
     evidence: [...crowding.evidence.slice(0, 2), ...setup.evidence.slice(0, 2)],
